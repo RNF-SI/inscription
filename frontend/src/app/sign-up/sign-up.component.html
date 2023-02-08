@@ -1,0 +1,226 @@
+<div id="login-body">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-12 col-lg-8 mx-auto">
+                <div class="panel panel-default panel-signin" style="padding: 20px">
+                    <div class="panel-heading">
+                        INSCRIPTION AU SYSTÈME D'INFORMATION<br>DE RÉSERVES NATURELLES DE FRANCE
+                        <br><br>
+                    </div>
+                    <div class="panel-body">
+                        <form [formGroup]="form">
+                            <h5>Utilisateur</h5>
+
+                            <div class="form-group row">
+                                <label for="prenom_role" class="col-md-3 col-form-label text-md-right">
+                                    Prénom
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text" class="form-control" id="prenom_role" placeholder="Prénom"
+                                        formControlName="prenom_role" />
+                                    <small *ngIf="
+                        form.get('prenom_role')!.hasError('required') &&
+                        form.get('prenom_role')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <label for="nom_role" class="col-md-3 col-form-label text-md-right"> Nom </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text" class="form-control" id="nom_role" placeholder="Nom"
+                                        formControlName="nom_role" />
+                                    <small *ngIf="
+                        form.get('nom_role')!.hasError('required') && form.get('nom_role')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <label for="email" class="col-md-3 col-form-label text-md-right">
+                                    Adresse email
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text"
+                                        [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'" id="email"
+                                        placeholder="Email" formControlName="email" />
+                                    <small *ngIf="
+                        form.get('email')!.hasError('required') &&
+                        form.get('email')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                    <small *ngIf="
+                        form.get('email')!.hasError('email') &&
+                        form.get('email')!.touched
+                      ">
+                                        Merci d'entrer un email valide
+                                    </small>
+                                </div>
+                            </div>
+
+                            <mat-divider></mat-divider>
+
+                            <h5>Compte</h5>
+
+                            <div class="form-group row">
+                                <label for="identifiant" class="col-md-3 col-form-label text-md-right">
+                                    Identifiant
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text" class="form-control" id="identifiant" placeholder="Identifiant"
+                                        formControlName="identifiant" matTooltipPosition="above"
+                                        matTooltip="Cet identifiant vous sera demandé pour vous authentifier dans GeoNature." />
+                                    <small *ngIf="
+                        form.get('identifiant')!.hasError('required') &&
+                        form.get('identifiant')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <label for="password" class="col-md-3 col-form-label text-md-right">
+                                    Mot de passe
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="password" class="form-control" id="password" placeholder="Mot de passe"
+                                        formControlName="password" />
+                                    <small *ngIf="
+                        form.get('password')!.hasError('required') && form.get('password')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label for="password_confirmation" class="col-md-3 col-form-label text-md-right">
+                                    Confirmation
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="password" class="form-control" id="password_confirmation"
+                                        placeholder="Confirmation du mot de passe" matTooltipPosition="above"
+                                        matTooltip="Répéter le mot de passe précédemment saisi."
+                                        formControlName="password_confirmation" />
+                                    <small *ngIf="
+                        form.get('password_confirmation')!.hasError('required') &&
+                        form.get('password_confirmation')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                    <small *ngIf="
+                        form!.controls['password_confirmation']?.errors?.['confirmedValidator'] && form.get('password_confirmation')!.touched
+                      ">
+                                        Erreur de confirmation du mot de passe
+                                    </small>
+                                </div>
+                            </div>
+
+                            <mat-divider></mat-divider>
+
+                            <h5>Informations complémentaires</h5>
+
+                            <div class="form-group row">
+                                <label for="organisme" class="col-md-3 col-form-label text-md-right">
+                                    Organisme
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text" class="form-control" id="organisme" placeholder="Organisme"
+                                        formControlName="organisme" />
+                                        <small *ngIf="
+                        form.get('organisme')!.hasError('required') &&
+                        form.get('organisme')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <label for="remarques" class="col-md-3 col-form-label text-md-right">
+                                    Fonction
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <input type="text" id="remarques" class="form-control" placeholder="Fonction"
+                                        formControlName="remarques">
+                                        <small *ngIf="
+                        form.get('remarques')!.hasError('required') &&
+                        form.get('remarques')!.touched
+                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+                                </div>
+                            </div>
+                            <form [formGroup]="appFormGroup">
+                            <div class="form-group row">
+                                <label for="precisions" class="col-md-3 col-form-label text-md-right">
+                                    Précisions
+                                </label>
+                                <div class="col-md-9 col-lg-7">
+                                    <textarea type="text" id="precisions" class="form-control" placeholder="Précisions diverses..."
+                                        formControlName="precisions"></textarea>
+                                </div>
+                            </div>
+
+                            <mat-divider></mat-divider>
+
+                            <h5>Applications</h5>
+
+                            <p>Cochez les applications dont vous demandez l'accès, celui-ci sera modéré par un
+                                administrateur</p>
+
+                            <div class="form-group">
+                                <div
+                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                    <input formControlName="geonature_saisie" type="checkbox" class="custom-control-input"
+                                        id="geonature_saisie" value=2>
+                                    <label class="custom-control-label" for="geonature_saisie">GeoNature (saisie courante)</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div
+                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                    <input formControlName="psdrf" type="checkbox" class="custom-control-input"
+                                        id="psdrf" value=2>
+                                    <label class="custom-control-label" for="psdrf">Module PSDRF</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div
+                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                    <input formControlName="ancrage" type="checkbox" class="custom-control-input"
+                                        id="ancrage" value=2>
+                                    <label class="custom-control-label" for="ancrage">Boîte à Outils Ancrage</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <div
+                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                    <input formControlName="opnl" type="checkbox" class="custom-control-input"
+                                        id="opnl" value=2>
+                                    <label class="custom-control-label" for="opnl">Plateforme OPNL</label>
+                                </div>
+                            </div>
+                        </form>
+
+                        <p>En demandant un accès à ces applications, vous consentez au respect des conditions générales d'utilisation de celles-ci si votre demande est acceptée</p>
+
+                            <div class="text-center">
+                                <button type="button" class="btn btn-success"
+                                    [disabled]="!form.valid || !appFormGroup.valid || disableSubmit"
+                                    (click)="save()">
+                                    S'inscrire <span *ngIf="disableSubmit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

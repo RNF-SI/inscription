@@ -1,0 +1,10 @@
+authlib
+bcrypt
+flask-sqlalchemy
+flask
+psycopg2
+requests
+sqlalchemy
+flask-marshmallow
+marshmallow-sqlalchemy
+alembic
