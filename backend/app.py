@@ -122,7 +122,7 @@ def confirmation():
 
     return redirect(app.config["URL_APPLICATION"], code=302)
 
-@routes.route("/after_confirmation", methods=["POST"])
+@app.route("/after_confirmation", methods=["POST"])
 def after_confirmation():
     data = dict(request.get_json())
     type_action = "valid_temp_user"
