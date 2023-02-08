@@ -52,7 +52,7 @@ def inscription():
     # ajout des valeurs non présentes dans le form
     data["id_application"] = 6
     data["groupe"] = False
-    data["confirmation_url"] = "https://geonature.reserves-naturelles.org/api/users/after_confirmation"
+    data["confirmation_url"] = app.config["API_ENDPOINT"] + "/after_confirmation"
 
     r = s.post(
         url=app.config["API_ENDPOINT"] + "/pypn/register/post_usershub/create_temp_user",
