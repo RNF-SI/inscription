@@ -61,6 +61,25 @@ def inscription():
 
     if (r.status_code == 200) :
 
+        subject = "Demande d'inscription au SI"
+        template = "email_global.html"
+        recipients = ["si@rnfrance.org"]
+        msg_html = render_template(
+        template,
+        user=data,
+        additional_fields=[
+            {"key": key, "value": value}
+            for key, value in (data.get("champs_addi") or {}).items()
+        ]
+        )
+        msg = Message(
+            subject, 
+            sender="si@rnfrance.org", 
+            recipients=recipients
+        )
+        msg.html = msg_html
+        mail.send(msg)
+
         if (data['champs_addi']['ancrage']) :
             subject = "Demande de compte pour la BAO Ancrage"
             template = "email_ancrage.html"
@@ -96,48 +115,26 @@ def inscription():
 
     return Response(r), r.status_code
 
-@app.route("/confirmation", methods=["GET"])
-def confirmation():
-    """
-        Validate a account after a demande (this action is triggered by the link in the email)
-        Create a personnal JDD as post_action if the parameter AUTO_DATASET_CREATION is set to True
-        Fait appel à l'API UsersHub
-    """
-    # test des droits
-    # if not config["ACCOUNT_MANAGEMENT"].get("ENABLE_SIGN_UP", False):
-    #     return {"message": "Page introuvable"}, 404
-
-    token = request.args.get("token", None)
-    if token is None:
-        return {"message": "Token introuvable"}, 404
-
-    data = {"token": token, "id_application": 6}
-
-    r = s.post(
-        url=app.config["API_ENDPOINT"] + "/pypn/register/post_usershub/valid_temp_user", json=data,
-    )
-
-    if r.status_code != 200:
-        return Response(r), r.status_code
-
-    return redirect(app.config["URL_APPLICATION"], code=302)
-
 @app.route("/after_confirmation", methods=["POST"])
 def after_confirmation():
-    data = dict(request.get_json())
-    type_action = "valid_temp_user"
-    after_confirmation_fn = function_dict.get(type_action, None)
-    result = after_confirmation_fn(data)
-    if result != 0 and result["msg"] != "ok":
-        msg = f"Problem in GeoNature API after confirmation {type_action} : {result['msg']}"
-        return json.dumps({"msg": msg}), 500
-    else:
-        return json.dumps(result)
 
-# for blueprint_path, url_prefix in [
-#         ("pypnusershub.routes_register:bp", "/pypn/register"),
+    data = request.get_json()
+    print(data)
 
-#     ]:module_name, blueprint_name = blueprint_path.split(":")
-# blueprint = getattr(import_module(module_name), blueprint_name)
-# app.register_blueprint(blueprint, url_prefix=url_prefix)
+    subject = "Inscription au SI de RNF confirmée"
+    template = "email_confirm_user_validation.html"
+    recipients = [data['email']]
+    msg_html = render_template(
+    template,
+    user=data
+    )
+    msg = Message(
+        subject, 
+        sender="si@rnfrance.org", 
+        recipients=recipients
+    )
+    msg.html = msg_html
+    mail.send(msg)
+    return None
+
 

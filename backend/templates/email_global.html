@@ -1,0 +1,29 @@
+<p>*** Ceci est un message généré automatiquement ***</p>
+<p>Bonjour,</p>
+<p>
+  Un utilisateur vient d'effectuer une demande de création de compte 
+  pour le SI de RNF.
+</p>
+<p>Voici les informations de l'utilisateur :</p>
+<ul>
+  <li><b>Nom :</b> {{user.nom_role}}</li>
+  <li><b>Prénom :</b> {{user.prenom_role}}</li>
+  <li><b>Email :</b> {{user.email}}</li>
+  <li><b>Organisme :</b> {{user.organisme}}</li>
+  <li><b>Fonction :</b> {{user.remarques}}</li>
+</ul>
+
+{% if additional_fields | length > 0 %}
+  <h5>Informations complémentaires :</h5>
+    <ul>
+    {% for item in additional_fields %}
+      <li><b> {{item.key}}: </b>  {{item.value}}  </li> 
+    {% endfor %}
+  </ul>
+{% endif%}
+<p>
+  Pour valider cette demande, rendez-vous sur 
+  <a href="https://usershub.reserves-naturelles.org/temp_users/list">UsersHub</a>.
+</p>
+<p>Bien cordialement,</p>
+<p>l'administrateur.</p>
