@@ -119,7 +119,6 @@ def inscription():
 def after_confirmation():
 
     data = request.get_json()
-    print(data)
 
     subject = "Inscription au SI de RNF confirmée"
     template = "email_confirm_user_validation.html"
@@ -135,6 +134,7 @@ def after_confirmation():
     )
     msg.html = msg_html
     mail.send(msg)
-    return None
+
+    return {"msg": "ok"}
 
 
