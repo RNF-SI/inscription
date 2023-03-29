@@ -26,6 +26,14 @@
     border-radius: 0px !important;
   }
   
+  ::ng-deep .mat-select-placeholder, ::ng-deep .mat-select-arrow {
+  color : #6c757d;
+}
+
+  ::ng-deep .mat-select-value {
+    color: #ced4da;
+  }
+
   .form-control:focus {
     box-shadow: 0.5px -0.5px 0.5px 0.2rem rgba(98, 255, 0, 0.15) !important;
   }
@@ -97,4 +105,8 @@
 
   .mat-divider {
     border-top-color: rgba(255, 255, 255, 0.521);;
+  }
+
+  .organisme {
+    margin-top: 5px;
   }

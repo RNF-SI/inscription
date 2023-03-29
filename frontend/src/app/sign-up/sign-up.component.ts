@@ -1,9 +1,15 @@
-import { Component, OnInit } from '@angular/core';
-import { FormGroup, FormBuilder, Validators, ValidatorFn, AbstractControl } from '@angular/forms';
+import { AfterViewInit, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { FormGroup, FormBuilder, Validators, ValidatorFn, AbstractControl, FormControl } from '@angular/forms';
+import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
 
 import { ToastrService } from 'ngx-toastr';
+import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
 import { AuthService } from '../auth.service';
+
+import { Organisme } from '../models/models';
+
+import { Bank, BANKS } from '../demo-data';
 
 @Component({
   selector: 'app-sign-up',
@@ -11,11 +17,21 @@ import { AuthService } from '../auth.service';
   styleUrls: ['./sign-up.component.scss']
 })
 
-export class SignUpComponent implements OnInit {
+export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   form: FormGroup;
   appFormGroup: FormGroup;
   public disableSubmit = false;
   public formControlBuilded = false;
+  protected organismes: Organisme[];
+  searchTxt: any;
+  ogListe : boolean = true;
+
+  public orgaCtrl: FormControl = new FormControl();
+  public orgFilterCtrl: FormControl = new FormControl();
+  public filteredOrgs: ReplaySubject<Organisme[]> = new ReplaySubject<Organisme[]>(1);
+
+  @ViewChild('singleSelect') singleSelect: MatSelect;
+  protected _onDestroy = new Subject<void>();
 
   constructor(
     private fb: FormBuilder,
@@ -27,6 +43,57 @@ export class SignUpComponent implements OnInit {
 
   ngOnInit() {
     this.createForm();
+    this._authService.getOrganismes().subscribe(
+      res => {
+        this.organismes = res
+        this.filteredOrgs.next(this.organismes.slice());
+        this.orgFilterCtrl.valueChanges
+      .pipe(takeUntil(this._onDestroy))
+      .subscribe(() => {
+        this.filterOrgs();
+      });
+      }
+    );   
+  }
+
+  ngAfterViewInit() {
+    this.setInitialValue();
+  }
+
+  ngOnDestroy() {
+    this._onDestroy.next();
+    this._onDestroy.complete();
+  }
+
+  protected setInitialValue() {
+    this.filteredOrgs
+      .pipe(take(1), takeUntil(this._onDestroy))
+      .subscribe(() => {
+        // setting the compareWith property to a comparison function
+        // triggers initializing the selection according to the initial value of
+        // the form control (i.e. _initializeSelection())
+        // this needs to be done after the filteredBanks are loaded initially
+        // and after the mat-option elements are available
+        this.singleSelect.compareWith = (a: Organisme, b: Organisme) => a && b && a.id_organisme === b.id_organisme;
+      });  
+  }
+
+  protected filterOrgs() {
+    if (!this.organismes) {
+      return;
+    }
+    // get the search keyword
+    let search = this.orgFilterCtrl.value;
+    if (!search) {
+      this.filteredOrgs.next(this.organismes.slice());
+      return;
+    } else {
+      search = search.toLowerCase();
+    }
+    // filter the ogs
+    this.filteredOrgs.next(
+      this.organismes.filter(organisme => organisme.nom_organisme.toLowerCase().indexOf(search) > -1)
+    );    
   }
 
   createForm() {
@@ -41,11 +108,17 @@ export class SignUpComponent implements OnInit {
       password: ['', [Validators.required]],
       password_confirmation: ['', [Validators.required]],
       remarques: ['', Validators.required],
+      id_organisme: ['', Validators.required],
       organisme: ['', Validators.required],
     },
     {
-      validator: this.ConfirmedValidator('password','password_confirmation')
-    });
+      validators: [
+        this.ConfirmedValidator('password','password_confirmation'),
+        this.atLeastOneRequired('id_organisme', 'organisme')
+      ]
+
+    }
+    );
     // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
     this.appFormGroup = this.fb.group({
       geonature_saisie: [false, null],
@@ -65,12 +138,7 @@ export class SignUpComponent implements OnInit {
       this._authService
         .signupUser(finalForm)
         .subscribe((res) => {
-          
-          // const callbackMessage = AppConfig.ACCOUNT_MANAGEMENT.AUTO_ACCOUNT_CREATION
-          //   ? 'AutoAccountEmailConfirmation'
-          //   : 'AdminAccountEmailConfirmation';
-          // this._commonService.translateToaster('info', callbackMessage);
-          this._toasterService.info('Votre demande d\'inscription a bien été prise en compte !','')
+          this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.','Votre demande d\'inscription a bien été prise en compte !')
           this.form.reset();
           this.appFormGroup.reset();
           window.scroll({ 
@@ -106,14 +174,23 @@ export class SignUpComponent implements OnInit {
     };
   }
 
-  // similarValidator(pass: string, passConfirm: string): ValidatorFn {
-  //   return (control: FormGroup): { [key: string]: any } => {
-  //     const passControl = control.get(pass);
-  //     const confirPassControl = control.get(passConfirm);
-  //     if (passControl && confirPassControl && passControl.value === confirPassControl.value) {
-  //       return null;
-  //     }
-  //     return { similarError: true };
-  //   };
-  // }
+  atLeastOneRequired(valueName1: string, valueName2: string) {
+    return (formgroup: FormGroup) => {
+      const value1 = formgroup.controls[valueName1];
+      const value2 = formgroup.controls[valueName2];
+      if (value1.value || value2.value) {
+        value1.setErrors(null);
+        value2.setErrors(null);
+      } else {
+        value1.setErrors({ atLeastOneRequired: true });
+        value2.setErrors({ atLeastOneRequired: true });
+      }
+    }
+  }
+
+  nouvelOg() {
+    this.ogListe = false;
+    this.form.get('id_organisme')!.patchValue('');
+  }
+
 }

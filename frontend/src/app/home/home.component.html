@@ -1,0 +1,117 @@
+<div class="panel-heading">
+    <div class="title">
+        <span class="title-bold">PLATEFORMES</span> DE <br>RÉSERVES NATURELLES DE FRANCE
+    </div>
+    <div>
+        <span class="subtitle"> TOUS LES OUTILS POUR VOUS ACCOMPAGNER DANS VOS PROJETS </span>
+    </div>
+</div>
+<div class="container contenu">
+    <div>
+        Réserves Naturelles de France met à disposition de ses membres et de ses partenaire de nombreux outils pour les
+        accompagner dans leurs projets et favoriser le réseau. <br><br>
+        Un système d'authenfication centralisé sous <a href="https://github.com/PnX-SI/UsersHub">UsersHub</a> (outil de
+        l'écosystème GeoNature) vous permet d'avoir un login et un mot de passe unique pour toutes les applications
+        développées par RNF.
+        Ces application sont identifiées par le symbole suivant : <fa-icon [icon]="faKey" class="green-icon"></fa-icon>
+        <br><br>
+        <div class="inscription-div">
+            <span class="inscription"><a routerLink="/inscription">
+                    <fa-icon [icon]="faUserPlus"></fa-icon> INSCRIVEZ-VOUS DÈS MAINTENANT EN CLIQUANT ICI
+                </a></span>
+        </div>
+        <br>
+        Votre inscription sera modérée par un administrateur, pour vérifier l'autorisation d'accès à une application selon votre profil. <br><br>
+        Accédez aux plateformes de RNF :
+    </div>
+    <!-- <div class="row"> -->
+    <mat-grid-list cols="3" rowHeight="450px">
+        <mat-grid-tile *ngFor="let app of Applications | randomOrder">
+            <mat-card class="card">
+                <mat-card-header>
+                    <fa-icon *ngIf="app.si" [icon]="faKey" class="green-icon"></fa-icon>
+                    <mat-card-title>{{app.nom}}</mat-card-title>
+                </mat-card-header>
+                <!-- <div> -->
+                <!-- <img mat-card-image src="https://material.angular.io/assets/img/examples/shiba2.jpg"
+                        alt="Photo of a Shiba Inu"> -->
+                        <img mat-card-image src="/assets/images/{{app.image}}" alt="">
+                <!-- </div> -->
+                <mat-card-content>
+
+                    <p [innerHTML]="app.description">
+                    </p>
+                </mat-card-content>
+                <mat-card-actions>
+                    <a href="{{app.url}}">
+                        <fa-icon [icon]="faArrowUpRightFromSquare" size="xl"></fa-icon>
+                    </a>
+                </mat-card-actions>
+            </mat-card>
+        </mat-grid-tile>
+    </mat-grid-list>
+    <br>
+    <!-- </div> -->
+</div>
+<!-- <div class="panel-footer">
+        <div class="row">
+            <div class="col-md-6">
+                Réserves Naturelles de France <br>
+                11 allée Pierre Lacroute
+            </div>
+        </div>
+</div> -->
+<!-- Footer -->
+<footer class="text-center text-lg-start text-muted">
+    <!-- Section: Links  -->
+    <section class="panel-footer">
+      <div class="container text-center text-md-start mt-5">
+        <!-- Grid row -->
+        <div class="row mt-3">
+          <!-- Grid column -->
+          <div class="col-md-5 col-lg-5 col-xl-4 mx-auto mb-4">
+            <!-- Content -->
+            <h6 class="text-uppercase fw-bold mb-4">
+              <i class="fas fa-gem me-3 text-secondary"></i>Réserves Naturelles de France
+            </h6>
+            <p>
+            11 allée Pierre Lacroute <br>
+            CS 67524 <br>
+            21075 Dijon cedex <br>
+            03 80 48 91 00
+            </p>
+          </div>
+          <!-- Grid column -->
+    
+          <!-- Grid column -->
+          <div class="col-md-4 col-lg-3 col-xl-3 mx-auto mb-md-0 mb-4">
+            <!-- Links -->
+            <h6 class="text-uppercase fw-bold mb-4">Réseaux Sociaux</h6>
+            <div class="d-flex justify-content-between">
+                <div><a href="https://www.facebook.com/rn.de.france" class="me-4 link-secondary">
+                    <fa-icon [icon]="['fab', 'facebook']" size="3x" class="white-icon"></fa-icon>
+                </a></div>
+                <div><a href="https://www.instagram.com/reserves_naturelles_de_france/" class="me-4 link-secondary">
+                    <fa-icon [icon]="['fab', 'instagram']" size="3x" class="white-icon"></fa-icon>
+                </a></div>
+                <div><a href="https://www.linkedin.com/company/50041043" class="me-4 link-secondary">
+                    <fa-icon [icon]="['fab', 'linkedin']" size="3x" class="white-icon"></fa-icon>
+                </a> </div>
+                <div><a href="https://github.com/RNF-SI" class="me-4 link-secondary">
+                    <fa-icon [icon]="['fab', 'github']" size="3x" class="white-icon"></fa-icon>
+                </a></div>
+              </div>
+              <div class="contact">
+                <br>
+                <a href="https://assoconnect.reserves-naturelles.org/page/1306195-contact-rnf"> Contactez-nous</a>
+              </div>
+          </div>
+          
+          <!-- Grid column -->
+        </div>
+        <!-- Grid row -->
+      </div>
+    </section>
+    <!-- Section: Links  -->
+  </footer>
+  <!-- Footer -->

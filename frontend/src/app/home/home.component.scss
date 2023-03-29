@@ -1,0 +1,108 @@
+  .panel-heading {
+      background: url(/assets/images/banierre.jpg) no-repeat;
+      background-size: cover;
+      min-width: 100%;
+      min-height: 600px;
+      display: inline-block;
+      color: white;
+  }
+
+  .title-bold {
+      font-family: "ArimaMadurai";
+      font-size: 60px;
+  }
+
+  .title {
+      padding-top: 280px;
+      padding-left: 150px;
+      text-align: left;
+      font-family: "ArimaMaduraiRegular";
+      font-size: 55px;
+      line-height: 1;
+  }
+
+  .subtitle {
+      margin-top: 15px;
+      font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      background-color: #c8d469;
+      line-height: 1.75;
+      text-align: left;
+      margin-left: 145px;
+      padding: 5px;
+  }
+
+  .card.mat-card {
+      max-width: 400px;
+      margin: 5px;
+      height: 96%;
+  }
+
+  .example-header-image {
+      background-image: url('https://material.angular.io/assets/img/examples/shiba1.jpg');
+      background-size: cover;
+  }
+
+  .contenu {
+      font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
+      margin-top: 20px;
+      font-size: large;
+      text-align: justify;
+  }
+
+  .contenu a {
+      font-weight: 600;
+      color: #0B885D
+  }
+
+  .green-icon {
+      color: #0B885D
+  }
+
+  .white-icon {
+    color: white;
+  }
+
+  .inscription-div {
+      text-align: center;
+  }
+
+  .inscription {
+      background-color: #DC8063;
+      font-weight: 600;
+      padding: 5px;
+  }
+
+  .inscription a {
+      color: white;
+  }
+
+  .mat-card-header {
+      font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
+      font-weight: 800;
+  }
+
+  .mat-card-content {
+      font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
+  }
+
+  .mat-card-content a {
+      color: #0B885D !important;
+      font-weight: 600;
+  }
+
+  .mat-card-actions {
+      text-align: right;
+  }
+
+  .panel-footer {
+    padding-top: 1px;
+    background-color: #0B885D;
+    font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
+    color: white;
+  }
+
+.contact a {
+    color: white;
+}

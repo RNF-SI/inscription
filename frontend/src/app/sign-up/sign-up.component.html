@@ -4,6 +4,11 @@
             <div class="col-md-12 col-lg-8 mx-auto">
                 <div class="panel panel-default panel-signin" style="padding: 20px">
                     <div class="panel-heading">
+                        <div class="float-left">
+                            <button mat-mini-fab mat-accent routerLink="/">
+                                <mat-icon>arrow_back</mat-icon>
+                            </button>
+                        </div>
                         INSCRIPTION AU SYSTÈME D'INFORMATION<br>DE RÉSERVES NATURELLES DE FRANCE
                         <br><br>
                     </div>
@@ -74,7 +79,7 @@
                                 <div class="col-md-9 col-lg-7">
                                     <input type="text" class="form-control" id="identifiant" placeholder="Identifiant"
                                         formControlName="identifiant" matTooltipPosition="above"
-                                        matTooltip="Cet identifiant vous sera demandé pour vous authentifier dans GeoNature." />
+                                        matTooltip="Cet identifiant vous sera demandé pour vous authentifier sur les différentes plateformes." />
                                     <small *ngIf="
                         form.get('identifiant')!.hasError('required') &&
                         form.get('identifiant')!.touched
@@ -129,6 +134,42 @@
                                 <label for="organisme" class="col-md-3 col-form-label text-md-right">
                                     Organisme
                                 </label>
+                                <div class="col-md-9 col-lg-7" style="text-align: justify">
+                                    Recherchez votre organisme dans la liste, en tapant les premières lettres. S'il n'y
+                                    est pas, cliquez sur "ajouter votre organisme" <br>
+                                    <mat-select *ngIf="ogListe"
+                                        placeholder="Sélectionner un organisme" #singleSelect
+                                        class="form-control organisme" formControlName="id_organisme">
+                                        <mat-option>
+                                            <ngx-mat-select-search [formControl]="orgFilterCtrl"
+                                                placeholderLabel="Rechercher un organisme ...">
+                                                <span ngxMatSelectNoEntriesFound>
+                                                    Aucun OG trouvé
+                                                    <button mat-button color="primary" (click)="nouvelOg()">
+                                                        Ajouter votre organisme <mat-icon>add</mat-icon>
+                                                    </button>
+                                                </span>
+                                            </ngx-mat-select-search>
+                                        </mat-option>
+                                        <mat-option *ngFor="let og of filteredOrgs | async" [value]="og.id_organisme">
+                                            {{og.nom_organisme}}
+                                        </mat-option>
+                                    </mat-select>
+
+                                    <input *ngIf="!ogListe" type="text" class="form-control organisme" id="organisme"
+                                        placeholder="Taper le nom de l'organisme" formControlName="organisme" />
+                                    <small *ngIf="
+                                        form!.controls['organisme']?.errors?.['atLeastOneRequired'] && form.get('organisme')!.touched
+                                      ">
+                                        Ce champ est nécessaire
+                                    </small>
+
+                                </div>
+                            </div>
+                            <!-- <div class="form-group row">
+                                <label for="organisme" class="col-md-3 col-form-label text-md-right">
+                                    Organisme
+                                </label>
                                 <div class="col-md-9 col-lg-7">
                                     <input type="text" class="form-control" id="organisme" placeholder="Organisme"
                                         formControlName="organisme" />
@@ -139,7 +180,7 @@
                                         Ce champ est nécessaire
                                     </small>
                                 </div>
-                            </div>
+                            </div> -->
 
                             <div class="form-group row">
                                 <label for="remarques" class="col-md-3 col-form-label text-md-right">
@@ -148,7 +189,7 @@
                                 <div class="col-md-9 col-lg-7">
                                     <input type="text" id="remarques" class="form-control" placeholder="Fonction"
                                         formControlName="remarques">
-                                        <small *ngIf="
+                                    <small *ngIf="
                         form.get('remarques')!.hasError('required') &&
                         form.get('remarques')!.touched
                       ">
@@ -157,64 +198,67 @@
                                 </div>
                             </div>
                             <form [formGroup]="appFormGroup">
-                            <div class="form-group row">
-                                <label for="precisions" class="col-md-3 col-form-label text-md-right">
-                                    Précisions
-                                </label>
-                                <div class="col-md-9 col-lg-7">
-                                    <textarea type="text" id="precisions" class="form-control" placeholder="Précisions diverses..."
-                                        formControlName="precisions"></textarea>
+                                <div class="form-group row">
+                                    <label for="precisions" class="col-md-3 col-form-label text-md-right">
+                                        Précisions
+                                    </label>
+                                    <div class="col-md-9 col-lg-7">
+                                        <textarea type="text" id="precisions" class="form-control"
+                                            placeholder="Précisions diverses..."
+                                            formControlName="precisions"></textarea>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <mat-divider></mat-divider>
+                                <mat-divider></mat-divider>
 
-                            <h5>Applications</h5>
+                                <h5>Applications</h5>
 
-                            <p>Cochez les applications dont vous demandez l'accès, celui-ci sera modéré par un
-                                administrateur</p>
+                                <p>Cochez les applications dont vous demandez l'accès, celui-ci sera modéré par un
+                                    administrateur</p>
 
-                            <div class="form-group">
-                                <div
-                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                    <input formControlName="geonature_saisie" type="checkbox" class="custom-control-input"
-                                        id="geonature_saisie" value=2>
-                                    <label class="custom-control-label" for="geonature_saisie">GeoNature (saisie courante)</label>
+                                <div class="form-group">
+                                    <div
+                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                        <input formControlName="geonature_saisie" type="checkbox"
+                                            class="custom-control-input" id="geonature_saisie" value=2>
+                                        <label class="custom-control-label" for="geonature_saisie">GeoNature (saisie
+                                            courante)</label>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <div
-                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                    <input formControlName="psdrf" type="checkbox" class="custom-control-input"
-                                        id="psdrf" value=2>
-                                    <label class="custom-control-label" for="psdrf">Module PSDRF</label>
+                                <div class="form-group">
+                                    <div
+                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                        <input formControlName="psdrf" type="checkbox" class="custom-control-input"
+                                            id="psdrf" value=2>
+                                        <label class="custom-control-label" for="psdrf">Module PSDRF</label>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <div
-                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                    <input formControlName="ancrage" type="checkbox" class="custom-control-input"
-                                        id="ancrage" value=2>
-                                    <label class="custom-control-label" for="ancrage">Boîte à Outils Ancrage</label>
+                                <div class="form-group">
+                                    <div
+                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                        <input formControlName="ancrage" type="checkbox" class="custom-control-input"
+                                            id="ancrage" value=2>
+                                        <label class="custom-control-label" for="ancrage">Boîte à Outils Ancrage</label>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <div
-                                    class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                    <input formControlName="opnl" type="checkbox" class="custom-control-input"
-                                        id="opnl" value=2>
-                                    <label class="custom-control-label" for="opnl">Plateforme OPNL</label>
+                                <div class="form-group">
+                                    <div
+                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
+                                        <input formControlName="opnl" type="checkbox" class="custom-control-input"
+                                            id="opnl" value=2>
+                                        <label class="custom-control-label" for="opnl">Plateforme OPNL</label>
+                                    </div>
                                 </div>
-                            </div>
-                        </form>
+                            </form>
 
-                        <p>En demandant un accès à ces applications, vous consentez au respect des conditions générales d'utilisation de celles-ci si votre demande est acceptée</p>
+                            <p>En demandant un accès à ces applications, vous consentez au respect des conditions
+                                générales d'utilisation de celles-ci si votre demande est acceptée</p>
 
                             <div class="text-center">
                                 <button type="button" class="btn btn-success"
-                                    [disabled]="!form.valid || !appFormGroup.valid || disableSubmit"
-                                    (click)="save()">
-                                    S'inscrire <span *ngIf="disableSubmit" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    [disabled]="!form.valid || !appFormGroup.valid || disableSubmit" (click)="save()">
+                                    S'inscrire <span *ngIf="disableSubmit" class="spinner-border spinner-border-sm"
+                                        role="status" aria-hidden="true"></span>
                                 </button>
                             </div>
                         </form>
