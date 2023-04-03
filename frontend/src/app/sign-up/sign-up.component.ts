@@ -32,6 +32,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @ViewChild('singleSelect') singleSelect: MatSelect;
   protected _onDestroy = new Subject<void>();
+  private lastSearch: string ='';
 
   constructor(
     private fb: FormBuilder,
@@ -48,10 +49,10 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
         this.organismes = res
         this.filteredOrgs.next(this.organismes.slice());
         this.orgFilterCtrl.valueChanges
-      .pipe(takeUntil(this._onDestroy))
-      .subscribe(() => {
-        this.filterOrgs();
-      });
+          .pipe(takeUntil(this._onDestroy))
+          .subscribe(() => {
+            this.filterOrgs();
+          });
       }
     );   
   }
@@ -82,18 +83,23 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!this.organismes) {
       return;
     }
-    // get the search keyword
-    let search = this.orgFilterCtrl.value;
+    let search: string;
+
+    search = this.orgFilterCtrl.value;
     if (!search) {
-      this.filteredOrgs.next(this.organismes.slice());
+      this.writeValue(this.lastSearch);
+      this.filteredOrgs.next(
+        this.organismes.filter(organisme => organisme.nom_organisme.toLowerCase().indexOf(this.lastSearch) > -1)
+      ); 
+      this.lastSearch = '';
       return;
     } else {
       search = search.toLowerCase();
     }
-    // filter the ogs
     this.filteredOrgs.next(
       this.organismes.filter(organisme => organisme.nom_organisme.toLowerCase().indexOf(search) > -1)
-    );    
+    );  
+    this.lastSearch = search;
   }
 
   createForm() {
@@ -191,6 +197,10 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   nouvelOg() {
     this.ogListe = false;
     this.form.get('id_organisme')!.patchValue('');
+  }
+
+  writeValue(value: any): void {
+    if(this.orgFilterCtrl && this.orgFilterCtrl.value!=value) this.orgFilterCtrl.setValue(value, { emitEvent: false });
   }
 
 }
