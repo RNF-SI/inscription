@@ -9,8 +9,6 @@ import { AuthService } from '../auth.service';
 
 import { Organisme } from '../models/models';
 
-import { Bank, BANKS } from '../demo-data';
-
 @Component({
   selector: 'app-sign-up',
   templateUrl: './sign-up.component.html',
