@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { environment } from 'src/environments/environment';
 
 @Injectable({
   providedIn: 'root'
@@ -19,12 +20,12 @@ export class AuthService {
     const options = data;
     console.log(options);
     
-    return this._http.post<any>(`http://127.0.0.1:5070/inscription`, options);
+    return this._http.post<any>(`${environment.apiUrl}/inscription`, options);
   }
 
   getOrganismes() {
     return this._http.get<any>(
-      `http://127.0.0.1:5070/organismes`,
+      `${environment.apiUrl}/organismes`,
       this.httpOptions
     );
   }
