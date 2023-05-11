@@ -31,17 +31,17 @@ export class HomeComponent implements OnInit {
       'si': true
     },
     {
-      'nom': 'BAO Ancrage',
+      'nom': 'BAO Diagnostic d\'Ancrage Territorial',
       'url': 'https://ancrage.reserves-naturelles.org/',
       'image': 'ancrage.png',
-      'description': 'La Boîte à Outils Ancrage Territorial vous donne toutes les ressources pour mettre en place et mener à bien votre diagnostique d\'ancrage territorial.',
+      'description': 'La Boîte à Outils de Diagnostic d\'Ancrage Territorial vous donne toutes les ressources pour mettre en place et mener à bien votre diagnostic d\'ancrage territorial.',
       'si': true
     },
     {
       'nom': 'SOCLE',
       'url': 'https://socle.reserves-naturelles.org/',
       'image': 'socle.png',
-      'description': 'SOCLE permet la saisie des données du patrimoine géologique d\'une réserve, selon les cahiers de géologie édités par RNF.',
+      'description': 'SOCLE permet la saisie des données du patrimoine géologique d\'une réserve naturelle, selon les cahiers de géologie édités par RNF.',
       'si': false
     },
     {
@@ -66,17 +66,17 @@ export class HomeComponent implements OnInit {
       'si': true
     },
     {
-      'nom': 'AssoConnect',
-      'url': 'https://assoconnect.reserves-naturelles.org/',
+      'nom': 'Portail des membres',
+      'url': 'https://www.portail.reserves-naturelles.org/',
       'image': 'assoconnect.png',
-      'description': 'AssoConnect est le portail des membres de RNF. Il permet d\'accéder à l\'ensemble des informations sur les activités de l\'association et ses commissions. Il permet également de renouveler son adhésion et d\'accéder à la boutique.',
+      'description': 'Le portail des membres de RNF permet d\'accéder à l\'ensemble des informations sur les activités de l\'association et ses commissions. Il permet également de renouveler son adhésion et d\'accéder à la boutique.',
       'si': false
     },
     {
       'nom': 'Site Internet',
       'url': 'https://www.reserves-naturelles.org/',
       'image': 'site.png',
-      'description': 'Le site internet de Réserves Naturelles de France et le portail grand public qui permet d\'accéder à toutes les informations utiles sur les réserves et le réseau.',
+      'description': 'Le site internet de Réserves Naturelles de France est le portail grand public qui permet d\'accéder à toutes les informations utiles sur les réserves naturelles et le réseau.',
       'si': false
     },
     {
