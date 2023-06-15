@@ -26,11 +26,15 @@
     border-radius: 0px !important;
   }
   
-  ::ng-deep .mat-select-placeholder, ::ng-deep .mat-select-arrow {
+  ::ng-deep .mat-mdc-select-placeholder, ::ng-deep .mat-mdc-select-arrow {
   color : #6c757d;
 }
 
-  ::ng-deep .mat-select-value {
+  .mat-mdc-select {
+    font-family: inherit;
+  }
+
+  ::ng-deep .mat-mdc-select-value-text {
     color: #ced4da;
   }
 
@@ -49,6 +53,8 @@
   
   .form-group {
     position: relative;
+    margin-top: 5px;
+    margin-bottom: 5px;
   }
   
   .btn {
@@ -96,10 +102,10 @@
     font-size: 1.1em;
   }
   
-  .mat-mini-fab {
+  .mat-mdc-mini-fab {
     background-color: #ddd !important;
   }
-  .mat-mini-fab:hover {
+  .mat-mdc-mini-fab:hover {
     background-color: #aaa !important;
   }
 

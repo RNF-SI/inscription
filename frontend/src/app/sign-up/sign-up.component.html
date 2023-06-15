@@ -4,7 +4,7 @@
             <div class="col-md-12 col-lg-8 mx-auto">
                 <div class="panel panel-default panel-signin" style="padding: 20px">
                     <div class="panel-heading">
-                        <div class="float-left">
+                        <div class="float-start">
                             <button mat-mini-fab mat-accent routerLink="/">
                                 <mat-icon>arrow_back</mat-icon>
                             </button>
@@ -17,7 +17,7 @@
                             <h5>Utilisateur</h5>
 
                             <div class="form-group row">
-                                <label for="prenom_role" class="col-md-3 col-form-label text-md-right">
+                                <label for="prenom_role" class="col-md-3 col-form-label text-end">
                                     Prénom
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -33,7 +33,7 @@
                             </div>
 
                             <div class="form-group row">
-                                <label for="nom_role" class="col-md-3 col-form-label text-md-right"> Nom </label>
+                                <label for="nom_role" class="col-md-3 col-form-label text-end"> Nom </label>
                                 <div class="col-md-9 col-lg-7">
                                     <input type="text" class="form-control" id="nom_role" placeholder="Nom"
                                         formControlName="nom_role" />
@@ -46,7 +46,7 @@
                             </div>
 
                             <div class="form-group row">
-                                <label for="email" class="col-md-3 col-form-label text-md-right">
+                                <label for="email" class="col-md-3 col-form-label text-end">
                                     Adresse email
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -73,7 +73,7 @@
                             <h5>Compte</h5>
 
                             <div class="form-group row">
-                                <label for="identifiant" class="col-md-3 col-form-label text-md-right">
+                                <label for="identifiant" class="col-md-3 col-form-label text-end">
                                     Identifiant
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -90,7 +90,7 @@
                             </div>
 
                             <div class="form-group row">
-                                <label for="password" class="col-md-3 col-form-label text-md-right">
+                                <label for="password" class="col-md-3 col-form-label text-end">
                                     Mot de passe
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -104,7 +104,7 @@
                                 </div>
                             </div>
                             <div class="form-group row">
-                                <label for="password_confirmation" class="col-md-3 col-form-label text-md-right">
+                                <label for="password_confirmation" class="col-md-3 col-form-label text-end">
                                     Confirmation
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -131,14 +131,13 @@
                             <h5>Informations complémentaires</h5>
 
                             <div class="form-group row">
-                                <label for="organisme" class="col-md-3 col-form-label text-md-right">
+                                <label for="organisme" class="col-md-3 col-form-label text-end">
                                     Organisme
                                 </label>
                                 <div class="col-md-9 col-lg-7" style="text-align: justify">
                                     Recherchez votre organisme dans la liste, en tapant les premières lettres. S'il n'y
                                     est pas, cliquez sur "ajouter votre organisme" <br>
-                                    <mat-select *ngIf="ogListe"
-                                        placeholder="Sélectionner un organisme" #singleSelect
+                                    <mat-select *ngIf="ogListe" placeholder="Sélectionner un organisme" #singleSelect
                                         class="form-control organisme" formControlName="id_organisme">
                                         <mat-option>
                                             <ngx-mat-select-search [formControl]="orgFilterCtrl"
@@ -167,7 +166,7 @@
                                 </div>
                             </div>
                             <!-- <div class="form-group row">
-                                <label for="organisme" class="col-md-3 col-form-label text-md-right">
+                                <label for="organisme" class="col-md-3 col-form-label text-end">
                                     Organisme
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -183,7 +182,7 @@
                             </div> -->
 
                             <div class="form-group row">
-                                <label for="remarques" class="col-md-3 col-form-label text-md-right">
+                                <label for="remarques" class="col-md-3 col-form-label text-end">
                                     Fonction
                                 </label>
                                 <div class="col-md-9 col-lg-7">
@@ -199,7 +198,7 @@
                             </div>
                             <form [formGroup]="appFormGroup">
                                 <div class="form-group row">
-                                    <label for="precisions" class="col-md-3 col-form-label text-md-right">
+                                    <label for="precisions" class="col-md-3 col-form-label text-end">
                                         Précisions
                                     </label>
                                     <div class="col-md-9 col-lg-7">
@@ -216,38 +215,35 @@
                                 <p>Cochez les applications dont vous demandez l'accès, celui-ci sera modéré par un
                                     administrateur</p>
 
-                                <div class="form-group">
-                                    <div
-                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                        <input formControlName="geonature_saisie" type="checkbox"
-                                            class="custom-control-input" id="geonature_saisie" value=2>
-                                        <label class="custom-control-label" for="geonature_saisie">GeoNature (saisie
-                                            courante)</label>
-                                    </div>
+                                <p><b> Merci de ne pas cocher toutes les applications par curiosité, mais seulement celles que vous pensez réellement utiliser. N'hésitez pas à <a href="mailto:si@rnfrance.org">contacter l'administrateur</a> pour plus de précision.</b></p>
+                                <div class="d-flex justify-content-center">
+                                    <div>
+                                        <div
+                                            class="form-check form-switch">
+                                            <input formControlName="geonature_saisie" type="checkbox"
+                                                class="form-check-input" id="geonature_saisie" value=2>
+                                            <label class="form-check-label" for="geonature_saisie">GeoNature (saisie
+                                                courante)</label>
+                                        </div>
+                                        <div
+                                            class="form-check form-switch">
+                                            <input formControlName="psdrf" type="checkbox" class="form-check-input"
+                                                id="psdrf" value=2>
+                                            <label class="form-check-label" for="psdrf">Module PSDRF</label>
+                                        </div>
+                                        <div
+                                            class="form-check form-switch">
+                                            <input formControlName="ancrage" type="checkbox"
+                                                class="form-check-input" id="ancrage" value=2>
+                                            <label class="form-check-label" for="ancrage">Boîte à Outils
+                                                Ancrage</label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input formControlName="opnl" type="checkbox" class="form-check-input"
+                                                id="opnl" value=2>
+                                            <label class="form-check-label" for="opnl">Plateforme OPNL</label>
+                                        </div>
                                 </div>
-                                <div class="form-group">
-                                    <div
-                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                        <input formControlName="psdrf" type="checkbox" class="custom-control-input"
-                                            id="psdrf" value=2>
-                                        <label class="custom-control-label" for="psdrf">Module PSDRF</label>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <div
-                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                        <input formControlName="ancrage" type="checkbox" class="custom-control-input"
-                                            id="ancrage" value=2>
-                                        <label class="custom-control-label" for="ancrage">Boîte à Outils Ancrage</label>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <div
-                                        class="custom-control custom-switch justify-content-center align-self-center text-center">
-                                        <input formControlName="opnl" type="checkbox" class="custom-control-input"
-                                            id="opnl" value=2>
-                                        <label class="custom-control-label" for="opnl">Plateforme OPNL</label>
-                                    </div>
                                 </div>
                             </form>
 

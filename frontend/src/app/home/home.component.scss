@@ -33,21 +33,15 @@
       padding: 5px;
   }
 
-  .card.mat-card {
+  .card {
       max-width: 400px;
       margin: 5px;
       height: 96%;
   }
 
-  .example-header-image {
-      background-image: url('https://material.angular.io/assets/img/examples/shiba1.jpg');
-      background-size: cover;
-  }
-
   .contenu {
       font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
       margin-top: 20px;
-      font-size: large;
       text-align: justify;
   }
 
@@ -57,6 +51,7 @@
   }
 
   .green-icon {
+      margin-left: 5px;
       color: #0B885D
   }
 
@@ -80,20 +75,22 @@
 
   .mat-card-header {
       font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
-      font-weight: 800;
   }
 
   .mat-card-content {
       font-family: Century Gothic, CenturyGothic, AppleGothic, sans-serif;
-  }
+    }
 
-  .mat-card-content a {
+  mat-card-content a {
       color: #0B885D !important;
       font-weight: 600;
   }
 
-  .mat-card-actions {
-      text-align: right;
+  mat-card-actions {
+    display: block;
+    text-align: right;
+    margin-top: auto;
+    margin-bottom: 5px;
   }
 
   .panel-footer {
@@ -105,4 +102,8 @@
 
 .contact a {
     color: white;
+}
+
+.text-center {
+    text-align: center !important;
 }

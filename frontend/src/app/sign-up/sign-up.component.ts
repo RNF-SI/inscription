@@ -1,5 +1,5 @@
 import { AfterViewInit, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { FormGroup, FormBuilder, Validators, ValidatorFn, AbstractControl, FormControl } from '@angular/forms';
+import { UntypedFormGroup, UntypedFormBuilder, Validators, ValidatorFn, AbstractControl, UntypedFormControl } from '@angular/forms';
 import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
 
@@ -16,16 +16,16 @@ import { Organisme } from '../models/models';
 })
 
 export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
-  form: FormGroup;
-  appFormGroup: FormGroup;
+  form: UntypedFormGroup;
+  appFormGroup: UntypedFormGroup;
   public disableSubmit = false;
   public formControlBuilded = false;
   protected organismes: Organisme[];
   searchTxt: any;
   ogListe : boolean = true;
 
-  public orgaCtrl: FormControl = new FormControl();
-  public orgFilterCtrl: FormControl = new FormControl();
+  public orgaCtrl: UntypedFormControl = new UntypedFormControl();
+  public orgFilterCtrl: UntypedFormControl = new UntypedFormControl();
   public filteredOrgs: ReplaySubject<Organisme[]> = new ReplaySubject<Organisme[]>(1);
 
   @ViewChild('singleSelect') singleSelect: MatSelect;
@@ -33,7 +33,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   private lastSearch: string ='';
 
   constructor(
-    private fb: FormBuilder,
+    private fb: UntypedFormBuilder,
     private _authService: AuthService,
     private router: Router,
     private _toasterService: ToastrService
@@ -161,7 +161,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ConfirmedValidator(controlName: string, matchingControlName: string) {
-    return (formGroup: FormGroup) => {
+    return (formGroup: UntypedFormGroup) => {
       const control = formGroup.controls[controlName];
       const matchingControl = formGroup.controls[matchingControlName];
       if (
@@ -179,7 +179,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   atLeastOneRequired(valueName1: string, valueName2: string) {
-    return (formgroup: FormGroup) => {
+    return (formgroup: UntypedFormGroup) => {
       const value1 = formgroup.controls[valueName1];
       const value2 = formgroup.controls[valueName2];
       if (value1.value || value2.value) {

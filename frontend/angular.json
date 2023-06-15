@@ -110,5 +110,7 @@
       }
     }
   },
-  "defaultProject": "inscription"
+  "cli": {
+    "analytics": false
+  }
 }

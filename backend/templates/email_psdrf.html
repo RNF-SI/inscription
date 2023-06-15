@@ -9,7 +9,7 @@
   <li><b>Nom :</b> {{user.nom_role}}</li>
   <li><b>Prénom :</b> {{user.prenom_role}}</li>
   <li><b>Email :</b> {{user.email}}</li>
-  <li><b>Organisme :</b> {{user.organisme}}</li>
+  <li><b>Organisme :</b>{% if orgadb %}{{orgadb}}{% else %}{{user.organisme}} (<b><u>non référencé</u></b>){% endif%}</li>
   <li><b>Fonction :</b> {{user.remarques}}</li>
   <li><b>Précisions :</b> {{user.champs_addi.precisions}}</li>
 </ul>
