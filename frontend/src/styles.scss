@@ -7,12 +7,4 @@ body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
 // @import '~bootstrap/scss/bootstrap';
 @import "../node_modules/bootstrap/scss/bootstrap";
 
-@font-face {
-    font-family: "ArimaMaduraiRegular";
-    src: local("ArimaMadurai-Regular"), url(./assets/fonts/ArimaMadurai-Regular.ttf) format("truetype");
-}
-
-@font-face {
-    font-family: "ArimaMadurai";
-    src: local("ArimaMadurai-ExtraBold"), url(./assets/fonts/ArimaMadurai-ExtraBold.ttf) format("truetype");
-}
+@import 'conf/custom.scss';

@@ -30,6 +30,7 @@ import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-s
 import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
 import { SearchPipe } from './search.pipe';
 import { MatButtonModule } from '@angular/material/button';
+import { HomeRnfModule } from './home-rnf/home-rnf.module';
 
 @NgModule({
   declarations: [
@@ -61,7 +62,8 @@ import { MatButtonModule } from '@angular/material/button';
     }),
     NgbModule,
     RouterModule,
-    FontAwesomeModule
+    FontAwesomeModule,
+    HomeRnfModule
   ],
   providers: [],
   bootstrap: [AppComponent]
