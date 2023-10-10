@@ -6,7 +6,7 @@ import { environment } from 'src/environments/environment';
 @Injectable({
   providedIn: 'root'
 })
-export class AuthService {
+export class AuthServiceb {
 
   httpOptions = {
     headers: new HttpHeaders({ 'Content-Type': 'application/json' })

@@ -8,10 +8,15 @@ from flask_mail import Mail, Message
 
 from models import Bib_Organismes
 
+from pypnusershub import routes as fnauth
+
 mail = Mail(app)
 
 @bp.route('/organismes', methods=['GET'])
+# @fnauth.check_auth(4)
 def getUsers():
+    # test = request.cookies["token"]
+
     organismes = Bib_Organismes.query.filter(Bib_Organismes.id_organisme.notin_(['-1','1','2'])).order_by(Bib_Organismes.nom_organisme).all()
     
     schema = OrganismeSchema(many=True)
@@ -141,3 +146,8 @@ def after_confirmation():
 
     return {"msg": "ok"}
 
+@bp.route("/testauth", methods=["GET"])
+@fnauth.check_auth(4)
+def test():
+    print(fnauth)
+    return {"msg": 'ok'}

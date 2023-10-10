@@ -18,7 +18,7 @@ import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 
 
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { HttpClientModule } from '@angular/common/http';
+import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ToastrModule } from 'ngx-toastr';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { RouterModule } from '@angular/router';
@@ -31,6 +31,7 @@ import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-
 import { SearchPipe } from './search.pipe';
 import { MatButtonModule } from '@angular/material/button';
 import { HomeRnfModule } from './home-rnf/home-rnf.module';
+import { MyCustomInterceptor } from './services/http.interceptor';
 
 @NgModule({
   declarations: [
@@ -65,7 +66,9 @@ import { HomeRnfModule } from './home-rnf/home-rnf.module';
     FontAwesomeModule,
     HomeRnfModule
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule {

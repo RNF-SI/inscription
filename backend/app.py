@@ -22,7 +22,8 @@ app.config.from_object(Config)
 from pypnusershub import routes_register
 app.register_blueprint(routes_register.bp, url_prefix='/pypn/register')
 
-cors = CORS(app, resources={ r'/*': {'origins': "*"}})
+# cors = CORS(app, resources={ r'/*': {'origins': "*"}})
+CORS(app, supports_credentials=True)
 
 db = SQLAlchemy(app) 
 ma = Marshmallow(app)
@@ -30,6 +31,5 @@ ma = Marshmallow(app)
 import routes
 app.register_blueprint(routes.bp)
 
-
-
-
+from pypnusershub.routes import routes
+app.register_blueprint(routes, url_prefix='/auth')

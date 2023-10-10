@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 
 import { ToastrService } from 'ngx-toastr';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
-import { AuthService } from '../auth.service';
+import { AuthServiceb } from '../auth.service';
 
 import { Organisme } from '../models/models';
 
@@ -34,7 +34,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private fb: UntypedFormBuilder,
-    private _authService: AuthService,
+    private _authService: AuthServiceb,
     private router: Router,
     private _toasterService: ToastrService
   ) {
