@@ -10,10 +10,13 @@ from models import Bib_Organismes
 
 from pypnusershub import routes as fnauth
 
+from flask_login import login_required
+
 mail = Mail(app)
 
 @bp.route('/organismes', methods=['GET'])
-# @fnauth.check_auth(4)
+@fnauth.check_auth(4)
+# @login_required
 def getUsers():
     # test = request.cookies["token"]
 

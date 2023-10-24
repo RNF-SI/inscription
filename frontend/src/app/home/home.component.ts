@@ -118,9 +118,7 @@ export class HomeComponent implements OnInit {
       res => {
         this.organismes = res
       }
-    );   
-    console.log(this.user);
-    console.log(this.organismes);
+    );
     
     
   }
