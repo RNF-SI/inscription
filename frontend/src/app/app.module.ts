@@ -3,7 +3,7 @@ import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
-import { SignUpComponent } from './sign-up/sign-up.component';
+import { SignUpComponent } from './components/sign-up/sign-up.component';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import { MatIconModule } from '@angular/material/icon';
@@ -18,11 +18,11 @@ import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 
 
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { HttpClientModule } from '@angular/common/http';
+import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ToastrModule } from 'ngx-toastr';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { RouterModule } from '@angular/router';
-import { HomeComponent } from './home/home.component';
+import { HomeComponent } from './components/home/home.component';
 import { FontAwesomeModule, FaIconLibrary } from '@fortawesome/angular-fontawesome';
 import { RandomOrderPipe } from './pipes/random-order.pipe';
 
@@ -30,6 +30,9 @@ import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-s
 import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
 import { SearchPipe } from './search.pipe';
 import { MatButtonModule } from '@angular/material/button';
+import { HomeRnfModule } from './home-rnf/home-rnf.module';
+import { MyCustomInterceptor } from './services/http.interceptor';
+import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
 
 @NgModule({
   declarations: [
@@ -37,7 +40,8 @@ import { MatButtonModule } from '@angular/material/button';
     SignUpComponent,
     HomeComponent,
     RandomOrderPipe,
-    SearchPipe
+    SearchPipe,
+    ResetPasswordComponent
   ],
   imports: [
     HttpClientModule,
@@ -61,9 +65,12 @@ import { MatButtonModule } from '@angular/material/button';
     }),
     NgbModule,
     RouterModule,
-    FontAwesomeModule
+    FontAwesomeModule,
+    HomeRnfModule
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule {

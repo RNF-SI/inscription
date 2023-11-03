@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
-import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
+import { Organisme } from '../../models/models';
+import { User } from '../../home-rnf/models/user.model';
+import { AuthService } from '../../home-rnf/services/auth-service.service';
 
 @Component({
   selector: 'app-home',
@@ -9,8 +11,11 @@ import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-
 })
 export class HomeComponent implements OnInit {
 
-  constructor() { }
-
+  constructor(
+    
+    private _authService: AuthService
+  ) { }
+  protected organismes: Organisme[];
   faKey = faKey;
   faUserPlus = faUserPlus;
   faArrowUpRightFromSquare = faArrowUpRightFromSquare;
@@ -92,17 +97,21 @@ export class HomeComponent implements OnInit {
       'image': 'boutique.png',
       'description': 'La boutique uniforme est la plateforme de commandes des uniformes et autres équipements pour les agents des réserves.',
       'si': false
+    },
+    {
+      'nom': 'Tourbières du réseau',
+      'url': 'https://tourbieres.reserves-naturelles.org/',
+      'image': 'tourbieres.png',
+      'description': 'RNF a centralisé les données des tourbières du réseau. Retrouvez les réserves et leur contact selon les caractéristiques de leurs tourbières.',
+      'si': true
     }
-    // {
-    //   'nom':,
-    //   'url':,
-    //   'image':,
-    //   'description':,
-    //   'si': false
-    // }
   ]
 
   ngOnInit(): void {
+  }
+
+  public get user(): null|User {
+    return this._authService.getCurrentUser();    
   }
 
 }
