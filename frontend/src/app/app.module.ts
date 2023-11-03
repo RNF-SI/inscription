@@ -3,7 +3,7 @@ import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
-import { SignUpComponent } from './sign-up/sign-up.component';
+import { SignUpComponent } from './components/sign-up/sign-up.component';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 
 import { MatIconModule } from '@angular/material/icon';
@@ -22,7 +22,7 @@ import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { ToastrModule } from 'ngx-toastr';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { RouterModule } from '@angular/router';
-import { HomeComponent } from './home/home.component';
+import { HomeComponent } from './components/home/home.component';
 import { FontAwesomeModule, FaIconLibrary } from '@fortawesome/angular-fontawesome';
 import { RandomOrderPipe } from './pipes/random-order.pipe';
 
@@ -32,6 +32,7 @@ import { SearchPipe } from './search.pipe';
 import { MatButtonModule } from '@angular/material/button';
 import { HomeRnfModule } from './home-rnf/home-rnf.module';
 import { MyCustomInterceptor } from './services/http.interceptor';
+import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
 
 @NgModule({
   declarations: [
@@ -39,7 +40,8 @@ import { MyCustomInterceptor } from './services/http.interceptor';
     SignUpComponent,
     HomeComponent,
     RandomOrderPipe,
-    SearchPipe
+    SearchPipe,
+    ResetPasswordComponent
   ],
   imports: [
     HttpClientModule,

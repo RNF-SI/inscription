@@ -39,8 +39,8 @@ app.register_blueprint(routes.bp)
 from pypnusershub.routes import routes
 app.register_blueprint(routes, url_prefix='/auth')
 
-@app.before_request
-def load_current_user():
-    g.current_user = current_user if current_user.is_authenticated else None
-    print(current_user)
-    print("sdfg")
+# @app.before_request
+# def load_current_user():
+#     g.current_user = current_user if current_user.is_authenticated else None
+#     print(current_user)
+#     print("sdfg")

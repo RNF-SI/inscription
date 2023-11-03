@@ -1,10 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
-import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
-import { AuthServiceb } from '../auth.service';
-import { Organisme } from '../models/models';
-import { User } from '../home-rnf/models/user.model';
-import { AuthService } from '../home-rnf/services/auth-service.service';
+import { Organisme } from '../../models/models';
+import { User } from '../../home-rnf/models/user.model';
+import { AuthService } from '../../home-rnf/services/auth-service.service';
 
 @Component({
   selector: 'app-home',
@@ -15,7 +13,6 @@ export class HomeComponent implements OnInit {
 
   constructor(
     
-    private _authServiceb: AuthServiceb,
     private _authService: AuthService
   ) { }
   protected organismes: Organisme[];
@@ -111,16 +108,6 @@ export class HomeComponent implements OnInit {
   ]
 
   ngOnInit(): void {
-  }
-
-  myFunction() {
-    this._authServiceb.getOrganismes().subscribe(
-      res => {
-        this.organismes = res
-      }
-    );
-    
-    
   }
 
   public get user(): null|User {

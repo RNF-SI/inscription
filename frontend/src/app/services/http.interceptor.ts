@@ -64,11 +64,18 @@ export class MyCustomInterceptor implements HttpInterceptor {
     //   this.config.API_ENDPOINT &&
     //   this.extractHostname(this.config.API_ENDPOINT) == this.extractHostname(request.url)
     // ) {
-        console.log("coucou");
-        
+       
       request = request.clone({
         withCredentials: true
       });
+
+      const idToken = localStorage.getItem('tk_id_token');
+      if (idToken) {
+        
+        request = request.clone({
+          headers: request.headers.set('Authorization', 'Bearer ' + idToken),
+        });
+      }
     // }
 
     // pass on the modified request object

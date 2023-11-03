@@ -19,26 +19,34 @@ class Bib_Organismes(db.Model):
     # url_logo = db.Column(db.Unicode)
     # id_parent = db.Column(db.Integer)
 
-class TempUser(db.Model):
+# class TempUser(db.Model):
     
-    __tablename__ = "temp_users"
+#     __tablename__ = "temp_users"
+#     __table_args__ = {"schema": "utilisateurs", "extend_existing": True}
+
+#     id_temp_user = db.Column(db.Integer, primary_key=True)
+#     token_role = db.Column(db.Unicode)
+#     organisme = db.Column(db.Unicode)
+#     id_application = db.Column(db.Integer)
+#     confirmation_url = db.Column(db.Unicode)
+#     groupe = db.Column(db.Boolean)
+#     identifiant = db.Column(db.Unicode)
+#     nom_role = db.Column(db.Unicode)
+#     prenom_role = db.Column(db.Unicode)
+#     desc_role = db.Column(db.Unicode)
+#     password = db.Column(db.Unicode)
+#     pass_md5 = db.Column(db.Unicode)
+#     email = db.Column(db.Unicode)    
+#     id_organisme = db.Column(db.Integer)
+#     remarques = db.Column(db.Unicode)
+#     champs_addi = db.Column(JSONB)
+#     date_insert = db.Column(db.DateTime)
+#     date_update = db.Column(db.DateTime)
+
+class CorRoleToken(db.Model):
+
+    __tablename__ = "cor_role_token"
     __table_args__ = {"schema": "utilisateurs", "extend_existing": True}
 
-    id_temp_user = db.Column(db.Integer, primary_key=True)
-    token_role = db.Column(db.Unicode)
-    organisme = db.Column(db.Unicode)
-    id_application = db.Column(db.Integer)
-    confirmation_url = db.Column(db.Unicode)
-    groupe = db.Column(db.Boolean)
-    identifiant = db.Column(db.Unicode)
-    nom_role = db.Column(db.Unicode)
-    prenom_role = db.Column(db.Unicode)
-    desc_role = db.Column(db.Unicode)
-    password = db.Column(db.Unicode)
-    pass_md5 = db.Column(db.Unicode)
-    email = db.Column(db.Unicode)    
-    id_organisme = db.Column(db.Integer)
-    remarques = db.Column(db.Unicode)
-    champs_addi = db.Column(JSONB)
-    date_insert = db.Column(db.DateTime)
-    date_update = db.Column(db.DateTime)
+    id_role = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.Unicode)
