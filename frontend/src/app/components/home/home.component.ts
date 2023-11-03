@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
-import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
+import { Organisme } from '../../models/models';
+import { User } from '../../home-rnf/models/user.model';
+import { AuthService } from '../../home-rnf/services/auth-service.service';
 
 @Component({
   selector: 'app-home',
@@ -9,8 +11,11 @@ import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-
 })
 export class HomeComponent implements OnInit {
 
-  constructor() { }
-
+  constructor(
+    
+    private _authService: AuthService
+  ) { }
+  protected organismes: Organisme[];
   faKey = faKey;
   faUserPlus = faUserPlus;
   faArrowUpRightFromSquare = faArrowUpRightFromSquare;
@@ -103,6 +108,10 @@ export class HomeComponent implements OnInit {
   ]
 
   ngOnInit(): void {
+  }
+
+  public get user(): null|User {
+    return this._authService.getCurrentUser();    
   }
 
 }

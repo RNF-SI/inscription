@@ -5,9 +5,9 @@ import { Router } from '@angular/router';
 
 import { ToastrService } from 'ngx-toastr';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
-import { AuthService } from '../auth.service';
+import { RegisterService } from '../../register.service';
 
-import { Organisme } from '../models/models';
+import { Organisme } from '../../models/models';
 
 @Component({
   selector: 'app-sign-up',
@@ -34,7 +34,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   constructor(
     private fb: UntypedFormBuilder,
-    private _authService: AuthService,
+    private _registerService: RegisterService,
     private router: Router,
     private _toasterService: ToastrService
   ) {
@@ -42,7 +42,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnInit() {
     this.createForm();
-    this._authService.getOrganismes().subscribe(
+    this._registerService.getOrganismes().subscribe(
       res => {
         this.organismes = res
         this.filteredOrgs.next(this.organismes.slice());
@@ -139,7 +139,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       const finalForm = Object.assign({}, this.form.value);
       // concatenate two forms
       finalForm['champs_addi'] = this.appFormGroup.value;
-      this._authService
+      this._registerService
         .signupUser(finalForm)
         .subscribe((res) => {
           this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.','Votre demande d\'inscription a bien été prise en compte !')

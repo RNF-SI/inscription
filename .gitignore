@@ -102,6 +102,8 @@ ENV/
 
 #debuggage virtual studio
 launch.json
+.vscode/chrome
+tasks.json
 
 .idea/
 *.iml
