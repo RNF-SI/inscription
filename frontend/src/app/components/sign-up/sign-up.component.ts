@@ -136,6 +136,8 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   save() {
     if (this.form.valid) {
       this.disableSubmit = true;
+      // mise en minuscule du mail (pour faciliter la vérification)
+      this.form.value['email'] = this.form.value['email'].toLowerCase();
       const finalForm = Object.assign({}, this.form.value);
       // concatenate two forms
       finalForm['champs_addi'] = this.appFormGroup.value;
