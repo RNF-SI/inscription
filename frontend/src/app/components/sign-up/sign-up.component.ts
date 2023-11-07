@@ -126,16 +126,57 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
     this.appFormGroup = this.fb.group({
       geonature_saisie: [false, null],
+      precisions_geonature_saisie: ['', null],
       psdrf: [false, null],
+      precisions_psdrf: ['', null],
       ancrage: [false, null],
+      precisions_ancrage: ['', null],
       opnl: [false, null],
-      precisions: ['', null]
+      precisions_opnl: ['', null]
     });
+
+    this.appFormGroup.get('geonature_saisie')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_geonature_saisie'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_geonature_saisie'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_geonature_saisie'].updateValueAndValidity();
+    });
+
+    this.appFormGroup.get('ancrage')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_ancrage'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_ancrage'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_ancrage'].updateValueAndValidity();
+    });
+
+    this.appFormGroup.get('psdrf')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_psdrf'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_psdrf'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_psdrf'].updateValueAndValidity();
+    });
+
+    this.appFormGroup.get('opnl')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_opnl'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_opnl'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_opnl'].updateValueAndValidity();
+    })
   }
 
   save() {
     if (this.form.valid) {
       this.disableSubmit = true;
+      // mise en minuscule du mail (pour faciliter la vérification)
+      this.form.value['email'] = this.form.value['email'].toLowerCase();
       const finalForm = Object.assign({}, this.form.value);
       // concatenate two forms
       finalForm['champs_addi'] = this.appFormGroup.value;

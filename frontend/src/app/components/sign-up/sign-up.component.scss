@@ -25,6 +25,10 @@
     padding-left: 15px !important;
     border-radius: 0px !important;
   }
+
+  .form-control::placeholder {
+    color: #6c757d;;
+  }
   
   ::ng-deep .mat-mdc-select-placeholder, ::ng-deep .mat-mdc-select-arrow {
   color : #6c757d;
