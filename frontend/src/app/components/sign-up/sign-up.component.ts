@@ -7,7 +7,8 @@ import { ToastrService } from 'ngx-toastr';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
 import { RegisterService } from '../../register.service';
 
-import { Organisme } from '../../models/models';
+import { MultiSelectReservesOption, Organisme, OrganismeComplet } from '../../models/models';
+import { IDropdownSettings } from 'ng-multiselect-dropdown';
 
 @Component({
   selector: 'app-sign-up',
@@ -21,8 +22,12 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   public disableSubmit = false;
   public formControlBuilded = false;
   protected organismes: Organisme[];
+  public organisme: OrganismeComplet;
+
   searchTxt: any;
   ogListe : boolean = true;
+
+  options: MultiSelectReservesOption[] = [];
 
   public orgaCtrl: UntypedFormControl = new UntypedFormControl();
   public orgFilterCtrl: UntypedFormControl = new UntypedFormControl();
@@ -40,7 +45,29 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   ) {
   }
 
+  reservesSelectSettings: IDropdownSettings;
+
+  onSelect(item: any) {
+    console.log(this.form.get('reserves')?.value)
+    
+  }
+
+  selectText = 'Sélectionner des réserves'
   ngOnInit() {
+
+    this.reservesSelectSettings = {
+      singleSelection: false,
+      idField: 'id',
+      textField: 'name',
+      allowSearchFilter: true,
+      enableCheckAll: true,
+      selectAllText:'Toutes les réserves',
+      unSelectAllText: 'Aucune réserve',
+      
+      // placeholder: 'Sélectionner vos réserves',
+      searchPlaceholderText: 'Rechercher'
+    }
+    
     this.createForm();
     this._registerService.getOrganismes().subscribe(
       res => {
@@ -113,7 +140,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       password_confirmation: ['', [Validators.required]],
       remarques: ['', Validators.required],
       id_organisme: ['', Validators.required],
-      organisme: ['', Validators.required],
+      organisme: ['', Validators.required]
     },
     {
       validators: [
@@ -123,8 +150,32 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
     }
     );
+
+    this.form.get('id_organisme')?.valueChanges.subscribe(val => {
+      this.options = [];
+      
+      this._registerService.getOrganisme(val).subscribe(
+        res => {
+          console.log('sdgfsdgf');
+          
+          this.organisme = res
+          console.log(this.organisme);
+          this.organisme.rns.forEach(rn => {
+            this.options.push({
+              id: rn.rn.area_code,
+              name: rn.rn.area_name
+            });            
+          });
+          this.options = [...this.options]
+          
+        }
+      );   
+    })
+
     // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
     this.appFormGroup = this.fb.group({
+      reserves: ['', null],
+      reserves_referent: ['', null],
       geonature_saisie: [false, null],
       precisions_geonature_saisie: ['', null],
       psdrf: [false, null],

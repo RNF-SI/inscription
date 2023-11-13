@@ -29,6 +29,13 @@ export class RegisterService {
     );
   }
 
+  getOrganisme(id : any) {
+    return this._http.get<any>(
+      `${environment.apiUrl}/organisme/`+id,
+      this.httpOptions
+    );
+  }
+
   passwordChange(data : any) {
     return this._http.put<any>(`${environment.apiUrl}/password/new`, data);
   }

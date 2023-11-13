@@ -33,6 +33,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { HomeRnfModule } from './home-rnf/home-rnf.module';
 import { MyCustomInterceptor } from './services/http.interceptor';
 import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
+import { NgMultiSelectDropDownModule } from 'ng-multiselect-dropdown';
 
 @NgModule({
   declarations: [
@@ -66,7 +67,8 @@ import { ResetPasswordComponent } from './components/reset-password/reset-passwo
     NgbModule,
     RouterModule,
     FontAwesomeModule,
-    HomeRnfModule
+    HomeRnfModule,
+    NgMultiSelectDropDownModule.forRoot()
   ],
   providers: [
     { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true }

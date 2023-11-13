@@ -6,7 +6,7 @@ bp = Blueprint('routes', __name__)
 from app import ma, app
 from flask_mail import Mail, Message
 
-from models import Bib_Organismes, CorRoleToken
+from models import Bib_Organismes, CorRoleToken, Bib_Reserves, Rnsogs
 
 from pypnusershub import routes as fnauth
 
@@ -15,24 +15,63 @@ from flask_login import login_required
 mail = Mail(app)
 
 @bp.route('/organismes', methods=['GET'])
-@fnauth.check_auth(1)
-# @login_required
-def getUsers():
+# @fnauth.check_auth(1)
+def getOgs():
     # test = request.cookies["token"]
 
     organismes = Bib_Organismes.query.filter(Bib_Organismes.id_organisme.notin_(['-1','1','2'])).order_by(Bib_Organismes.nom_organisme).all()
     
-    schema = OrganismeSchema(many=True)
+    schema = OrganismeSchemaSimple(many=True)
     organObj = schema.dump(organismes)
 
     return jsonify(organObj)
 
-class OrganismeSchema(ma.SQLAlchemyAutoSchema) :
+@bp.route('/organisme/<id>', methods=['GET'])
+def getOgById(id):
+    # test = request.cookies["token"]
+
+    organisme = Bib_Organismes.query.filter_by(id_organisme = id).first()
+    
+    schema = OrganismeSchemaComplet(many=False)
+    organObj = schema.dump(organisme)
+
+    return jsonify(organObj)
+
+class RnsogsSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Rnsogs
+        load_relationships = True
+    # organismegestionnaire = ma.Nested(lambda: OrganismeSchema)
+    rn = ma.Nested(lambda: ReserveSchema)
+
+class OrganismeSchemaSimple(ma.SQLAlchemyAutoSchema) :
     class Meta :
         model = Bib_Organismes
-        load_instance = True
+
+class OrganismeSchemaComplet(ma.SQLAlchemyAutoSchema) :
+    class Meta :
+        model = Bib_Organismes
+        # load_instance = True
+        load_relationships = True
+
+    rns = ma.Nested(lambda: RnsogsSchema, many = True)
 
 s = requests.Session()
+
+
+@bp.route('/reserves', methods=['GET'])
+def getReserves():
+    reserves = Bib_Reserves.query.filter(Bib_Reserves.id_type.in_(['5','6','18'])).order_by(Bib_Reserves.area_name).all()
+
+    schema = ReserveSchema(many=True)
+    resObj = schema.dump(reserves)
+
+    return jsonify(resObj)
+
+class ReserveSchema(ma.SQLAlchemyAutoSchema) :
+    class Meta :
+        model = Bib_Reserves
+        load_instance = True
 
 @bp.route('/inscription', methods=["POST"])
 def inscription():
