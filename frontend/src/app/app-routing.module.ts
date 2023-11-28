@@ -8,6 +8,9 @@ import { LazyDialogLoader } from './home-rnf/services/lazy-dialog-loader.service
 import { LogoutLinkService } from './home-rnf/services/logout-link.service';
 import { HomeComponent } from './components/home/home.component';
 import { SignUpComponent } from './components/sign-up/sign-up.component';
+import { MoncompteComponent } from './components/moncompte/moncompte.component';
+import { AuthGuardService } from './home-rnf/services/auth-guard.service';
+import { UpdatemoncompteComponent } from './components/updatemoncompte/updatemoncompte.component';
 
 // const routes: Routes = [
 //   {
@@ -38,6 +41,16 @@ const routes: Routes = [
         path: 'login', 
         component: LoginComponent, 
         canActivate: [ LazyDialogLoader ] 
+      },
+      { 
+        path: 'mon-compte', 
+        component: MoncompteComponent, 
+        canActivate: [ AuthGuardService]
+      },
+      { 
+        path: 'modifier-mes-informations', 
+        component: UpdatemoncompteComponent, 
+        canActivate: [ AuthGuardService]
       }
     ] 
   } ,

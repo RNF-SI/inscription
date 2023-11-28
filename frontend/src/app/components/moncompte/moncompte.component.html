@@ -1,0 +1,158 @@
+
+<div class="container">
+    <br><br>
+
+      <h3 class="underlined main-color">Mes informations</h3>
+
+  
+      <form [formGroup]="form">
+        <div>
+          <div class="form-group row">
+            <label for="nom_role" class="col-sm-3 col-form-label text-end">Nom</label>
+            <div class="col-sm-9 col-xl-7">
+              <input
+                type="text"
+                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
+                id="nom_role"
+                placeholder="Nom"
+                formControlName="nom_role"
+              />
+            </div>
+          </div>
+          <div class="form-group row">
+            <label for="prenom_role" class="col-sm-3 col-form-label text-end">Prenom</label>
+            <div class="col-sm-9 col-xl-7">
+              <input
+                type="text"
+                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
+                id="prenom_role"
+                placeholder="Prenom"
+                formControlName="prenom_role"
+              />
+            </div>
+          </div>
+          <div class="form-group row">
+            <label for="organisme" class="col-sm-3 col-form-label text-end">Organisme <fa-icon *ngIf="!form.disabled"
+                [icon]="['fas', 'circle-info']" matTooltip="Vous ne pouvez pas modifier l'organisme vous même. Contactez l'administrateur."></fa-icon></label>
+            <div class="col-sm-9 col-xl-7">
+              <input
+                type="text"
+                [ngClass]="'form-control-plaintext'"
+                id="organisme"
+                placeholder="Organisme"
+                formControlName="organisme"
+              />
+            </div>
+          </div>
+          <div class="form-group row">
+            <label for="email" class="col-sm-3 col-form-label text-end">Adresse mail</label>
+            <div class="col-sm-9 col-xl-7">
+              <input
+                type="text"
+                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
+                id="email"
+                placeholder="Email"
+                formControlName="email"
+              />
+            </div>
+          </div>
+        </div>
+  
+          <div class="form-group row">
+            <label for="identifiant" class="col-sm-3 col-form-label text-end">Login</label>
+            <div class="col-sm-9 col-xl-7">
+              <input
+                type="text"
+                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
+                id="identifiant"
+                placeholder="Login"
+                formControlName="identifiant"
+              />
+            </div>
+          </div>
+  
+        <!-- <div class="text-center" *ngIf="form.disabled">
+          <a routerLink="password" mat-raised-button color="primary">Changer de mot de passe</a>
+        </div> -->
+  
+        <div class="form-group row">
+          <label for="remarques" class="col-sm-3 col-form-label text-end"> Fonction </label>
+          <div class="col-sm-9 col-xl-7">
+            <input
+              type="text"
+              id="remarques"
+              [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
+              placeholder="Fonction"
+              formControlName="remarques"
+            >
+          </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-md-3 col-form-label text-end">{user.rns?.length, plural, =1 {Réserve} other {Réserves}}</label>
+            <div class="col-md-9 col-xl-7" *ngIf="!form.disabled && user.organisme.rns.length > 0">
+            <ng-multiselect-dropdown formControlName="reserves" [settings]="reservesSelectSettings" [placeholder]='selectText'
+              [data]="options">
+            </ng-multiselect-dropdown>
+            <p>Le·la référent·e des réserves sélectionnées sera notifié·e de votre sélection.</p>
+            </div>
+            <div class="col-md-9 col-xl-7" *ngIf="!form.disabled && user.organisme.rns.length == 0">
+                <div class="alignement">Votre organisme ne gère aucune réserve</div>
+            </div>
+            <div class="col-md-9 col-xl-7" *ngIf="form.disabled">               
+                <div *ngFor="let rn of user.rns" class="alignement">{{rn.rn.area_name}} <span *ngIf="rn.referent && rn.referent_valid">(dont vous êtes référent·e)</span> </div>
+                <div *ngIf="user.rns?.length == 0" class="alignement">Aucune</div>
+            </div>
+            
+        </div>
+        <div class="form-group row" *ngIf="form.get('reserves')?.value.length>0 && !form.disabled">
+            <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous indiquez être référent</label>
+            <div class="col-md-9 col-xl-7">
+            <ng-multiselect-dropdown formControlName="reserves_referent" [settings]="reservesSelectSettings" [placeholder]='selectText'
+              [data]="form.get('reserves')?.value">
+            </ng-multiselect-dropdown>
+            
+            <p>Un·e référent·e doit être désigné·e par réserve, le plus souvent le·la conservateur·trice.</p>
+            <p>Ce statut sera modéré par l'administrateur.</p>
+            </div>
+        
+        </div>
+  
+        <div class="float-end">
+          <ng-container *ngIf="form.disabled; else validation">
+            <button
+              type="button"
+              mat-raised-button
+              color="primary"
+              matTooltip="Editer ces informations"
+              matTooltipPosition="left"
+              (click)="form.enable()"
+            >
+              Editer
+              <mat-icon>edit</mat-icon>
+            </button>
+          </ng-container>
+          <ng-template #validation>
+            <button
+              mat-raised-button
+              color="warn"
+              class="bouttons"
+              matTooltip="Annuler modifications"
+              (click)="cancel()"
+            >
+              Annuler
+            </button>
+            <button
+              mat-raised-button
+              type="button"
+              class="button-success ml-1 bouttons"
+              matTooltip="Enrigistrer modifications"
+              (click)="save()"
+            >
+              Enregistrer
+              <mat-icon>save</mat-icon>
+            </button>
+          </ng-template>
+        </div>
+      </form>
+      <br><br>
+</div>

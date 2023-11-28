@@ -6,7 +6,7 @@ bp = Blueprint('routes', __name__)
 from app import ma, app
 from flask_mail import Mail, Message
 
-from models import Bib_Organismes, CorRoleToken, Bib_Reserves, Rnsogs
+from models import Bib_Organismes, CorRoleToken, Bib_Reserves, Rnsogs, User, CorRoleRn
 
 from pypnusershub import routes as fnauth
 
@@ -249,3 +249,43 @@ def new_password():
         # comme concerne le password, on explicite pas le message
         return {"msg": "Erreur serveur"}, 500
     return {"msg": "Mot de passe modifié avec succès"}, 200
+
+@bp.route("/user/<id>", methods=['GET'])
+def getUserById(id):
+    user = User.query.filter_by(id_role = id).first()
+    
+    schema = UserSchema(many=False)
+    userObj = schema.dump(user)
+
+    return jsonify(userObj)
+
+@bp.route("/role/<id>", methods=['GET'])
+def getRoleById(id):
+    role = User.query.filter_by(id_role = id).filter_by(groupe=True).first()
+    
+    schema = RoleSchema(many=False)
+    userObj = schema.dump(role)
+
+    return jsonify(userObj)
+
+class UserSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = User
+        exclude = ("active", "date_insert", "date_update", "desc_role", "groupe")
+        load_relationships = True
+    
+    groupes = ma.Nested(lambda: RoleSchema, many = True)
+    rns = ma.Nested(lambda: RnsUsersSchema, many = True)
+    organisme = ma.Nested(lambda: OrganismeSchemaComplet, many = False)
+
+class RoleSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = User
+        fields = ("id_role", "nom_role", "desc_role")
+
+class RnsUsersSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = CorRoleRn
+        load_relationships = True
+    # organismegestionnaire = ma.Nested(lambda: OrganismeSchema)
+    rn = ma.Nested(lambda: ReserveSchema)

@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastrService } from 'ngx-toastr';
-import { RegisterService } from 'src/app/register.service';
+import { RegisterService } from 'src/app/services/register.service';
 
 @Component({
   selector: 'app-reset-password',
