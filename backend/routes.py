@@ -236,7 +236,7 @@ def new_password():
     """
 
     data = dict(request.get_json())
-    print(data)
+
     if not data.get("token", None):
         return {"msg": "Erreur serveur"}, 500
 
