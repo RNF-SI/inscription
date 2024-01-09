@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
+import { map, Observable } from 'rxjs';
 import { environment } from 'src/environments/environment';
 
 @Injectable({
@@ -55,7 +56,7 @@ export class UserDataService {
           id: rn.rn.area_code,
           name: rn.rn.area_name
         }); 
-        if (rn.referent && rn.referent_valid ) {
+        if (rn.referent ) {
           referents.push({
             id: rn.rn.area_code,
             name: rn.rn.area_name
@@ -67,5 +68,14 @@ export class UserDataService {
 
     });
     return this._http.get<any>(`${environment.apiUrl}/user/${id}`)
+  }
+
+  putRole(role: any) {
+    const options = role;
+    return this._http.put<any>(`${environment.apiUrl}/role`, options).pipe(
+      map((res: any) => {
+        return res;
+      })
+    );
   }
 }

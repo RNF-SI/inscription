@@ -99,7 +99,7 @@
                 <div class="alignement">Votre organisme ne gère aucune réserve</div>
             </div>
             <div class="col-md-9 col-xl-7" *ngIf="form.disabled">               
-                <div *ngFor="let rn of user.rns" class="alignement">{{rn.rn.area_name}} <span *ngIf="rn.referent && rn.referent_valid">(dont vous êtes référent·e)</span> </div>
+                <div *ngFor="let rn of user.rns" class="alignement">{{rn.rn.area_name}} <span *ngIf="rn.referent && rn.referent_valid">(dont vous êtes référent·e)</span><span *ngIf="rn.referent && !rn.referent_valid">(dont vous avez déclaré être référent·e - en cours de validation)</span> </div>
                 <div *ngIf="user.rns?.length == 0" class="alignement">Aucune</div>
             </div>
             

@@ -56,7 +56,6 @@ export class MoncompteComponent {
         this.user = obj;
       }
     );
-    this
   }
 
   getForm(role: number): UntypedFormGroup {
@@ -65,7 +64,14 @@ export class MoncompteComponent {
 
   save() {
     if (this.form.valid) {
-      // this.userService.putRole(this.form.value).subscribe((res) => this.form.disable());
+      this.userService.putRole(this.form.value).subscribe((res) => this.form.disable());
+      this.userService.getRole(this.authService.getCurrentUser().id_role).subscribe(
+        obj => {
+          this.user = obj;
+          console.log(this.user);
+        }
+      );
+      
     }
   }
 
