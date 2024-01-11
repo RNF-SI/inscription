@@ -29,10 +29,10 @@ export class HomeComponent implements OnInit {
       'si': true
     },
     {
-      'nom': 'GeoNature Global',
+      'nom': 'GeoNature PSDRF',
       'url':'https://geonature.reserves-naturelles.org',
       'image': 'geonature-global.png',
-      'description': 'L\'application GeoNature Global vise à centraliser les données des réserves utilisant GeoNature. Elle permet également la saisie ou l\'import de données de certains protocoles pour tous, comme le PSDRF.',
+      'description': 'Le module PSDRF de GeoNature permet l\'import et la vérification de données du protocole, ainsi que l\'édition d\'un rapport dendrométrique.',
       'si': true
     },
     {
@@ -67,7 +67,7 @@ export class HomeComponent implements OnInit {
       'nom': 'Plateforme OPNL',
       'url': null,
       'image': 'opnl.png',
-      'description': 'La plateforme OPNL permettra de centraliser toutes les informations relatives aux activités et productions des membres et partenaires de l\'observatoire du patrimoine naturel littoral. <b>Lancement prévu : Automne 2023</b>',
+      'description': 'La plateforme OPNL permettra de centraliser toutes les informations relatives aux activités et productions des membres et partenaires de l\'observatoire du patrimoine naturel littoral. <b>Lancement prévu : Début 2024</b>',
       'si': true
     },
     {
