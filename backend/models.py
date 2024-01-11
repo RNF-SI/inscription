@@ -1,6 +1,19 @@
 from app import db
 from sqlalchemy.dialects.postgresql import JSONB
 
+class Rnsogs(db.Model):
+    
+    __tablename__ = 'cor_rn_og'
+    __table_args__ = {"schema": "complement_rnf", "extend_existing": True}
+
+    rn_id = db.Column(db.Unicode, db.ForeignKey('ref_geo.l_areas.area_code'), primary_key=True)
+    og_uuid = db.Column(db.Unicode, db.ForeignKey('utilisateurs.bib_organismes.uuid_organisme'), primary_key=True)
+
+    rn = db.relationship("Bib_Reserves", back_populates="organismes_gestionnaires")
+    organismegestionnaire = db.relationship("Bib_Organismes", back_populates="rns")
+
+    principal = db.Column(db.Boolean)
+
 class Bib_Organismes(db.Model):
 
     __tablename__ = "bib_organismes"
@@ -19,29 +32,10 @@ class Bib_Organismes(db.Model):
     # url_logo = db.Column(db.Unicode)
     # id_parent = db.Column(db.Integer)
 
-# class TempUser(db.Model):
-    
-#     __tablename__ = "temp_users"
-#     __table_args__ = {"schema": "utilisateurs", "extend_existing": True}
+    rns = db.relationship(
+        "Rnsogs", back_populates = "organismegestionnaire"
+    )
 
-#     id_temp_user = db.Column(db.Integer, primary_key=True)
-#     token_role = db.Column(db.Unicode)
-#     organisme = db.Column(db.Unicode)
-#     id_application = db.Column(db.Integer)
-#     confirmation_url = db.Column(db.Unicode)
-#     groupe = db.Column(db.Boolean)
-#     identifiant = db.Column(db.Unicode)
-#     nom_role = db.Column(db.Unicode)
-#     prenom_role = db.Column(db.Unicode)
-#     desc_role = db.Column(db.Unicode)
-#     password = db.Column(db.Unicode)
-#     pass_md5 = db.Column(db.Unicode)
-#     email = db.Column(db.Unicode)    
-#     id_organisme = db.Column(db.Integer)
-#     remarques = db.Column(db.Unicode)
-#     champs_addi = db.Column(JSONB)
-#     date_insert = db.Column(db.DateTime)
-#     date_update = db.Column(db.DateTime)
 
 class CorRoleToken(db.Model):
 
@@ -50,3 +44,18 @@ class CorRoleToken(db.Model):
 
     id_role = db.Column(db.Integer, primary_key=True)
     token = db.Column(db.Unicode)
+
+class Bib_Reserves(db.Model):
+
+    __tablename__ = "l_areas"
+    __table_args__ = {"schema": "ref_geo", "extend_existing": True}
+
+    id_area = db.Column(db.Integer, primary_key=True)
+    id_type = db.Column(db.Unicode)
+    area_name = db.Column(db.Unicode)
+    area_code = db.Column(db.Unicode)
+
+    organismes_gestionnaires = db.relationship(
+        "Rnsogs", back_populates = "rn"
+    )
+    
