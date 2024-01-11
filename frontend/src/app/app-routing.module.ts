@@ -8,6 +8,7 @@ import { LazyDialogLoader } from './home-rnf/services/lazy-dialog-loader.service
 import { LogoutLinkService } from './home-rnf/services/logout-link.service';
 import { HomeComponent } from './components/home/home.component';
 import { SignUpComponent } from './components/sign-up/sign-up.component';
+import { ForgotPasswordComponent } from './home-rnf/components/forgot-password/forgot-password.component';
 
 // const routes: Routes = [
 //   {
@@ -28,6 +29,10 @@ const routes: Routes = [
       {
         path: '',
         component: HomeComponent
+      },
+      {
+        path: 'mot-de-passe-oublie',
+        component: ForgotPasswordComponent
       },
       { 
         path: 'logout', // Ici seulement pour angular, mais toujour redirigé dans le canActivate 
