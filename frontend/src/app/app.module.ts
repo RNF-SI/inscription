@@ -35,7 +35,6 @@ import { MyCustomInterceptor } from './services/http.interceptor';
 import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
 import { NgMultiSelectDropDownModule } from 'ng-multiselect-dropdown';
 import { MoncompteComponent } from './components/moncompte/moncompte.component';
-import { UpdatemoncompteComponent } from './components/updatemoncompte/updatemoncompte.component';
 import { SearchPipe } from './pipes/search.pipe';
 
 @NgModule({
@@ -46,8 +45,7 @@ import { SearchPipe } from './pipes/search.pipe';
     RandomOrderPipe,
     SearchPipe,
     ResetPasswordComponent,
-    MoncompteComponent,
-    UpdatemoncompteComponent
+    MoncompteComponent
   ],
   imports: [
     HttpClientModule,
