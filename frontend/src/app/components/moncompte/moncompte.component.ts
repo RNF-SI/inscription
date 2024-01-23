@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { UntypedFormGroup } from '@angular/forms';
 import { IDropdownSettings } from 'ng-multiselect-dropdown';
+import { switchMap } from 'rxjs';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
 import { MultiSelectReservesOption } from 'src/app/models/models';
 import { UserDataService } from 'src/app/services/user-data.service';
@@ -62,16 +63,30 @@ export class MoncompteComponent {
     return this.userService.getForm(role);
   }
 
+  // save() {
+  //   if (this.form.valid) {
+  //     this.userService.putRole(this.form.value).subscribe((res) => this.form.disable());
+  //     this.userService.getRole(this.authService.getCurrentUser().id_role).subscribe(
+  //       obj => {
+  //         this.user = obj;
+  //         console.log(this.user);
+  //       }
+  //     );
+      
+  //   }
+  // }
   save() {
     if (this.form.valid) {
-      this.userService.putRole(this.form.value).subscribe((res) => this.form.disable());
-      this.userService.getRole(this.authService.getCurrentUser().id_role).subscribe(
+      // Appel à putRole et utilisation de switchMap pour enchainer avec getRole
+      this.userService.putRole(this.form.value).pipe(
+        switchMap(() => this.userService.getRole(this.authService.getCurrentUser().id_role))
+      ).subscribe(
         obj => {
           this.user = obj;
           console.log(this.user);
+          this.form.disable();
         }
       );
-      
     }
   }
 
