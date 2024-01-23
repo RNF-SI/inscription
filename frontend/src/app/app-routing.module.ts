@@ -10,7 +10,7 @@ import { HomeComponent } from './components/home/home.component';
 import { SignUpComponent } from './components/sign-up/sign-up.component';
 import { MoncompteComponent } from './components/moncompte/moncompte.component';
 import { AuthGuardService } from './home-rnf/services/auth-guard.service';
-import { UpdatemoncompteComponent } from './components/updatemoncompte/updatemoncompte.component';
+import { ForgotPasswordComponent } from './home-rnf/components/forgot-password/forgot-password.component';
 
 // const routes: Routes = [
 //   {
@@ -32,6 +32,10 @@ const routes: Routes = [
         path: '',
         component: HomeComponent
       },
+      {
+        path: 'mot-de-passe-oublie',
+        component: ForgotPasswordComponent
+      },
       { 
         path: 'logout', // Ici seulement pour angular, mais toujour redirigé dans le canActivate 
         component: LogoutComponent, 
@@ -45,11 +49,6 @@ const routes: Routes = [
       { 
         path: 'mon-compte', 
         component: MoncompteComponent, 
-        canActivate: [ AuthGuardService]
-      },
-      { 
-        path: 'modifier-mes-informations', 
-        component: UpdatemoncompteComponent, 
         canActivate: [ AuthGuardService]
       }
     ] 

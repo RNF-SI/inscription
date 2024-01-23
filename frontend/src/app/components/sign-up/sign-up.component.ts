@@ -155,11 +155,8 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       this.options = [];
       
       this._registerService.getOrganisme(val).subscribe(
-        res => {
-          console.log('sdgfsdgf');
-          
+        res => {          
           this.organisme = res
-          console.log(this.organisme);
           this.organisme.rns.forEach(rn => {
             this.options.push({
               id: rn.rn.area_code,
@@ -169,7 +166,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           this.options = [...this.options]
           
         }
-      );   
+      );     
     })
 
     // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
@@ -235,13 +232,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
         .signupUser(finalForm)
         .subscribe((res) => {
           this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.','Votre demande d\'inscription a bien été prise en compte !')
-          this.form.reset();
-          this.appFormGroup.reset();
-          window.scroll({ 
-            top: 0, 
-            left: 0, 
-            behavior: 'smooth' 
-     });
+          this.router.navigate(['/']);
         },
         error => {
           this._toasterService.error(error.error.msg, '');
