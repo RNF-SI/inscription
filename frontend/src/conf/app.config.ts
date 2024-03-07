@@ -11,6 +11,12 @@ export const AppConfig = {
             "classFa":"fas" as const,
             "nomFa":"house" as const,
             "lien":""
+        },
+        {
+            "nom":"Mon compte",
+            "classFa":"fas" as const,
+            "nomFa":"bars-progress" as const,
+            "lien":"mon-compte"
         }
         // ,{
         //     "nom":"explorer", 
@@ -26,6 +32,5 @@ export const AppConfig = {
             "nomFa":"right-from-bracket" as const,
             "lien":"logout"
         }
-
     ]
 }

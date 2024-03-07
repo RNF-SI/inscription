@@ -1,12 +1,12 @@
-from flask import Flask, request, Response, render_template, redirect, Blueprint, jsonify
+from flask import Flask, request, Response, render_template, redirect, Blueprint, jsonify, g
 import requests
 import json
 
 bp = Blueprint('routes', __name__)
-from app import ma, app
+from app import ma, app, db
 from flask_mail import Mail, Message
 
-from models import Bib_Organismes, CorRoleToken, Bib_Reserves, Rnsogs
+from models import Bib_Organismes, CorRoleToken, Bib_Reserves, Rnsogs, User, CorRoleRn
 
 from pypnusershub import routes as fnauth
 
@@ -249,3 +249,125 @@ def new_password():
         # comme concerne le password, on explicite pas le message
         return {"msg": "Erreur serveur"}, 500
     return {"msg": "Mot de passe modifié avec succès"}, 200
+
+@bp.route("/user/<id>", methods=['GET'])
+def getUserById(id):
+    user = User.query.filter_by(id_role = id).first()
+    
+    schema = UserSchema(many=False)
+    userObj = schema.dump(user)
+
+    return jsonify(userObj)
+
+@bp.route("/role/<id>", methods=['GET'])
+def getRoleById(id):
+    role = User.query.filter_by(id_role = id).filter_by(groupe=True).first()
+    
+    schema = RoleSchema(many=False)
+    userObj = schema.dump(role)
+
+    return jsonify(userObj)
+
+class UserSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = User
+        exclude = ("active", "date_insert", "date_update", "desc_role", "groupe")
+        load_relationships = True
+    
+    groupes = ma.Nested(lambda: RoleSchema, many = True)
+    rns = ma.Nested(lambda: RnsUsersSchema, many = True)
+    organisme = ma.Nested(lambda: OrganismeSchemaComplet, many = False)
+
+class RoleSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = User
+        fields = ("id_role", "nom_role", "desc_role")
+
+class RnsUsersSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = CorRoleRn
+        load_relationships = True
+    # organismegestionnaire = ma.Nested(lambda: OrganismeSchema)
+    rn = ma.Nested(lambda: ReserveSchema)
+
+@bp.route("/role", methods=["PUT"])
+@fnauth.check_auth(1)
+def update_role():
+    """
+    Modifie le role de l'utilisateur du token en cours
+    """
+
+    init_data = dict(request.get_json())
+
+    print(init_data)
+    data = init_data.copy()
+
+    user = g.current_user
+
+    #nettoyage de data pour n'avoir que les attributs existants de User (excluant donc les données réserves)
+    attliste = [k for k in data]
+    for att in attliste:
+        print(att)
+        if not getattr(User, att, False):
+            data.pop(att)
+
+    # liste des attributs qui ne doivent pas être modifiable par l'user
+    black_list_att_update = [
+        "active",
+        "date_insert",
+        "date_update",
+        "groupe",
+        "id_organisme",
+        "organisme",
+        "id_role",
+        "pass_plus",
+        "pn",
+        "uuid_role",
+    ]
+
+    for key, value in data.items():
+        if key not in black_list_att_update:
+            setattr(user, key, value)
+    
+    db.session.merge(user)
+
+    existing_corrolern = CorRoleRn.query.filter_by(role_id=user.id_role).all()
+    anciennes_rns = {corrolern.rn_id for corrolern in existing_corrolern}
+
+    nouvelles_rns = {rn['id'] for rn in init_data.get('reserves', [])}
+
+    rns_a_supprimer = anciennes_rns - nouvelles_rns
+    rns_a_ajouter = nouvelles_rns - anciennes_rns
+    identifiants_communs = anciennes_rns & nouvelles_rns
+
+    nouveaux_referents = {rn['id'] for rn in init_data.get('reserves_referent', [])}
+
+    print(nouveaux_referents)
+
+    for rn in rns_a_supprimer :
+        rolern = CorRoleRn.query.filter_by(role_id=user.id_role, rn_id=rn).first()
+        if rolern :
+            db.session.delete(rolern)
+
+    for rn in rns_a_ajouter :
+        rolern = CorRoleRn.query.filter_by(role_id=user.id_role, rn_id=rn).first()
+        if not rolern :
+            newrolern = CorRoleRn(role_id=user.id_role, rn_id=rn,referent_valid = False)
+            if rn in nouveaux_referents :
+                newrolern.referent = True
+            else :
+                newrolern.referent = False
+            db.session.add(newrolern)
+    
+    for rn in identifiants_communs :
+        rolern = CorRoleRn.query.filter_by(role_id=user.id_role, rn_id=rn).first()
+        if rn in nouveaux_referents :
+            if rolern.referent == False :
+                rolern.referent = True
+        else :
+            if rolern.referent == True :
+                rolern.referent = False
+    
+    db.session.commit()
+
+    return user.as_dict()

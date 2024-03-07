@@ -5,10 +5,10 @@ import { Router } from '@angular/router';
 
 import { ToastrService } from 'ngx-toastr';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
-import { RegisterService } from '../../register.service';
 
 import { MultiSelectReservesOption, Organisme, OrganismeComplet } from '../../models/models';
 import { IDropdownSettings } from 'ng-multiselect-dropdown';
+import { RegisterService } from 'src/app/services/register.service';
 
 @Component({
   selector: 'app-sign-up',

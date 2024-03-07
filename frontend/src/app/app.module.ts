@@ -28,12 +28,14 @@ import { RandomOrderPipe } from './pipes/random-order.pipe';
 
 import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
 import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
-import { SearchPipe } from './search.pipe';
+
 import { MatButtonModule } from '@angular/material/button';
 import { HomeRnfModule } from './home-rnf/home-rnf.module';
 import { MyCustomInterceptor } from './services/http.interceptor';
 import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
 import { NgMultiSelectDropDownModule } from 'ng-multiselect-dropdown';
+import { MoncompteComponent } from './components/moncompte/moncompte.component';
+import { SearchPipe } from './pipes/search.pipe';
 
 @NgModule({
   declarations: [
@@ -42,7 +44,8 @@ import { NgMultiSelectDropDownModule } from 'ng-multiselect-dropdown';
     HomeComponent,
     RandomOrderPipe,
     SearchPipe,
-    ResetPasswordComponent
+    ResetPasswordComponent,
+    MoncompteComponent
   ],
   imports: [
     HttpClientModule,
