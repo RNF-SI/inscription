@@ -20,7 +20,7 @@ def getOgs():
     # test = request.cookies["token"]
 
     organismes = Bib_Organismes.query.filter(Bib_Organismes.id_organisme.notin_(['-1','1','2'])).order_by(Bib_Organismes.nom_organisme).all()
-    
+
     schema = OrganismeSchemaSimple(many=True)
     organObj = schema.dump(organismes)
 
@@ -31,7 +31,7 @@ def getOgById(id):
     # test = request.cookies["token"]
 
     organisme = Bib_Organismes.query.filter_by(id_organisme = id).first()
-    
+
     schema = OrganismeSchemaComplet(many=False)
     organObj = schema.dump(organisme)
 
@@ -119,8 +119,8 @@ def inscription():
         ]
         )
         msg = Message(
-            subject, 
-            sender="si@rnfrance.org", 
+            subject,
+            sender="si@rnfrance.org",
             recipients=recipients
         )
         msg.html = msg_html
@@ -136,30 +136,30 @@ def inscription():
             orgadb=orgadb
             )
             msg = Message(
-                subject, 
-                sender="si@rnfrance.org", 
+                subject,
+                sender="si@rnfrance.org",
                 recipients=recipients
             )
             msg.html = msg_html
             mail.send(msg)
 
-        if (data['champs_addi']['psdrf']) :
-            subject = "Demande de compte pour le module PSDRF"
-            template = "email_psdrf.html"
-            recipients = [app.config["MAIL_PSDRF"]]
-            msg_html = render_template(
-            template,
-            user=data,
-            orgadb=orgadb
-            )
-            msg = Message(
-                subject, 
-                sender="si@rnfrance.org", 
-                recipients=recipients
-            )
-            msg.html = msg_html
-            mail.send(msg)
-        
+        # if (data['champs_addi']['psdrf']) :
+        #     subject = "Demande de compte pour le module PSDRF"
+        #     template = "email_psdrf.html"
+        #     recipients = [app.config["MAIL_PSDRF"]]
+        #     msg_html = render_template(
+        #     template,
+        #     user=data,
+        #     orgadb=orgadb
+        #     )
+        #     msg = Message(
+        #         subject,
+        #         sender="si@rnfrance.org",
+        #         recipients=recipients
+        #     )
+        #     msg.html = msg_html
+        #     mail.send(msg)
+
 
     return Response(r), r.status_code
 
@@ -194,8 +194,8 @@ def login_recovery():
             url_password=url_password
         )
         msg = Message(
-            subject, 
-            sender="si@rnfrance.org", 
+            subject,
+            sender="si@rnfrance.org",
             recipients=recipients
         )
         msg.html = msg_html
@@ -219,8 +219,8 @@ def after_confirmation():
     user=data
     )
     msg = Message(
-        subject, 
-        sender="si@rnfrance.org", 
+        subject,
+        sender="si@rnfrance.org",
         recipients=recipients
     )
     msg.html = msg_html
@@ -228,12 +228,52 @@ def after_confirmation():
 
     return {"msg": "ok"}
 
-@bp.route("/send_mail_opnl", methods=["POST"])
+@bp.route("/send_mail_group", methods=["POST"])
 def send_mail_opnl():
+    """
+    Lorsqu'un utilisateur est ajouté à un groupe, si ce groupe est OPNL ou PSDRF,
+    cela renvoit un message aux équipes concernées.
+    """
 
     data = request.get_json()
 
     print(data)
+
+    if (data['groupe'] == 36) :
+
+        user = data['utilisateur']
+        if (json.loads(data['utilisateur']['champs_addi'])['precisions_opnl']) :
+            user['precisions'] = json.loads(data['utilisateur']['champs_addi'])['precisions_opnl']
+        else :
+            user['precisions'] = 'Pas de précisions'
+        subject = "Ajout d'un utilisateur à la plateforme OPNL"
+        template = "email_adding_user_opnl.html"
+        recipients = [app.config["MAIL_OPNL"]]
+        msg_html = render_template(
+        template,
+        user=user
+        )
+    if (data['groupe'] == 1) :
+        user = data['utilisateur']
+        if (json.loads(data['utilisateur']['champs_addi'])['precisions_psdrf']) :
+            user['precisions'] = json.loads(data['utilisateur']['champs_addi'])['precisions_psdrf']
+        else :
+            user['precisions'] = 'Pas de précisions'
+        subject = "Ajout d'un utilisateur pour le module PSDRF"
+        template = "email_adding_user_psdrf.html"
+        recipients = [app.config["MAIL_PSDRF"]]
+        msg_html = render_template(
+        template,
+        user=user
+        )
+
+    msg = Message(
+        subject,
+        sender="si@rnfrance.org",
+        recipients=recipients
+    )
+    msg.html = msg_html
+    mail.send(msg)
 
     return {"msg": "ok"}
 
@@ -262,7 +302,7 @@ def new_password():
 @bp.route("/user/<id>", methods=['GET'])
 def getUserById(id):
     user = User.query.filter_by(id_role = id).first()
-    
+
     schema = UserSchema(many=False)
     userObj = schema.dump(user)
 
@@ -271,7 +311,7 @@ def getUserById(id):
 @bp.route("/role/<id>", methods=['GET'])
 def getRoleById(id):
     role = User.query.filter_by(id_role = id).filter_by(groupe=True).first()
-    
+
     schema = RoleSchema(many=False)
     userObj = schema.dump(role)
 
@@ -282,7 +322,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         model = User
         exclude = ("active", "date_insert", "date_update", "desc_role", "groupe")
         load_relationships = True
-    
+
     groupes = ma.Nested(lambda: RoleSchema, many = True)
     rns = ma.Nested(lambda: RnsUsersSchema, many = True)
     organisme = ma.Nested(lambda: OrganismeSchemaComplet, many = False)
@@ -337,7 +377,7 @@ def update_role():
     for key, value in data.items():
         if key not in black_list_att_update:
             setattr(user, key, value)
-    
+
     db.session.merge(user)
 
     existing_corrolern = CorRoleRn.query.filter_by(role_id=user.id_role).all()
@@ -367,7 +407,7 @@ def update_role():
             else :
                 newrolern.referent = False
             db.session.add(newrolern)
-    
+
     for rn in identifiants_communs :
         rolern = CorRoleRn.query.filter_by(role_id=user.id_role, rn_id=rn).first()
         if rn in nouveaux_referents :
@@ -376,7 +416,7 @@ def update_role():
         else :
             if rolern.referent == True :
                 rolern.referent = False
-    
+
     db.session.commit()
 
     return user.as_dict()
