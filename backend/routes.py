@@ -228,6 +228,15 @@ def after_confirmation():
 
     return {"msg": "ok"}
 
+@bp.route("/send_mail_opnl", methods=["POST"])
+def send_mail_opnl():
+
+    data = request.get_json()
+
+    print(data)
+
+    return {"msg": "ok"}
+
 @bp.route("/password/new", methods=["PUT"])
 def new_password():
     """
