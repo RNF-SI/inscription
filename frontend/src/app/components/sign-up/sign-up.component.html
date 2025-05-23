@@ -181,30 +181,36 @@
                                     </small>
                                 </div>
                             </div>
-                            
+
                             <form [formGroup]="appFormGroup">
-                            <div class="form-group row" *ngIf="organisme?.rns!.length>0">
-                                    <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous travaillez</label>
+                                <div class="form-group row" *ngIf="organisme?.rns!.length>0">
+                                    <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous
+                                        travaillez</label>
                                     <div class="col-md-9 col-lg-7">
-                                    <ng-multiselect-dropdown formControlName="reserves" [settings]="reservesSelectSettings" [placeholder]='selectText'
-                                      [data]="options" (onSelect)="onSelect($event)">
-                                    </ng-multiselect-dropdown>
-                                    <p>Le·la référent·e des réserves sélectionnées sera notifié·e de votre sélection.</p>
+                                        <ng-multiselect-dropdown formControlName="reserves"
+                                            [settings]="reservesSelectSettings" [placeholder]='selectText'
+                                            [data]="options" (onSelect)="onSelect($event)">
+                                        </ng-multiselect-dropdown>
+                                        <p>Le·la référent·e des réserves sélectionnées sera notifié·e de votre
+                                            sélection.</p>
                                     </div>
-                                    
-                        </div>
-                            <div class="form-group row" *ngIf="appFormGroup.get('reserves')?.value.length>0">
-                                    <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous indiquez être référent</label>
+
+                                </div>
+                                <div class="form-group row" *ngIf="appFormGroup.get('reserves')?.value.length>0">
+                                    <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous
+                                        indiquez être référent</label>
                                     <div class="col-md-9 col-lg-7">
-                                    <ng-multiselect-dropdown formControlName="reserves_referent" [settings]="reservesSelectSettings" [placeholder]='selectText'
-                                      [data]="appFormGroup.get('reserves')?.value">
-                                    </ng-multiselect-dropdown>
-                                    
-                                    <p>Un·e référent·e doit être désigné·e par réserve, le plus souvent le·la conservateur·trice.</p>
-                                    <p>Ce statut sera modéré par l'administrateur.</p>
+                                        <ng-multiselect-dropdown formControlName="reserves_referent"
+                                            [settings]="reservesSelectSettings" [placeholder]='selectText'
+                                            [data]="appFormGroup.get('reserves')?.value">
+                                        </ng-multiselect-dropdown>
+
+                                        <p>Un·e référent·e doit être désigné·e par réserve, le plus souvent le·la
+                                            conservateur·trice.</p>
+                                        <p>Ce statut sera modéré par l'administrateur.</p>
                                     </div>
-                                
-                            </div>
+
+                                </div>
                                 <!-- <div class="form-group row">
                                     <label for="precisions" class="col-md-3 col-form-label text-end">
                                         Précisions
@@ -220,90 +226,119 @@
 
                                 <h5>Applications</h5>
 
-                                <p>Si vous êtes gestionnaire de réserve naturelle, votre compte sera automatiquement validé, et vous aurez accès aux applications suivantes :</p>
+                                <p>Si vous êtes gestionnaire de réserve naturelle, votre compte sera automatiquement
+                                    validé, et vous aurez accès aux applications suivantes :</p>
                                 <ul>
                                     <li>Tourbières</li>
+                                    <li>Socle</li>
                                 </ul>
 
                                 <p>Cochez les applications dont vous demandez l'accès, celui-ci sera modéré par un
                                     administrateur</p>
 
-                                <p><b> Merci de ne pas cocher toutes les applications par curiosité, mais seulement celles dont vous avez besoin, et motivez votre demande. N'hésitez pas à <a href="mailto:si@rnfrance.org">contacter l'administrateur</a> pour plus de précision.</b></p>
-                                    <div class="row">
-                                        <div class="col-md-3"></div>
-                                        <div
-                                            class=" col-md-6 form-check form-switch">
-                                            <input formControlName="geonature_saisie" type="checkbox"
-                                                class="form-check-input" id="geonature_saisie" value=2>
-                                            <label class="form-check-label" for="geonature_saisie">GeoNature (gestion de vos données naturalistes))</label>
-                                        </div>
-                                        <div class="form-group row precisions" *ngIf="appFormGroup.get('geonature_saisie')!.value == true">
-                                            <label for="precisions_geonature_saisie" class="col-md-4 col-form-label text-end">
-                                                Précisez votre demande d'accès au GeoNature de RNF :
-                                            </label>
-                                            <div class="col-md-8 col-lg-7">
-                                                <textarea type="text" id="precisions_geonature_saisie" class="form-control"
-                                                    placeholder="Précisez votre demande"
-                                                    formControlName="precisions_geonature_saisie"></textarea>
-                                            </div>
+                                <p><b> Merci de ne pas cocher toutes les applications par curiosité, mais seulement
+                                        celles dont vous avez besoin, et motivez votre demande. N'hésitez pas à <a
+                                            href="mailto:si@rnfrance.org">contacter l'administrateur</a> pour plus de
+                                        précision.</b></p>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class=" col-md-6 form-check form-switch">
+                                        <input formControlName="geonature_saisie" type="checkbox"
+                                            class="form-check-input" id="geonature_saisie" value=2>
+                                        <label class="form-check-label" for="geonature_saisie">GeoNature (gestion de vos
+                                            données naturalistes))</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('geonature_saisie')!.value == true">
+                                        <label for="precisions_geonature_saisie"
+                                            class="col-md-4 col-form-label text-end">
+                                            Précisez votre demande d'accès au GeoNature de RNF :
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_geonature_saisie" class="form-control"
+                                                placeholder="Précisez votre demande"
+                                                formControlName="precisions_geonature_saisie"></textarea>
                                         </div>
                                     </div>
-                                    <div class="row">
-                                        <div class="col-md-3"></div>
-                                        <div
-                                            class="col-md-6 form-check form-switch">
-                                            <input formControlName="psdrf" type="checkbox" class="form-check-input"
-                                                id="psdrf" value=2>
-                                            <label class="form-check-label" for="psdrf">Module PSDRF</label>
-                                        </div>
-                                        <div class="form-group row precisions" *ngIf="appFormGroup.get('psdrf')!.value == true">
-                                            <label for="precisions_geonature_saisie" class="col-md-4 col-form-label text-end">
-                                                Précisez votre demande d'accès au module PSDRF:
-                                            </label>
-                                            <div class="col-md-8 col-lg-7">
-                                                <textarea type="text" id="precisions_psdrf" class="form-control"
-                                                    placeholder="Précisez votre demande"
-                                                    formControlName="precisions_psdrf"></textarea>
-                                            </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-6 form-check form-switch">
+                                        <input formControlName="psdrf" type="checkbox" class="form-check-input"
+                                            id="psdrf" value=2>
+                                        <label class="form-check-label" for="psdrf">Module PSDRF</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('psdrf')!.value == true">
+                                        <label for="precisions_geonature_saisie"
+                                            class="col-md-4 col-form-label text-end">
+                                            Précisez votre demande d'accès au module PSDRF:
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_psdrf" class="form-control"
+                                                placeholder="Précisez votre demande"
+                                                formControlName="precisions_psdrf"></textarea>
                                         </div>
                                     </div>
-                                    <div class="row">
-                                        <div class="col-md-3"></div>
-                                        <div
-                                            class="col-md-6 form-check form-switch">
-                                            <input formControlName="ancrage" type="checkbox"
-                                                class="form-check-input" id="ancrage" value=2>
-                                            <label class="form-check-label" for="ancrage">Boîte à Outils
-                                                Diagnotic d'Ancrage Territorial</label>
-                                        </div>
-                                        <div class="form-group row precisions" *ngIf="appFormGroup.get('ancrage')!.value == true">
-                                            <label for="precisions_ancrage" class="col-md-4 col-form-label text-end">
-                                                Précisez votre demande d'accès à la BAO DAT:
-                                            </label>
-                                            <div class="col-md-8 col-lg-7">
-                                                <textarea type="text" id="precisions_ancrage" class="form-control"
-                                                    placeholder="Précisez votre demande"
-                                                    formControlName="precisions_ancrage"></textarea>
-                                            </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-6 form-check form-switch">
+                                        <input formControlName="ancrage" type="checkbox" class="form-check-input"
+                                            id="ancrage" value=2>
+                                        <label class="form-check-label" for="ancrage">Boîte à Outils
+                                            Diagnotic d'Ancrage Territorial</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('ancrage')!.value == true">
+                                        <label for="precisions_ancrage" class="col-md-4 col-form-label text-end">
+                                            Précisez votre demande d'accès à la BAO DAT:
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_ancrage" class="form-control"
+                                                placeholder="Précisez votre demande"
+                                                formControlName="precisions_ancrage"></textarea>
                                         </div>
                                     </div>
-                                    <div class="row">
-                                        <div class="col-md-3"></div>
-                                        <div class="col-md-6 form-check form-switch">
-                                            <input formControlName="opnl" type="checkbox" class="form-check-input"
-                                                id="opnl" value=2>
-                                            <label class="form-check-label" for="opnl">Plateforme OPNL (Accès réservé aux testeurs invités uniquement)</label>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-6 form-check form-switch">
+                                        <input formControlName="opnl" type="checkbox" class="form-check-input" id="opnl"
+                                            value=2>
+                                        <label class="form-check-label" for="opnl">Plateforme OPNL</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('opnl')!.value == true">
+                                        <label for="precisions_geonature_saisie"
+                                            class="col-md-4 col-form-label text-end">
+                                            Précisez votre demande :
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_opnl" class="form-control"
+                                                placeholder="Précisez votre demande"
+                                                formControlName="precisions_opnl"></textarea>
                                         </div>
-                                        <div class="form-group row precisions" *ngIf="appFormGroup.get('opnl')!.value == true">
-                                            <label for="precisions_geonature_saisie" class="col-md-4 col-form-label text-end">
-                                                Précisez votre demande :
-                                            </label>
-                                            <div class="col-md-8 col-lg-7">
-                                                <textarea type="text" id="precisions_opnl" class="form-control"
-                                                    placeholder="Précisez votre demande"
-                                                    formControlName="precisions_opnl"></textarea>
-                                            </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-6 form-check form-switch">
+                                        <input formControlName="waterwise" type="checkbox" class="form-check-input"
+                                            id="opnl" value=2>
+                                        <label class="form-check-label" for="waterwise">Waterwise DB</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('waterwise')!.value == true">
+                                        <label for="precisions_waterwise" class="col-md-4 col-form-label text-end">
+                                            Please specify your request :
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_waterwise" class="form-control"
+                                                placeholder="Please specify your request"
+                                                formControlName="precisions_waterwise"></textarea>
                                         </div>
+                                    </div>
                                 </div>
                             </form>
 

@@ -1,14 +1,14 @@
 import { AfterViewInit, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { UntypedFormGroup, UntypedFormBuilder, Validators, ValidatorFn, AbstractControl, UntypedFormControl } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormControl, UntypedFormGroup, Validators } from '@angular/forms';
 import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
 
 import { ToastrService } from 'ngx-toastr';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
 
-import { MultiSelectReservesOption, Organisme, OrganismeComplet } from '../../models/models';
 import { IDropdownSettings } from 'ng-multiselect-dropdown';
 import { RegisterService } from 'src/app/services/register.service';
+import { MultiSelectReservesOption, Organisme, OrganismeComplet } from '../../models/models';
 
 @Component({
   selector: 'app-sign-up',
@@ -25,7 +25,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   public organisme: OrganismeComplet;
 
   searchTxt: any;
-  ogListe : boolean = true;
+  ogListe: boolean = true;
 
   options: MultiSelectReservesOption[] = [];
 
@@ -35,7 +35,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @ViewChild('singleSelect') singleSelect: MatSelect;
   protected _onDestroy = new Subject<void>();
-  private lastSearch: string ='';
+  private lastSearch: string = '';
 
   constructor(
     private fb: UntypedFormBuilder,
@@ -49,7 +49,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
 
   onSelect(item: any) {
     console.log(this.form.get('reserves')?.value)
-    
+
   }
 
   selectText = 'Sélectionner des réserves'
@@ -61,13 +61,13 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       textField: 'name',
       allowSearchFilter: true,
       enableCheckAll: true,
-      selectAllText:'Toutes les réserves',
+      selectAllText: 'Toutes les réserves',
       unSelectAllText: 'Aucune réserve',
-      
+
       // placeholder: 'Sélectionner vos réserves',
       searchPlaceholderText: 'Rechercher'
     }
-    
+
     this.createForm();
     this._registerService.getOrganismes().subscribe(
       res => {
@@ -79,7 +79,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
             this.filterOrgs();
           });
       }
-    );   
+    );
   }
 
   ngAfterViewInit() {
@@ -101,7 +101,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
         // this needs to be done after the filteredBanks are loaded initially
         // and after the mat-option elements are available
         this.singleSelect.compareWith = (a: Organisme, b: Organisme) => a && b && a.id_organisme === b.id_organisme;
-      });  
+      });
   }
 
   protected filterOrgs() {
@@ -115,7 +115,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       this.writeValue(this.lastSearch);
       this.filteredOrgs.next(
         this.organismes.filter(organisme => organisme.nom_organisme.toLowerCase().indexOf(this.lastSearch) > -1)
-      ); 
+      );
       this.lastSearch = '';
       return;
     } else {
@@ -123,7 +123,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.filteredOrgs.next(
       this.organismes.filter(organisme => organisme.nom_organisme.toLowerCase().indexOf(search) > -1)
-    );  
+    );
     this.lastSearch = search;
   }
 
@@ -142,31 +142,31 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       id_organisme: ['', Validators.required],
       organisme: ['', Validators.required]
     },
-    {
-      validators: [
-        this.ConfirmedValidator('password','password_confirmation'),
-        this.atLeastOneRequired('id_organisme', 'organisme')
-      ]
+      {
+        validators: [
+          this.ConfirmedValidator('password', 'password_confirmation'),
+          this.atLeastOneRequired('id_organisme', 'organisme')
+        ]
 
-    }
+      }
     );
 
     this.form.get('id_organisme')?.valueChanges.subscribe(val => {
       this.options = [];
-      
+
       this._registerService.getOrganisme(val).subscribe(
-        res => {          
+        res => {
           this.organisme = res
           this.organisme.rns.forEach(rn => {
             this.options.push({
               id: rn.rn.area_code,
               name: rn.rn.area_name
-            });            
+            });
           });
           this.options = [...this.options]
-          
+
         }
-      );     
+      );
     })
 
     // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
@@ -180,7 +180,9 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       ancrage: [false, null],
       precisions_ancrage: ['', null],
       opnl: [false, null],
-      precisions_opnl: ['', null]
+      precisions_opnl: ['', null],
+      waterwise: [false, null],
+      precisions_waterwise: ['', null]
     });
 
     this.appFormGroup.get('geonature_saisie')?.valueChanges.subscribe(val => {
@@ -218,6 +220,14 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       this.appFormGroup.controls['precisions_opnl'].updateValueAndValidity();
     })
+    this.appFormGroup.get('waterwise')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_waterwise'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_waterwise'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_waterwise'].updateValueAndValidity();
+    })
   }
 
   save() {
@@ -231,12 +241,12 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       this._registerService
         .signupUser(finalForm)
         .subscribe((res) => {
-          this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.','Votre demande d\'inscription a bien été prise en compte !')
+          this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.', 'Votre demande d\'inscription a bien été prise en compte !')
           this.router.navigate(['/']);
         },
-        error => {
-          this._toasterService.error(error.error.msg, '');
-        })
+          error => {
+            this._toasterService.error(error.error.msg, '');
+          })
         .add(() => {
           this.disableSubmit = false;
         });
@@ -281,7 +291,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   writeValue(value: any): void {
-    if(this.orgFilterCtrl && this.orgFilterCtrl.value!=value) this.orgFilterCtrl.setValue(value, { emitEvent: false });
+    if (this.orgFilterCtrl && this.orgFilterCtrl.value != value) this.orgFilterCtrl.setValue(value, { emitEvent: false });
   }
 
 }

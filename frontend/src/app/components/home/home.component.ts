@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
-import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
-import { Organisme } from '../../models/models';
+import { faArrowUpRightFromSquare, faKey, faUserPlus } from '@fortawesome/free-solid-svg-icons';
 import { User } from '../../home-rnf/models/user.model';
 import { AuthService } from '../../home-rnf/services/auth-service.service';
+import { Organisme } from '../../models/models';
 
 @Component({
   selector: 'app-home',
@@ -12,7 +12,7 @@ import { AuthService } from '../../home-rnf/services/auth-service.service';
 export class HomeComponent implements OnInit {
 
   constructor(
-    
+
     private _authService: AuthService
   ) { }
   protected organismes: Organisme[];
@@ -22,15 +22,15 @@ export class HomeComponent implements OnInit {
 
   Applications = [
     {
-      'nom': 'GeoNature Saisie', 
-      'url':'https://geonature-saisie.reserves-naturelles.org',
+      'nom': 'GeoNature Saisie',
+      'url': 'https://geonature-saisie.reserves-naturelles.org',
       'image': 'geonature-saisie.png',
       'description': 'L\'application GeoNature Saisie est mise à disposition des organismes gestionnaires ne disposant pas des moyens de déployer leur propre infrastructure. Plus d\'informations <a href="https://assoconnect.reserves-naturelles.org/page/2095754-geonature-dans-les-reserves">en cliquant sur ce lien</a>.',
       'si': true
     },
     {
       'nom': 'GeoNature PSDRF',
-      'url':'https://geonature.reserves-naturelles.org',
+      'url': 'https://geonature.reserves-naturelles.org',
       'image': 'geonature-global.png',
       'description': 'Le module PSDRF de GeoNature permet l\'import et la vérification de données du protocole, ainsi que l\'édition d\'un rapport dendrométrique.',
       'si': true
@@ -47,7 +47,7 @@ export class HomeComponent implements OnInit {
       'url': 'https://socle.reserves-naturelles.org/',
       'image': 'socle.png',
       'description': 'SOCLE permet la saisie des données du patrimoine géologique d\'une réserve naturelle, selon les cahiers de géologie édités par RNF.',
-      'si': false
+      'si': true
     },
     {
       'nom': 'Natur\'Adapt',
@@ -56,18 +56,18 @@ export class HomeComponent implements OnInit {
       'description': 'Natur\'Adapt héberge et anime une communauté autour du thème de l\'adaptation des aires protégées au changement climatique.',
       'si': false
     },
-    {
-      'nom': 'ODASE',
-      'url': null,
-      'image': 'odase.png',
-      'description': 'L\'ODASE sera un outil de saisie, de centralisation et d\'exploration des données socio-économique des réserves naturelles. <b>Lancement prévu : 2024</b>',
-      'si': true
-    },
+    // {
+    //   'nom': 'ODASE',
+    //   'url': null,
+    //   'image': 'odase.png',
+    //   'description': 'L\'ODASE sera un outil de saisie, de centralisation et d\'exploration des données socio-économique des réserves naturelles. <b>Lancement prévu : 2024</b>',
+    //   'si': true
+    // },
     {
       'nom': 'Plateforme OPNL',
-      'url': null,
+      'url': 'https://opnl.fr',
       'image': 'opnl.png',
-      'description': 'La plateforme OPNL permettra de centraliser toutes les informations relatives aux activités et productions des membres et partenaires de l\'observatoire du patrimoine naturel littoral. <b>Lancement prévu : Début 2024</b>',
+      'description': 'La plateforme OPNL permet de centraliser toutes les informations relatives aux activités et productions des membres et partenaires de l\'observatoire du patrimoine naturel littoral.',
       'si': true
     },
     {
@@ -82,7 +82,7 @@ export class HomeComponent implements OnInit {
       'url': 'https://www.reserves-naturelles.org/',
       'image': 'site.png',
       'description': 'Le site internet de Réserves Naturelles de France est le portail grand public qui permet d\'accéder à toutes les informations utiles sur les réserves naturelles et le réseau.',
-      'si': false
+      'si': true
     },
     {
       'nom': 'Pearltrees',
@@ -110,8 +110,8 @@ export class HomeComponent implements OnInit {
   ngOnInit(): void {
   }
 
-  public get user(): null|User {
-    return this._authService.getCurrentUser();    
+  public get user(): null | User {
+    return this._authService.getCurrentUser();
   }
 
 }
