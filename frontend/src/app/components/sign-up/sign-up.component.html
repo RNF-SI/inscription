@@ -245,8 +245,8 @@
                                     <div class=" col-md-6 form-check form-switch">
                                         <input formControlName="geonature_saisie" type="checkbox"
                                             class="form-check-input" id="geonature_saisie" value=2>
-                                        <label class="form-check-label" for="geonature_saisie">GeoNature (gestion de vos
-                                            données naturalistes))</label>
+                                        <label class="form-check-label" for="geonature_saisie">GeoNature (saisie de vos
+                                            données naturalistes - ne permet pas un accès au SINP)</label>
                                     </div>
                                     <div class="form-group row precisions"
                                         *ngIf="appFormGroup.get('geonature_saisie')!.value == true">
@@ -318,6 +318,26 @@
                                             <textarea type="text" id="precisions_opnl" class="form-control"
                                                 placeholder="Précisez votre demande"
                                                 formControlName="precisions_opnl"></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-6 form-check form-switch">
+                                        <input formControlName="syrphes" type="checkbox" class="form-check-input"
+                                            id="syrphes" value=2>
+                                        <label class="form-check-label" for="opnl">BDD nationale syrphes
+                                            (experts)</label>
+                                    </div>
+                                    <div class="form-group row precisions"
+                                        *ngIf="appFormGroup.get('syrphes')!.value == true">
+                                        <label for="precisions_syrphes" class="col-md-4 col-form-label text-end">
+                                            Précisez votre demande :
+                                        </label>
+                                        <div class="col-md-8 col-lg-7">
+                                            <textarea type="text" id="precisions_syrphes" class="form-control"
+                                                placeholder="Précisez votre demande"
+                                                formControlName="precisions_syrphes"></textarea>
                                         </div>
                                     </div>
                                 </div>

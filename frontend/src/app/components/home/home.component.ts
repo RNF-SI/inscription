@@ -104,6 +104,13 @@ export class HomeComponent implements OnInit {
       'image': 'tourbieres.png',
       'description': 'RNF a centralisé les données des tourbières du réseau. Retrouvez les réserves et leur contact selon les caractéristiques de leurs tourbières.',
       'si': true
+    },
+    {
+      'nom': 'Waterwise DB management',
+      'url': 'https://waterwise.reserves-naturelles.org/',
+      'image': 'tourbieres.png',
+      'description': 'Application d\'import de données temporelles pour les besoins du projet waterwise (temperatures, débit...).',
+      'si': true
     }
   ]
 

@@ -182,7 +182,9 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       opnl: [false, null],
       precisions_opnl: ['', null],
       waterwise: [false, null],
-      precisions_waterwise: ['', null]
+      precisions_waterwise: ['', null],
+      syrphes: [false, null],
+      precisions_syrphes: ['', null]
     });
 
     this.appFormGroup.get('geonature_saisie')?.valueChanges.subscribe(val => {
@@ -227,6 +229,14 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
         this.appFormGroup.controls['precisions_waterwise'].clearValidators();
       }
       this.appFormGroup.controls['precisions_waterwise'].updateValueAndValidity();
+    })
+    this.appFormGroup.get('syrphes')?.valueChanges.subscribe(val => {
+      if (val == true) {
+        this.appFormGroup.controls['precisions_syrphes'].setValidators([Validators.required]);
+      } else {
+        this.appFormGroup.controls['precisions_syrphes'].clearValidators();
+      }
+      this.appFormGroup.controls['precisions_syrphes'].updateValueAndValidity();
     })
   }
 
