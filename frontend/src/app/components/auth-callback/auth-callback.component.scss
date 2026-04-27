@@ -1,0 +1,31 @@
+.callback-wrapper {
+  min-height: 45vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.callback-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  min-width: 120px;
+}
+
+.callback-loading {
+  flex-direction: column;
+}
+
+.callback-loading-title {
+  color: #2c7a45;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+
+.callback-error {
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: center;
+}

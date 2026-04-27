@@ -1,0 +1,74 @@
+<div class="container p-3">
+  <h3>Administration</h3>
+  <p *ngIf="loading">Chargement…</p>
+
+  <h4 class="mt-4">Demandes d’inscription</h4>
+  <table class="table table-sm" *ngIf="registrations.length">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Statut</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let r of registrations">
+        <td>{{ r.email }}</td>
+        <td>{{ r.status }}</td>
+        <td>
+          <button class="btn btn-sm btn-success me-1" *ngIf="r.status === 'pending_super'" (click)="approveReg(r.public_id)">Valider (super)</button>
+          <button class="btn btn-sm btn-outline-danger" *ngIf="r.status === 'pending_super'" (click)="rejectReg(r.public_id)">Refuser</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4 class="mt-4">Demandes d’accès en attente</h4>
+  <table class="table table-sm" *ngIf="pending.length">
+    <thead>
+      <tr>
+        <th>Application</th>
+        <th>Demandeur</th>
+        <th>Type</th>
+        <th>Justification</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let p of pending">
+        <td>{{ p.application.nom }}</td>
+        <td>{{ p.applicant_email }}</td>
+        <td>{{ p.kind }}</td>
+        <td>{{ p.request_justification || '-' }}</td>
+        <td>
+          <button
+            class="btn btn-sm btn-success me-1"
+            (click)="decide(p.item_id, p.kind, true)"
+            [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+          >
+            <span
+              *ngIf="isDecisionLoading(p.item_id, p.kind, true)"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            <span>{{ isDecisionLoading(p.item_id, p.kind, true) ? 'Envoi…' : 'Accorder' }}</span>
+          </button>
+          <button
+            class="btn btn-sm btn-outline-danger"
+            (click)="decide(p.item_id, p.kind, false)"
+            [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+          >
+            <span
+              *ngIf="isDecisionLoading(p.item_id, p.kind, false)"
+              class="spinner-border spinner-border-sm me-1"
+              role="status"
+              aria-hidden="true"
+            ></span>
+            <span>{{ isDecisionLoading(p.item_id, p.kind, false) ? 'Envoi…' : 'Refuser' }}</span>
+          </button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

@@ -1,0 +1,26 @@
+Cutover et rollback — inscription Django + Keycloak
+===================================================
+
+Pré-requis
+----------
+- Base PostgreSQL dédiée (DATABASE_URL) migrée (`manage.py migrate`).
+- Keycloak : client SPA + client de service Admin API (secret), mappers groupe → rôle client `access`.
+- Variables : voir `.env.example`.
+
+Séquence de cutover (résumé)
+----------------------------
+1. Déployer le backend Django derrière le même préfixe `/api` qu’attendu par le frontend.
+2. Exécuter `python manage.py seed_catalog` puis `python manage.py migrate_legacy` si LEGACY_DATABASE_URL est défini.
+3. Créer au moins un super-admin Django : `UserProfile` avec `is_super_admin=True` (admin Django ou shell).
+4. Bascule DNS / reverse-proxy du frontend vers la nouvelle API.
+5. Vérifier inscription test + échange de jeton Keycloak + décision admin.
+
+Rollback
+--------
+- Rétablir le proxy `/api` vers l’ancien backend Flask.
+- Conserver la nouvelle base : aucune destruction automatique.
+
+Sécurité
+--------
+- Ne pas exposer les causes Keycloak aux clients ; consulter les logs serveur.
+- Désactiver KEYCLOAK_SYNC_ENABLED=0 pour diagnostiquer sans modifier Keycloak.

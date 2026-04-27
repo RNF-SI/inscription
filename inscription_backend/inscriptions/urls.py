@@ -1,0 +1,36 @@
+from django.urls import path
+
+from inscriptions import views
+
+urlpatterns = [
+    path("organismes/", views.OrganismeListView.as_view()),
+    path("organismes/<int:pk>/", views.OrganismeDetailView.as_view()),
+    path("organisme/<int:pk>/", views.OrganismeDetailView.as_view()),
+    path("reserves/", views.ReserveListView.as_view()),
+    path("applications/", views.ApplicationListView.as_view()),
+    path("register/", views.RegisterView.as_view()),
+    path("auth/keycloak-config/", views.KeycloakPublicConfigView.as_view()),
+    path("auth/token/", views.TokenExchangeView.as_view()),
+    path("auth/refresh/", views.RefreshTokenView.as_view()),
+    path("me/", views.MeView.as_view()),
+    path("me/additional-access/", views.AdditionalAccessCreateView.as_view()),
+    path("notifications/", views.NotificationListView.as_view()),
+    path("notifications/<int:pk>/mark-read/", views.NotificationMarkReadView.as_view()),
+    path("admin/registration-requests/", views.AdminRegistrationListView.as_view()),
+    path("admin/registration-requests/<uuid:public_id>/", views.AdminRegistrationDetailView.as_view()),
+    path("admin/registration-requests/<uuid:public_id>/super-approve/", views.AdminSuperApproveView.as_view()),
+    path("admin/registration-requests/<uuid:public_id>/super-reject/", views.AdminSuperRejectView.as_view()),
+    path("admin/pending-items/", views.AdminPendingItemsView.as_view()),
+    path(
+        "admin/registration-items/<int:item_id>/<str:decision>/",
+        views.AdminDecideRegistrationItemView.as_view(),
+    ),
+    path(
+        "admin/additional-items/<int:item_id>/<str:decision>/",
+        views.AdminDecideAdditionalItemView.as_view(),
+    ),
+    path(
+        "admin/applications/<slug:application_slug>/revoke/<str:user_sub>/",
+        views.AdminRevokeAccessView.as_view(),
+    ),
+]

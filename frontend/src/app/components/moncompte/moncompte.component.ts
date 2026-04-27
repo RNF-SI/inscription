@@ -1,97 +1,70 @@
-import { Component } from '@angular/core';
-import { UntypedFormGroup } from '@angular/forms';
-import { IDropdownSettings } from 'ng-multiselect-dropdown';
-import { switchMap } from 'rxjs';
+import { Component, OnInit } from '@angular/core';
+import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
+import { ApiService, MeResponse } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
-import { MultiSelectReservesOption } from 'src/app/models/models';
-import { UserDataService } from 'src/app/services/user-data.service';
 
 @Component({
   selector: 'app-moncompte',
   templateUrl: './moncompte.component.html',
-  styleUrls: ['./moncompte.component.scss']
+  styleUrls: ['./moncompte.component.scss'],
 })
-export class MoncompteComponent {
-
+export class MoncompteComponent implements OnInit {
   form: UntypedFormGroup;
-  user: any = [];
-  selectText = 'Sélectionner des réserves'
+  me: MeResponse | null = null;
+  notifications: { id: number; title: string; body: string; read: boolean }[] = [];
+  extraSlugs = '';
+  extraRemarks = '';
 
-  constructor(
-    private authService: AuthService,
-    // private roleFormService: RoleFormService,
-     private userService: UserDataService
-  ) {}
+  constructor(private fb: UntypedFormBuilder, private auth: AuthService, private api: ApiService) {}
 
-  reservesSelectSettings: IDropdownSettings;
-  options: MultiSelectReservesOption[] = [];
-
-  ngOnInit() {
-    this.initForm();
-    
-    this.reservesSelectSettings = {
-      singleSelection: false,
-      idField: 'id',
-      textField: 'name',
-      allowSearchFilter: true,
-      enableCheckAll: true,
-      selectAllText:'Toutes les réserves',
-      unSelectAllText: 'Aucune réserve',
-      
-      // placeholder: 'Sélectionner vos réserves',
-      searchPlaceholderText: 'Rechercher'
-    }
-  }
-
-  initForm() {
-    this.options = [];
-    this.form = this.getForm(this.authService.getCurrentUser().id_role);
-    this.userService.getRole(this.authService.getCurrentUser().id_role).subscribe(
-      obj => {
-        obj.organisme.rns.forEach((rn: { rn: { area_code: any; area_name: any; }; }) => {
-          this.options.push({
-            id: rn.rn.area_code,
-            name: rn.rn.area_name
-          });  
+  ngOnInit(): void {
+    this.form = this.fb.group({
+      identifiant: [{ value: '', disabled: true }],
+      nom_role: [{ value: '', disabled: true }],
+      prenom_role: [{ value: '', disabled: true }],
+      organisme: [{ value: '', disabled: true }],
+      email: [{ value: '', disabled: true }],
+      remarques: [{ value: '', disabled: true }],
+    });
+    this.api.getMe().subscribe({
+      next: (me) => {
+        this.me = me;
+        localStorage.setItem('me_snapshot', JSON.stringify(me));
+        const p = me.profile;
+        this.form.patchValue({
+          identifiant: p.username || '',
+          nom_role: p.last_name || '',
+          prenom_role: p.first_name || '',
+          organisme: '',
+          email: p.email || '',
+          remarques: '',
         });
-        this.user = obj;
-      }
-    );
+      },
+    });
+    this.api.getNotifications().subscribe({
+      next: (n) => (this.notifications = n),
+      error: () => (this.notifications = []),
+    });
   }
 
-  getForm(role: number): UntypedFormGroup {
-    return this.userService.getForm(role);
+  markRead(id: number) {
+    this.api.markNotificationRead(id).subscribe(() => {
+      this.api.getNotifications().subscribe((n) => (this.notifications = n));
+    });
   }
 
-  // save() {
-  //   if (this.form.valid) {
-  //     this.userService.putRole(this.form.value).subscribe((res) => this.form.disable());
-  //     this.userService.getRole(this.authService.getCurrentUser().id_role).subscribe(
-  //       obj => {
-  //         this.user = obj;
-  //         console.log(this.user);
-  //       }
-  //     );
-      
-  //   }
-  // }
-  save() {
-    if (this.form.valid) {
-      // Appel à putRole et utilisation de switchMap pour enchainer avec getRole
-      this.userService.putRole(this.form.value).pipe(
-        switchMap(() => this.userService.getRole(this.authService.getCurrentUser().id_role))
-      ).subscribe(
-        obj => {
-          this.user = obj;
-          console.log(this.user);
-          this.form.disable();
-        }
-      );
+  sendAdditional() {
+    const slugs = this.extraSlugs
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!slugs.length) {
+      return;
     }
-  }
-
-  cancel() {
-    this.initForm();
-    this.form.disable();
+    this.api.requestAdditionalAccess(slugs, this.extraRemarks).subscribe(() => {
+      this.extraSlugs = '';
+      this.extraRemarks = '';
+      this.auth.refreshMeFromApi().subscribe();
+    });
   }
 }

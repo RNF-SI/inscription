@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import re
+
+from django.db import transaction
+from rest_framework import serializers
+
+from inscriptions.crypto_util import encrypt_text
+from inscriptions.models import (
+    Application,
+    Notification,
+    Organisme,
+    RegistrationRequest,
+    Reserve,
+    UserApplicationAccess,
+    UserProfile,
+    UserReserveLink,
+)
+
+
+class OrganismeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organisme
+        fields = ("id_organisme", "uuid_organisme", "nom_organisme", "keycloak_slug")
+
+
+class ReserveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reserve
+        fields = ("area_code", "area_name", "id_type")
+
+
+class OrganismeDetailSerializer(serializers.ModelSerializer):
+    rns = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Organisme
+        fields = ("id_organisme", "uuid_organisme", "nom_organisme", "keycloak_slug", "rns")
+
+    def get_rns(self, obj):
+        links = obj.reserve_links.select_related("reserve").all()
+        return [{"rn": ReserveSerializer(l.reserve).data, "principal": l.principal} for l in links]
+
+
+class ApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Application
+        fields = (
+            "slug",
+            "nom",
+            "url",
+            "image",
+            "description",
+            "managed_by_si",
+            "requires_access_request",
+            "keycloak_client_id",
+        )
+
+
+class SignupItemSerializer(serializers.Serializer):
+    application_slug = serializers.SlugField()
+    justification = serializers.CharField(required=False, allow_blank=True)
+
+
+class SignupSerializer(serializers.Serializer):
+    nom_role = serializers.CharField()
+    prenom_role = serializers.CharField()
+    identifiant = serializers.CharField()
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirmation = serializers.CharField(write_only=True)
+    remarques = serializers.CharField(allow_blank=True)
+    id_organisme = serializers.IntegerField(required=False, allow_null=True)
+    organisme = serializers.CharField(required=False, allow_blank=True)
+    champs_addi = serializers.DictField(required=False, default=dict)
+    applications = SignupItemSerializer(many=True, required=False, default=list)
+
+    def run_validation(self, data=serializers.empty):
+        if data is serializers.empty or not isinstance(data, dict):
+            return super().run_validation(data)
+        data = {**data}
+        # Le front envoie souvent "" quand l’organisme est saisi en texte libre (sans id liste).
+        raw_org = data.get("id_organisme")
+        if raw_org in ("", None):
+            data["id_organisme"] = None
+        elif isinstance(raw_org, str):
+            s = raw_org.strip()
+            if not s:
+                data["id_organisme"] = None
+            else:
+                try:
+                    data["id_organisme"] = int(s)
+                except ValueError:
+                    data["id_organisme"] = None
+        if "champs_addi" in data and not isinstance(data.get("champs_addi"), dict):
+            data["champs_addi"] = {}
+        if "applications" in data and data["applications"] is None:
+            data["applications"] = []
+        return super().run_validation(data)
+
+    def validate(self, attrs):
+        identifiant = (attrs.get("identifiant") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9]+", identifiant):
+            raise serializers.ValidationError(
+                {"identifiant": "Le login ne doit contenir que des lettres et des chiffres."}
+            )
+        attrs["identifiant"] = identifiant
+        if attrs["password"] != attrs["password_confirmation"]:
+            raise serializers.ValidationError({"password_confirmation": "Les mots de passe ne correspondent pas."})
+        attrs["remarques"] = (attrs.get("remarques") or "").strip()
+        apps = attrs.get("applications") or []
+        slugs = [x.get("application_slug") for x in apps if x.get("application_slug")]
+        if slugs:
+            req_apps = {
+                a.slug: a
+                for a in Application.objects.filter(slug__in=slugs, requires_access_request=True)
+            }
+            missing = []
+            for item in apps:
+                slug = item.get("application_slug")
+                if slug in req_apps and not (item.get("justification") or "").strip():
+                    missing.append(slug)
+            if missing:
+                raise serializers.ValidationError(
+                    {"applications": f"Justification requise pour: {', '.join(sorted(missing))}"}
+                )
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        from inscriptions.models import AccessRequestItem
+
+        champs = validated_data.get("champs_addi") or {}
+        reserve_codes = []
+        reserves_val = champs.get("reserves")
+        if isinstance(reserves_val, list):
+            for r in reserves_val:
+                if isinstance(r, dict) and r.get("id"):
+                    reserve_codes.append(str(r["id"]))
+        org_id = validated_data.get("id_organisme")
+        organisme = None
+        if org_id:
+            organisme = Organisme.objects.filter(pk=org_id).first()
+
+        cipher = encrypt_text(validated_data["password"])
+        rr = RegistrationRequest.objects.create(
+            email=validated_data["email"].lower(),
+            username=validated_data["identifiant"],
+            password_cipher=cipher,
+            first_name=validated_data["prenom_role"],
+            last_name=validated_data["nom_role"],
+            organisme=organisme,
+            remarks=validated_data["remarques"],
+            champs_addi=champs,
+            reserve_codes=reserve_codes,
+        )
+        by_slug = {}
+        for item in validated_data.get("applications") or []:
+            slug = item.get("application_slug")
+            if not slug:
+                continue
+            by_slug[slug] = (item.get("justification") or "").strip()
+
+        for slug, justification in sorted(by_slug.items(), key=lambda x: x[0]):
+            app = Application.objects.filter(slug=slug).first()
+            if app and app.requires_access_request:
+                AccessRequestItem.objects.create(
+                    registration=rr,
+                    application=app,
+                    origin=AccessRequestItem.ORIGIN_REGISTRATION,
+                    request_public_id=rr.public_id,
+                    request_justification=justification,
+                )
+        return rr
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ("id", "title", "body", "read", "created_at")
+
+
+class UserApplicationAccessSerializer(serializers.ModelSerializer):
+    application = ApplicationSerializer()
+
+    class Meta:
+        model = UserApplicationAccess
+        fields = ("application", "status", "updated_at")
+
+
+class MeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = (
+            "keycloak_sub",
+            "email",
+            "username",
+            "first_name",
+            "last_name",
+            "is_super_admin",
+            "legacy_id_role",
+        )
+
+
+class AdditionalAccessSerializer(serializers.Serializer):
+    application_slugs = serializers.ListField(child=serializers.SlugField(), min_length=1)
+    remarks = serializers.CharField(required=False, allow_blank=True)

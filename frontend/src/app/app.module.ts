@@ -26,7 +26,7 @@ import { HomeComponent } from './components/home/home.component';
 import { FontAwesomeModule, FaIconLibrary } from '@fortawesome/angular-fontawesome';
 import { RandomOrderPipe } from './pipes/random-order.pipe';
 
-import { faKey, faUserPlus, faArrowUpRightFromSquare } from '@fortawesome/free-solid-svg-icons';
+import { faKey, faUserPlus, faArrowUpRightFromSquare, faCheck, faClock, faBan } from '@fortawesome/free-solid-svg-icons';
 import { faFacebook, faInstagram, faGithub, faLinkedin} from '@fortawesome/free-brands-svg-icons';
 
 import { MatButtonModule } from '@angular/material/button';
@@ -36,6 +36,8 @@ import { ResetPasswordComponent } from './components/reset-password/reset-passwo
 import { NgMultiSelectDropDownModule } from 'ng-multiselect-dropdown';
 import { MoncompteComponent } from './components/moncompte/moncompte.component';
 import { SearchPipe } from './pipes/search.pipe';
+import { AuthCallbackComponent } from './components/auth-callback/auth-callback.component';
+import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
 
 @NgModule({
   declarations: [
@@ -45,7 +47,9 @@ import { SearchPipe } from './pipes/search.pipe';
     RandomOrderPipe,
     SearchPipe,
     ResetPasswordComponent,
-    MoncompteComponent
+    MoncompteComponent,
+    AuthCallbackComponent,
+    AdminDashboardComponent,
   ],
   imports: [
     HttpClientModule,
@@ -84,6 +88,9 @@ export class AppModule {
       faKey,
       faUserPlus,
       faArrowUpRightFromSquare,
+      faCheck,
+      faClock,
+      faBan,
       faFacebook,
       faInstagram,
       faGithub,

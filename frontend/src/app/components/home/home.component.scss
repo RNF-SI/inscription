@@ -87,11 +87,66 @@
   }
 
   mat-card-actions {
-    display: block;
-    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-top: auto;
     margin-bottom: 5px;
   }
+
+.access-state-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.access-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-active {
+  color: #1f7a3d;
+  background: #e8f5eb;
+}
+
+.status-pending {
+  color: #7a5a00;
+  background: #fff7e0;
+}
+
+.status-revoked {
+  color: #8d1d2d;
+  background: #fdecef;
+}
+
+.status-none {
+  color: #51606f;
+  background: #eef2f7;
+}
+
+.status-independent {
+  color: #0b4f9f;
+  background: #e8f2ff;
+}
+
+.access-request-modal-header {
+  background: #f5faf7;
+}
+
+.access-request-modal-body .form-label {
+  font-weight: 600;
+}
+
+.access-request-modal-body textarea.form-control:focus {
+  border-color: #0b885d;
+  box-shadow: 0 0 0 0.2rem rgba(11, 136, 93, 0.15);
+}
 
   .panel-footer {
     padding-top: 1px;

@@ -10,6 +10,13 @@ import { IDropdownSettings } from 'ng-multiselect-dropdown';
 import { RegisterService } from 'src/app/services/register.service';
 import { MultiSelectReservesOption, Organisme, OrganismeComplet } from '../../models/models';
 
+type SignupApplication = {
+  slug: string;
+  nom: string;
+  managed_by_si: boolean;
+  requires_access_request: boolean;
+};
+
 @Component({
   selector: 'app-sign-up',
   templateUrl: './sign-up.component.html',
@@ -28,6 +35,10 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
   ogListe: boolean = true;
 
   options: MultiSelectReservesOption[] = [];
+  requestableApplications: SignupApplication[] = [];
+  openApplications: SignupApplication[] = [];
+  selectedApplications: { [slug: string]: boolean } = {};
+  applicationJustifications: { [slug: string]: string } = {};
 
   public orgaCtrl: UntypedFormControl = new UntypedFormControl();
   public orgFilterCtrl: UntypedFormControl = new UntypedFormControl();
@@ -80,6 +91,11 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           });
       }
     );
+    this._registerService.getApplications().subscribe((apps) => {
+      const list: SignupApplication[] = apps || [];
+      this.requestableApplications = list.filter((a) => a.requires_access_request);
+      this.openApplications = list.filter((a) => a.managed_by_si && !a.requires_access_request);
+    });
   }
 
   ngAfterViewInit() {
@@ -131,12 +147,12 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     this.form = this.fb.group({
       nom_role: ['', Validators.required],
       prenom_role: ['', Validators.required],
-      identifiant: ['', Validators.required],
+      identifiant: ['', [Validators.required, Validators.pattern(/^[A-Za-z0-9]+$/)]],
       email: [
         '',
         [Validators.email, Validators.required],
       ],
-      password: ['', [Validators.required]],
+      password: ['', [Validators.required, Validators.minLength(8)]],
       password_confirmation: ['', [Validators.required]],
       remarques: ['', Validators.required],
       id_organisme: ['', Validators.required],
@@ -169,85 +185,63 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       );
     })
 
-    // this.form.setValidators([this.similarValidator('password', 'password_confirmation')]);
     this.appFormGroup = this.fb.group({
       reserves: ['', null],
       reserves_referent: ['', null],
-      geonature_saisie: [false, null],
-      precisions_geonature_saisie: ['', null],
-      psdrf: [false, null],
-      precisions_psdrf: ['', null],
-      ancrage: [false, null],
-      precisions_ancrage: ['', null],
-      opnl: [false, null],
-      precisions_opnl: ['', null],
-      waterwise: [false, null],
-      precisions_waterwise: ['', null],
-      syrphes: [false, null],
-      precisions_syrphes: ['', null]
     });
+  }
 
-    this.appFormGroup.get('geonature_saisie')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_geonature_saisie'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_geonature_saisie'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_geonature_saisie'].updateValueAndValidity();
-    });
+  toggleApplication(slug: string, checked: boolean) {
+    this.selectedApplications[slug] = checked;
+    if (!checked) {
+      this.applicationJustifications[slug] = '';
+    }
+  }
 
-    this.appFormGroup.get('ancrage')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_ancrage'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_ancrage'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_ancrage'].updateValueAndValidity();
-    });
+  setJustification(slug: string, value: string) {
+    this.applicationJustifications[slug] = value;
+  }
 
-    this.appFormGroup.get('psdrf')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_psdrf'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_psdrf'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_psdrf'].updateValueAndValidity();
-    });
+  isApplicationSelected(slug: string): boolean {
+    return !!this.selectedApplications[slug];
+  }
 
-    this.appFormGroup.get('opnl')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_opnl'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_opnl'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_opnl'].updateValueAndValidity();
-    })
-    this.appFormGroup.get('waterwise')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_waterwise'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_waterwise'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_waterwise'].updateValueAndValidity();
-    })
-    this.appFormGroup.get('syrphes')?.valueChanges.subscribe(val => {
-      if (val == true) {
-        this.appFormGroup.controls['precisions_syrphes'].setValidators([Validators.required]);
-      } else {
-        this.appFormGroup.controls['precisions_syrphes'].clearValidators();
-      }
-      this.appFormGroup.controls['precisions_syrphes'].updateValueAndValidity();
-    })
+  selectedRequestableCount(): number {
+    return Object.keys(this.selectedApplications).filter((s) => this.selectedApplications[s]).length;
+  }
+
+  invalidSelectedApplications(): SignupApplication[] {
+    return this.requestableApplications.filter(
+      (app) => this.selectedApplications[app.slug] && !(this.applicationJustifications[app.slug] || '').trim()
+    );
+  }
+
+  buildApplicationsPayload() {
+    return this.requestableApplications
+      .filter((app) => this.selectedApplications[app.slug])
+      .map((app) => ({
+        application_slug: app.slug,
+        justification: (this.applicationJustifications[app.slug] || '').trim(),
+      }));
   }
 
   save() {
     if (this.form.valid) {
+      const invalid = this.invalidSelectedApplications();
+      if (invalid.length > 0) {
+        this._toasterService.error(
+          'Merci de renseigner une justification pour chaque application demandée.',
+          'Inscription'
+        );
+        return;
+      }
       this.disableSubmit = true;
       // mise en minuscule du mail (pour faciliter la vérification)
       this.form.value['email'] = this.form.value['email'].toLowerCase();
       const finalForm = Object.assign({}, this.form.value);
       // concatenate two forms
       finalForm['champs_addi'] = this.appFormGroup.value;
+      finalForm['applications'] = this.buildApplicationsPayload();
       this._registerService
         .signupUser(finalForm)
         .subscribe((res) => {
@@ -255,7 +249,13 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           this.router.navigate(['/']);
         },
           error => {
-            this._toasterService.error(error.error.msg, '');
+            const body = error.error;
+            const detail =
+              body?.msg ||
+              (body?.errors ? JSON.stringify(body.errors) : '') ||
+              error.message ||
+              'Erreur serveur';
+            this._toasterService.error(detail, 'Inscription');
           })
         .add(() => {
           this.disableSubmit = false;

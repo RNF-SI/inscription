@@ -1,0 +1,44 @@
+Keycloak V1 — spécification d’intégration (inscription_backend)
+==============================================================
+
+Arborescence de groupes (convention)
+------------------------------------
+- organismes/<slug-organisme>  attributs: id_organisme, nom_organisme, uuid_organisme
+- reserves/<code>               ex. reserves/RNN41 (area_code)
+- applications/<slug-app>       ex. applications/geonature-test
+
+Droit d’entrée applicatif
+-------------------------
+- Un groupe par application sous applications/<slug>.
+- Rôle client minimal recommandé: <client-id>:access (mappers « realm » ou « client » depuis le groupe, selon config Keycloak existante).
+- Hors V1: arborescence /geonature/... et droits internes applicatifs.
+
+ensure_group_path (idempotent)
+------------------------------
+1. Résoudre ou créer le groupe racine (organismes | reserves | applications).
+2. Pour chaque segment du chemin (slug ou code), GET children du parent ; si absent, POST sous-groupe.
+3. Pour organismes: PUT attributs id_organisme, nom_organisme, uuid_organisme depuis le référentiel Django.
+
+API Admin Keycloak utilisée
+---------------------------
+- GET/POST /admin/realms/{realm}/groups
+- GET/PUT /admin/realms/{realm}/groups/{id}
+- PUT /admin/realms/{realm}/users/{id}/groups/{groupId}
+- DELETE .../users/{id}/groups/{groupId}
+- POST /admin/realms/{realm}/users (création utilisateur)
+
+Front Angular
+-------------
+- La redirection login/logout lit la config via **GET /api/auth/keycloak-config/** (dérivée de KEYCLOAK_BASE_URL, KEYCLOAK_REALM, KEYCLOAK_APP_CLIENT_ID côté Django).
+- En cas d’échec de cette requête, repli sur `environment.ts`. Après changement d’URL Keycloak, vider le cache navigateur pour `sessionStorage` (clé `keycloak_public_config`) ou onglet privé.
+
+Variables d’environnement (voir config/settings.py)
+----------------------------------------------------
+KEYCLOAK_BASE_URL, KEYCLOAK_REALM, KEYCLOAK_ADMIN_CLIENT_ID,
+KEYCLOAK_ADMIN_CLIENT_SECRET (ou service account), KEYCLOAK_APP_CLIENT_ID (SPA),
+KEYCLOAK_APP_CLIENT_SECRET (pour échange code serveur si confidential).
+
+Audit / sécurité
+----------------
+- Refus d’accès côté login: message générique (thème Keycloak / flow custom — hors repo).
+- Logs Django: cause interne des erreurs Keycloak (sans les renvoyer au client).
