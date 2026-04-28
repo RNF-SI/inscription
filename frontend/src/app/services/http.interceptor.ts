@@ -1,4 +1,4 @@
-import { Observable, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 import { Injectable } from '@angular/core';
 import {
@@ -77,6 +77,7 @@ export class MyCustomInterceptor implements HttpInterceptor {
       request.url.includes('/auth/token/') ||
       request.url.includes('/auth/refresh/') ||
       request.url.includes('/auth/keycloak-config/');
+    const shouldForceFreshClaims = request.url.includes('/me/');
 
     const addBearer = (req: HttpRequest<any>): HttpRequest<any> => {
       const access = localStorage.getItem('access_token');
@@ -99,7 +100,13 @@ export class MyCustomInterceptor implements HttpInterceptor {
       return next.handle(addBearer(request));
     }
 
-    return this.authService.ensureFreshToken().pipe(
+    const tokenRefresh$ = shouldForceFreshClaims
+      ? this.authService.refreshAccessToken().pipe(
+          switchMap((ok) => (ok ? of(true) : this.authService.ensureFreshToken()))
+        )
+      : this.authService.ensureFreshToken();
+
+    return tokenRefresh$.pipe(
       switchMap(() => next.handle(addBearer(request))),
       catchError((err: any) => {
         if (err?.status === 401 && this.authService.hasRefreshTokenValid()) {

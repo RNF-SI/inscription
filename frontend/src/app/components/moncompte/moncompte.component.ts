@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
-import { ApiService, MeResponse } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { ApiService, MeResponse, ReserveOptionDto } from 'src/app/services/api.service';
 
 @Component({
   selector: 'app-moncompte',
@@ -11,60 +11,187 @@ import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
 export class MoncompteComponent implements OnInit {
   form: UntypedFormGroup;
   me: MeResponse | null = null;
-  notifications: { id: number; title: string; body: string; read: boolean }[] = [];
-  extraSlugs = '';
-  extraRemarks = '';
+  saving = false;
+  isEditing = false;
+  reserveOptions: ReserveOptionDto[] = [];
+  selectedReserveToAdd = '';
+  reserveSaving = false;
+  referentSavingCode: string | null = null;
 
-  constructor(private fb: UntypedFormBuilder, private auth: AuthService, private api: ApiService) {}
+  constructor(private fb: UntypedFormBuilder, private api: ApiService, private auth: AuthService) {}
 
   ngOnInit(): void {
     this.form = this.fb.group({
       identifiant: [{ value: '', disabled: true }],
-      nom_role: [{ value: '', disabled: true }],
-      prenom_role: [{ value: '', disabled: true }],
+      nom_role: [''],
+      prenom_role: [''],
+      fonction: [''],
       organisme: [{ value: '', disabled: true }],
-      email: [{ value: '', disabled: true }],
-      remarques: [{ value: '', disabled: true }],
+      email: [''],
     });
     this.api.getMe().subscribe({
       next: (me) => {
         this.me = me;
         localStorage.setItem('me_snapshot', JSON.stringify(me));
-        const p = me.profile;
-        this.form.patchValue({
-          identifiant: p.username || '',
-          nom_role: p.last_name || '',
-          prenom_role: p.first_name || '',
-          organisme: '',
-          email: p.email || '',
-          remarques: '',
-        });
+        this.patchFormFromMe(me);
       },
     });
-    this.api.getNotifications().subscribe({
-      next: (n) => (this.notifications = n),
-      error: () => (this.notifications = []),
-    });
+    this.loadReserveOptions();
   }
 
-  markRead(id: number) {
-    this.api.markNotificationRead(id).subscribe(() => {
-      this.api.getNotifications().subscribe((n) => (this.notifications = n));
-    });
+  edit(): void {
+    this.isEditing = true;
+    if (this.me) {
+      this.patchFormFromMe(this.me);
+    }
   }
 
-  sendAdditional() {
-    const slugs = this.extraSlugs
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!slugs.length) {
+  cancel(): void {
+    this.isEditing = false;
+    this.selectedReserveToAdd = '';
+    if (this.me) {
+      this.patchFormFromMe(this.me);
+    }
+  }
+
+  save(): void {
+    if (this.saving) {
       return;
     }
-    this.api.requestAdditionalAccess(slugs, this.extraRemarks).subscribe(() => {
-      this.extraSlugs = '';
-      this.extraRemarks = '';
-      this.auth.refreshMeFromApi().subscribe();
+    const v = this.form.getRawValue();
+    this.saving = true;
+    this.api.updateMe({
+      first_name: (v.prenom_role || '').trim(),
+      last_name: (v.nom_role || '').trim(),
+      email: (v.email || '').trim(),
+      fonction: (v.fonction || '').trim(),
+    }).subscribe({
+      next: () => {
+        this.auth.refreshAccessToken().subscribe({
+          next: () => {
+            this.api.getMe().subscribe({
+              next: (me) => {
+                this.me = me;
+                localStorage.setItem('me_snapshot', JSON.stringify(me));
+                this.patchFormFromMe(me);
+                this.isEditing = false;
+              },
+              complete: () => {
+                this.saving = false;
+              },
+              error: () => {
+                this.saving = false;
+              },
+            });
+          },
+          error: () => {
+            this.saving = false;
+          },
+        });
+      },
+      error: () => {
+        this.saving = false;
+      },
+    });
+  }
+
+  private patchFormFromMe(me: MeResponse): void {
+    const p = me.profile;
+    this.form.patchValue({
+      identifiant: p.username || '',
+      nom_role: p.last_name || '',
+      prenom_role: p.first_name || '',
+      fonction: p.fonction || '',
+      organisme: p.organisme || '',
+      email: p.email || '',
+    });
+  }
+
+  get currentReserves() {
+    return this.me?.reserves || [];
+  }
+
+  get availableReserveOptions() {
+    const currentCodes = new Set(this.currentReserves.map((r) => r.area_code));
+    return this.reserveOptions.filter((r) => !currentCodes.has(r.area_code));
+  }
+
+  addReserve(): void {
+    const code = (this.selectedReserveToAdd || '').trim();
+    if (!code || this.reserveSaving) {
+      return;
+    }
+    this.reserveSaving = true;
+    this.api.addMyReserve(code).subscribe({
+      next: () => this.refreshAfterReserveChange(),
+      error: () => {
+        this.reserveSaving = false;
+      },
+    });
+  }
+
+  removeReserve(areaCode: string): void {
+    if (!areaCode || this.reserveSaving) {
+      return;
+    }
+    this.reserveSaving = true;
+    this.api.removeMyReserve(areaCode).subscribe({
+      next: () => this.refreshAfterReserveChange(),
+      error: () => {
+        this.reserveSaving = false;
+      },
+    });
+  }
+
+  requestReferent(areaCode: string): void {
+    if (!areaCode || this.referentSavingCode) {
+      return;
+    }
+    this.referentSavingCode = areaCode;
+    this.api.requestMyReserveReferent(areaCode).subscribe({
+      next: () => this.refreshAfterReserveChange(),
+      error: () => {
+        this.referentSavingCode = null;
+      },
+      complete: () => {
+        this.referentSavingCode = null;
+      },
+    });
+  }
+
+  private loadReserveOptions(): void {
+    this.api.getMyReserveOptions().subscribe({
+      next: (opts) => {
+        this.reserveOptions = opts || [];
+      },
+      error: () => {
+        this.reserveOptions = [];
+      },
+    });
+  }
+
+  private refreshAfterReserveChange(): void {
+    this.auth.refreshAccessToken().subscribe({
+      next: () => {
+        this.api.getMe().subscribe({
+          next: (me) => {
+            this.me = me;
+            localStorage.setItem('me_snapshot', JSON.stringify(me));
+            this.patchFormFromMe(me);
+            this.selectedReserveToAdd = '';
+            this.loadReserveOptions();
+          },
+          complete: () => {
+            this.reserveSaving = false;
+          },
+          error: () => {
+            this.reserveSaving = false;
+          },
+        });
+      },
+      error: () => {
+        this.reserveSaving = false;
+      },
     });
   }
 }

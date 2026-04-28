@@ -64,6 +64,7 @@ class UserProfile(models.Model):
     username = models.CharField(max_length=200, blank=True)
     first_name = models.CharField(max_length=200, blank=True)
     last_name = models.CharField(max_length=200, blank=True)
+    fonction = models.CharField(max_length=200, blank=True)
     organisme = models.ForeignKey(Organisme, null=True, blank=True, on_delete=models.SET_NULL)
     is_super_admin = models.BooleanField(default=False)
     legacy_id_role = models.IntegerField(null=True, blank=True)
@@ -273,6 +274,37 @@ class ReserveReferentRequest(models.Model):
 
     class Meta:
         db_table = "inscription_reserve_referent_request"
+
+
+class ReserveMemberRemovalRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "En attente"),
+        (STATUS_APPROVED, "Approuvé"),
+        (STATUS_REJECTED, "Refusé"),
+    ]
+
+    reserve = models.ForeignKey(Reserve, on_delete=models.CASCADE, related_name="member_removal_requests")
+    requester = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="member_removal_requests")
+    target_sub = models.CharField(max_length=200, db_index=True)
+    target_email = models.EmailField(blank=True)
+    target_first_name = models.CharField(max_length=200, blank=True)
+    target_last_name = models.CharField(max_length=200, blank=True)
+    reason = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="member_removal_decisions"
+    )
+    decision_note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "inscription_reserve_member_removal_request"
+        ordering = ["-created_at"]
 
 
 class Notification(models.Model):

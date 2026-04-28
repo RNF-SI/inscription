@@ -12,6 +12,13 @@ export const AppConfig = {
     "appTitle": "Plateformes de réserves naturelles de France",
     "appSubTitle": "Tous les outils pour vous accompagner dans vos projets",
     "creditHeaderImage": "RNN Baie de St-Brieuc - © P. PIERRE",
+    "features": {
+        "notifications": true
+    },
+    "security": {
+        "hideAdminMenuForNonAdmins": true,
+        "adminMenuLink": "admin"
+    },
     "menu": [
         {
             "nom":"accueil", 
@@ -24,6 +31,12 @@ export const AppConfig = {
             "classFa":"fas",
             "nomFa":"bars-progress",
             "lien":"mon-compte"
+        },
+        {
+            "nom":"Administration",
+            "classFa":"fas",
+            "nomFa":"screwdriver-wrench",
+            "lien":"admin"
         }
         // ,{
         //     "nom":"explorer", 
@@ -38,6 +51,12 @@ export const AppConfig = {
             "classFa":"fas",
             "nomFa":"right-from-bracket",
             "lien":"logout"
+        },
+        {
+            "texte":"Notifications",
+            "classFa":"fas",
+            "nomFa":"bell",
+            "lien":"notifications"
         }
     ]
 }

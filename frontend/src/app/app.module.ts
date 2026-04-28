@@ -38,6 +38,9 @@ import { MoncompteComponent } from './components/moncompte/moncompte.component';
 import { SearchPipe } from './pipes/search.pipe';
 import { AuthCallbackComponent } from './components/auth-callback/auth-callback.component';
 import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
+import { NotificationsComponent } from './components/notifications/notifications.component';
+import { NotificationBadgeService } from './home-rnf/services/notification-badge.service';
+import { InscriptionNotificationBadgeService } from './services/inscription-notification-badge.service';
 
 @NgModule({
   declarations: [
@@ -50,6 +53,7 @@ import { AdminDashboardComponent } from './components/admin-dashboard/admin-dash
     MoncompteComponent,
     AuthCallbackComponent,
     AdminDashboardComponent,
+    NotificationsComponent,
   ],
   imports: [
     HttpClientModule,
@@ -78,7 +82,8 @@ import { AdminDashboardComponent } from './components/admin-dashboard/admin-dash
     NgMultiSelectDropDownModule.forRoot()
   ],
   providers: [
-    { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true }
+    { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true },
+    { provide: NotificationBadgeService, useClass: InscriptionNotificationBadgeService }
   ],
   bootstrap: [AppComponent]
 })

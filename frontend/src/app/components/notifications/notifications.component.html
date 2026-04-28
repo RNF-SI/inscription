@@ -1,0 +1,49 @@
+<div class="container">
+<section class="notifications-page">
+  <header class="notifications-header">
+    <div>
+      <h1>Notifications</h1>
+      <p class="notifications-subtitle">Consultez vos derniers messages et actions en attente.</p>
+    </div>
+    <div class="notifications-actions">
+      <span class="unread-badge" [class.unread-badge--empty]="unreadCount === 0">
+        {{ unreadCount }} non lue<span *ngIf="unreadCount > 1">s</span>
+      </span>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        (click)="markAllRead()"
+        [disabled]="unreadCount === 0 || markingAll"
+      >
+        {{ markingAll ? 'Traitement...' : 'Tout marquer comme lu' }}
+      </button>
+    </div>
+  </header>
+
+  <p *ngIf="loading" class="notifications-empty">Chargement des notifications...</p>
+
+  <p *ngIf="!loading && !notifications.length" class="notifications-empty">
+    Aucune notification pour le moment.
+  </p>
+
+  <ul *ngIf="!loading && notifications.length" class="notifications-list">
+    <li *ngFor="let n of notifications" class="notification-item" [class.notification-item--unread]="!n.read">
+      <div class="notification-main">
+        <h2>{{ n.title }}</h2>
+        <p>{{ n.body }}</p>
+      </div>
+      <div class="notification-meta">
+        <small>{{ n.created_at | date:'dd/MM/yyyy HH:mm' }}</small>
+        <button
+          type="button"
+          class="btn btn-link btn-sm"
+          *ngIf="!n.read"
+          (click)="markRead(n.id)"
+        >
+          Marquer comme lue
+        </button>
+      </div>
+    </li>
+  </ul>
+</section>
+</div>

@@ -147,7 +147,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     this.form = this.fb.group({
       nom_role: ['', Validators.required],
       prenom_role: ['', Validators.required],
-      identifiant: ['', [Validators.required, Validators.pattern(/^[A-Za-z0-9]+$/)]],
+      identifiant: ['', [Validators.required, Validators.pattern(/^[A-Za-z0-9._-]+$/)]],
       email: [
         '',
         [Validators.email, Validators.required],

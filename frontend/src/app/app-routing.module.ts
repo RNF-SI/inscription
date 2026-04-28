@@ -13,6 +13,7 @@ import { AuthGuardService } from './home-rnf/services/auth-guard.service';
 import { ForgotPasswordComponent } from './home-rnf/components/forgot-password/forgot-password.component';
 import { AuthCallbackComponent } from './components/auth-callback/auth-callback.component';
 import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
+import { NotificationsComponent } from './components/notifications/notifications.component';
 import { AdminGuard } from './home-rnf/services/admin-guard.service';
 
 // const routes: Routes = [
@@ -53,6 +54,11 @@ const routes: Routes = [
         path: 'mon-compte', 
         component: MoncompteComponent, 
         canActivate: [ AuthGuardService]
+      },
+      {
+        path: 'notifications',
+        component: NotificationsComponent,
+        canActivate: [AuthGuardService]
       },
       {
         path: 'admin',

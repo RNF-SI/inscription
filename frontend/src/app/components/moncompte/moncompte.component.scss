@@ -33,3 +33,103 @@ input.form-control-plaintext {
  ::ng-deep .multiselect-dropdown .dropdown-btn {
     border-color : var(--bs-border-color) !important;
   }
+
+  .reserves-section {
+    border: 1px solid #e6e9ef;
+    border-radius: 12px;
+    padding: 1rem;
+    background: #fcfdff;
+  }
+
+  .reserve-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .reserve-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    border: 1px solid #e6e9ef;
+    border-radius: 10px;
+    background: #fff;
+    padding: 0.85rem 1rem;
+  }
+
+  .reserve-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .reserve-title {
+    font-weight: 600;
+    color: #243447;
+  }
+
+  .reserve-code {
+    font-size: 0.85rem;
+    color: #6b7785;
+  }
+
+  .reserve-badges {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.2rem;
+  }
+
+  .reserve-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .reserve-chip-success {
+    background: #e8f7ed;
+    color: #177245;
+    border: 1px solid #b9e8c8;
+  }
+
+  .reserve-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .reserve-add-box {
+    border-top: 1px solid #e6e9ef;
+    padding-top: 0.9rem;
+  }
+
+  .reserve-add-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+  }
+
+  @media (max-width: 768px) {
+    .reserve-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .reserve-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .reserve-add-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }

@@ -68,6 +68,9 @@ class KeycloakAdminClient:
     def _put(self, path: str, json: Any | None = None) -> requests.Response:
         return requests.put(f"{self._admin_base}{path}", headers=self._headers(), json=json, timeout=30)
 
+    def _delete(self, path: str) -> requests.Response:
+        return requests.delete(f"{self._admin_base}{path}", headers=self._headers(), timeout=30)
+
     def _find_child_group_id(self, parent_id: str, child_name: str) -> str | None:
         children = self.get_subgroups(parent_id)
         found = next(
@@ -132,6 +135,44 @@ class KeycloakAdminClient:
         if r.status_code != 200:
             raise KeycloakAdminError(f"list_groups:{r.status_code}")
         return r.json() or []
+
+    def get_group(self, group_id: str) -> dict:
+        r = self._get(f"/groups/{group_id}")
+        if r.status_code != 200:
+            raise KeycloakAdminError(f"get_group:{r.status_code}")
+        return r.json() or {}
+
+    def find_group_by_path(self, path: str) -> dict | None:
+        target = (path or "").strip()
+        if not target.startswith("/"):
+            target = f"/{target}"
+        if target == "/":
+            return None
+
+        parts = [p for p in target.strip("/").split("/") if p]
+        if not parts:
+            return None
+
+        roots = self.list_top_groups()
+        current = next((g for g in roots if (g.get("name") or "") == parts[0]), None)
+        if not current:
+            return None
+        if len(parts) == 1:
+            return current
+
+        current_id = current.get("id")
+        if not current_id:
+            return None
+        for seg in parts[1:]:
+            children = self.get_subgroups(current_id)
+            nxt = next((g for g in children if (g.get("name") or "") == seg), None)
+            if not nxt:
+                return None
+            current = nxt
+            current_id = current.get("id")
+            if not current_id:
+                break
+        return current
 
     def get_subgroups(self, parent_id: str) -> list[dict]:
         # Endpoint dédié aux sous-groupes (plus fiable que le champ subGroups de /groups/{id}).
@@ -242,6 +283,10 @@ class KeycloakAdminClient:
         root = settings.KEYCLOAK_GROUP_RESERVES
         return self.ensure_path_under_root(root, [code])
 
+    def ensure_reserve_referent_group(self, code: str) -> str:
+        root = settings.KEYCLOAK_GROUP_RESERVES
+        return self.ensure_path_under_root(root, [code, "referent"])
+
     def ensure_application_group(self, slug: str) -> str:
         root = settings.KEYCLOAK_GROUP_APPLICATIONS
         return self.ensure_path_under_root(root, [slug])
@@ -275,6 +320,7 @@ class KeycloakAdminClient:
         last_name: str,
         password: str,
         temporary_password: bool = True,
+        require_verify_email: bool = False,
     ) -> str:
         body = {
             "username": username,
@@ -285,6 +331,8 @@ class KeycloakAdminClient:
             "emailVerified": False,
             "credentials": [{"type": "password", "value": password, "temporary": temporary_password}],
         }
+        if require_verify_email:
+            body["requiredActions"] = ["VERIFY_EMAIL"]
         r = self._post("/users", json=body)
         if r.status_code not in (200, 201):
             logger.error("create_user %s: %s", r.status_code, r.text[:500])
@@ -305,3 +353,73 @@ class KeycloakAdminClient:
         if not arr:
             return None
         return arr[0].get("id")
+
+    def search_users(self, query: str, max_count: int = 20) -> list[dict]:
+        q = (query or "").strip()
+        if not q:
+            return []
+        r = self._get(f"/users?search={requests.utils.quote(q)}&max={max_count}")
+        if r.status_code != 200:
+            raise KeycloakAdminError(f"search_users_failed:{r.status_code}")
+        payload = r.json() or []
+        if not isinstance(payload, list):
+            return []
+        return payload
+
+    def send_verify_email(self, user_id: str, client_id: str | None = None) -> None:
+        params: dict[str, str] = {}
+        if client_id:
+            params["client_id"] = client_id
+        h = {"Authorization": f"Bearer {self.get_access_token()}"}
+        r = requests.put(
+            f"{self._admin_base}/users/{user_id}/send-verify-email",
+            headers=h,
+            params=params or None,
+            timeout=30,
+        )
+        if r.status_code not in (200, 204):
+            logger.error("send_verify_email %s: %s", r.status_code, r.text[:500])
+            raise KeycloakAdminError(f"send_verify_email_failed:{r.status_code}")
+
+    def update_user_profile(
+        self,
+        user_id: str,
+        *,
+        username: str | None = None,
+        email: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        function_value: str | None = None,
+    ) -> None:
+        current_resp = self._get(f"/users/{user_id}")
+        if current_resp.status_code != 200:
+            raise KeycloakAdminError(f"get_user_failed:{current_resp.status_code}")
+        data = current_resp.json() or {}
+
+        if username is not None:
+            data["username"] = username
+        if email is not None:
+            data["email"] = email
+        if first_name is not None:
+            data["firstName"] = first_name
+        if last_name is not None:
+            data["lastName"] = last_name
+
+        attrs = data.get("attributes") or {}
+        if function_value is not None:
+            attrs["function"] = [function_value]
+        data["attributes"] = attrs
+
+        resp = self._put(f"/users/{user_id}", json=data)
+        if resp.status_code not in (200, 204):
+            logger.error("update_user_profile %s: %s", resp.status_code, resp.text[:500])
+            raise KeycloakAdminError(f"update_user_failed:{resp.status_code}")
+
+    def list_group_members(self, group_id: str, max_count: int = 200) -> list[dict]:
+        r = self._get(f"/groups/{group_id}/members?first=0&max={max_count}")
+        if r.status_code != 200:
+            raise KeycloakAdminError(f"list_group_members:{r.status_code}")
+        payload = r.json() or []
+        if not isinstance(payload, list):
+            return []
+        return payload

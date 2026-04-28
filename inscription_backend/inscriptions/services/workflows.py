@@ -17,6 +17,8 @@ from inscriptions.models import (
     AuditLog,
     Notification,
     RegistrationRequest,
+    ReserveReferentRequest,
+    Reserve,
     UserProfile,
     UserReserveLink,
 )
@@ -40,6 +42,11 @@ def _notify_app_admins(application: Application, title: str, body: str) -> None:
         _notify_user(a.user, title, body)
 
 
+def _notify_super_admins(title: str, body: str) -> None:
+    for admin in UserProfile.objects.filter(is_super_admin=True):
+        _notify_user(admin, title, body)
+
+
 def _cleanup_completed_registration(registration: RegistrationRequest, actor_sub: str = "") -> None:
     public_id = str(registration.public_id)
     email = registration.email
@@ -51,6 +58,13 @@ def on_registration_created(registration: RegistrationRequest) -> None:
     mail_svc.notify_superadmins(
         subject="Nouvelle demande d'inscription",
         body=f"Demande {registration.public_id} — {registration.email} — {registration.first_name} {registration.last_name}",
+    )
+    _notify_super_admins(
+        title="Nouvelle demande d'inscription",
+        body=(
+            f"{registration.first_name} {registration.last_name} ({registration.email}) "
+            "a soumis une demande d'inscription."
+        ),
     )
     _log("", "registration_created", {"public_id": str(registration.public_id), "email": registration.email})
 
@@ -70,8 +84,13 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
                 first_name=registration.first_name,
                 last_name=registration.last_name,
                 password=plain_password,
-                temporary_password=True,
+                temporary_password=False,
+                require_verify_email=True,
             )
+            try:
+                kc.send_verify_email(keycloak_user_id, client_id=settings.KEYCLOAK_APP_CLIENT_ID)
+            except KeycloakAdminError as exc:
+                logger.warning("Keycloak send_verify_email failed for %s: %s", keycloak_user_id, exc)
         except KeycloakAdminError as exc:
             logger.exception("Keycloak create_user: %s", exc)
             raise
@@ -92,6 +111,7 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
     profile.username = registration.username
     profile.first_name = registration.first_name
     profile.last_name = registration.last_name
+    profile.fonction = (registration.remarks or "").strip()
     profile.organisme = registration.organisme
     profile.save()
 
@@ -107,17 +127,49 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
             logger.exception("Provisioning org/reserve groups failed")
 
     for code in registration.reserve_codes or []:
-        from inscriptions.models import Reserve
-
         r = Reserve.objects.filter(area_code=code).first()
         if r:
             UserReserveLink.objects.get_or_create(user=profile, reserve=r)
 
+    # Les demandes de statut referent saisies a l'inscription ne sont creees
+    # qu'une fois l'utilisateur valide (meme logique que les acces applicatifs).
+    requested_referent_codes: list[str] = []
+    champs_addi = registration.champs_addi or {}
+    raw_referent = champs_addi.get("reserves_referent")
+    if isinstance(raw_referent, list):
+        for item in raw_referent:
+            code = ""
+            if isinstance(item, dict):
+                code = str(item.get("id") or "").strip()
+            elif isinstance(item, str):
+                code = item.strip()
+            if code:
+                requested_referent_codes.append(code)
+    # Garde uniquement les reserves effectivement rattachees a la demande.
+    allowed_codes = set(str(c).strip() for c in (registration.reserve_codes or []) if str(c).strip())
+    for code in requested_referent_codes:
+        if code not in allowed_codes:
+            continue
+        reserve = Reserve.objects.filter(area_code=code).first()
+        if not reserve:
+            continue
+        ReserveReferentRequest.objects.get_or_create(
+            user=profile,
+            reserve=reserve,
+            status=ReserveReferentRequest.STATUS_PENDING,
+        )
+
     for item in registration.items.select_related("application"):
+        justification = (item.request_justification or "").strip()
+        justification_text = justification if justification else "Aucune justification fournie."
         _notify_app_admins(
             item.application,
             title="Nouvelle demande d'accès",
-            body=f"{registration.first_name} {registration.last_name} ({registration.email}) demande l'accès à {item.application.nom}.",
+            body=(
+                f"{registration.first_name} {registration.last_name} ({registration.email}) "
+                f"demande l'accès à {item.application.nom}. "
+                f"Justification: {justification_text}"
+            ),
         )
 
     mail_svc.send_user_mail(
@@ -170,6 +222,7 @@ def app_admin_decide_item(
     actor_sub: str,
     note: str = "",
 ) -> None:
+    note = (note or "").strip()
     if item.origin != AccessRequestItem.ORIGIN_REGISTRATION:
         raise ValueError("invalid_item_origin")
     registration = item.registration
@@ -177,6 +230,8 @@ def app_admin_decide_item(
         raise ValueError("invalid_registration_state")
     if item.status != AccessRequestItem.STATUS_PENDING:
         raise ValueError("item_already_decided")
+    if not approve and not note:
+        raise ValueError("missing_rejection_note")
 
     item.status = AccessRequestItem.STATUS_APPROVED if approve else AccessRequestItem.STATUS_REJECTED
     item.decided_at = timezone.now()
@@ -207,7 +262,11 @@ def app_admin_decide_item(
             f"Accès à {item.application.nom}",
             "Votre demande d'accès n'a pas été acceptée.",
         )
-        _notify_user(profile, f"Accès : {item.application.nom}", "Votre demande a été refusée.")
+        _notify_user(
+            profile,
+            f"Accès : {item.application.nom}",
+            f"Votre demande a été refusée. Motif: {note}",
+        )
 
     _log(actor_sub, "app_admin_decide", {"item_id": item.pk, "approve": approve})
     _finalize_registration_if_done(registration)
@@ -218,6 +277,7 @@ def create_additional_access_request(profile: UserProfile, slugs: Iterable[str],
     request_public_id = uuid.uuid4()
     justification = (remarks or "").strip()
     created_count = 0
+    created_apps: list[Application] = []
     for slug in slugs:
         app = Application.objects.filter(slug=slug).first()
         if not app:
@@ -241,14 +301,24 @@ def create_additional_access_request(profile: UserProfile, slugs: Iterable[str],
             request_justification=justification,
         )
         created_count += 1
+        created_apps.append(app)
         _notify_app_admins(
             app,
             "Demande d'accès supplémentaire",
-            f"{profile.first_name} {profile.last_name} ({profile.email}) demande l'accès à {app.nom}.",
+            (
+                f"{profile.first_name} {profile.last_name} ({profile.email}) "
+                f"demande l'accès à {app.nom}. "
+                f"Justification: {justification or 'Aucune justification fournie.'}"
+            ),
         )
     if created_count == 0:
         raise ValueError("no_new_access_request")
-    _notify_user(profile, "Demande envoyée", "Vos demandes d'accès ont été transmises aux gestionnaires.")
+    for app in created_apps:
+        _notify_user(
+            profile,
+            f"Demande envoyée : {app.nom}",
+            f"Votre demande d'accès pour {app.nom} a été transmise aux gestionnaires.",
+        )
     _log(profile.keycloak_sub, "additional_access_request", {"public_id": str(request_public_id)})
     return request_public_id
 
@@ -261,10 +331,13 @@ def app_admin_decide_additional_item(
     actor_sub: str,
     note: str = "",
 ) -> None:
+    note = (note or "").strip()
     if item.origin != AccessRequestItem.ORIGIN_ADDITIONAL:
         raise ValueError("invalid_item_origin")
     if item.status != AccessRequestItem.STATUS_PENDING:
         raise ValueError("item_already_decided")
+    if not approve and not note:
+        raise ValueError("missing_rejection_note")
     item.status = AccessRequestItem.STATUS_APPROVED if approve else AccessRequestItem.STATUS_REJECTED
     item.decided_at = timezone.now()
     item.decided_by = actor
@@ -283,6 +356,10 @@ def app_admin_decide_additional_item(
             raise ValueError("Échec du provisioning Keycloak pour cette application.") from exc
         _notify_user(profile, f"Accès : {item.application.nom}", "Votre demande a été acceptée.")
     else:
-        _notify_user(profile, f"Accès : {item.application.nom}", "Votre demande a été refusée.")
+        _notify_user(
+            profile,
+            f"Accès : {item.application.nom}",
+            f"Votre demande a été refusée. Motif: {note}",
+        )
 
     _log(actor_sub, "app_admin_decide_additional", {"item_id": item.pk, "approve": approve})

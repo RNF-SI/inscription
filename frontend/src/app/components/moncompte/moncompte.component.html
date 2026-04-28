@@ -1,23 +1,61 @@
 <div class="container">
     <br><br>
     <h3 class="underlined main-color">Mes informations</h3>
-    <form [formGroup]="form">
+    <div *ngIf="!isEditing">
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Nom</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.last_name || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Prénom</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.first_name || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Email</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.email || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Fonction</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.fonction || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Identifiant</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.username || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Organisme</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.organisme || '-' }}</div>
+        </div>
+        <div class="form-group row mt-3">
+            <div class="col-sm-9 col-xl-7 offset-sm-3">
+                <button type="button" class="btn btn-outline-primary" (click)="edit()">Éditer mes infos</button>
+            </div>
+        </div>
+    </div>
+
+    <form [formGroup]="form" *ngIf="isEditing">
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Nom</label>
             <div class="col-sm-9 col-xl-7">
-                <input type="text" class="form-control-plaintext" formControlName="nom_role" />
+                <input type="text" class="form-control" formControlName="nom_role" />
             </div>
         </div>
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Prénom</label>
             <div class="col-sm-9 col-xl-7">
-                <input type="text" class="form-control-plaintext" formControlName="prenom_role" />
+                <input type="text" class="form-control" formControlName="prenom_role" />
             </div>
         </div>
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Email</label>
             <div class="col-sm-9 col-xl-7">
-                <input type="text" class="form-control-plaintext" formControlName="email" />
+                <input type="email" class="form-control" formControlName="email" />
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Fonction</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control" formControlName="fonction" />
             </div>
         </div>
         <div class="form-group row">
@@ -26,37 +64,82 @@
                 <input type="text" class="form-control-plaintext" formControlName="identifiant" />
             </div>
         </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Organisme</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control-plaintext" formControlName="organisme" />
+            </div>
+        </div>
+        <div class="form-group row mt-3">
+            <div class="col-sm-9 col-xl-7 offset-sm-3 d-flex gap-2">
+                <button type="button" class="btn btn-primary" (click)="save()" [disabled]="saving">
+                    {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+                </button>
+                <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="saving">
+                    Annuler
+                </button>
+            </div>
+        </div>
     </form>
 
-    <h4 class="mt-4">Applications et statuts</h4>
-    <ul *ngIf="me?.applications?.length">
-        <li *ngFor="let row of me!.applications">
-            <strong>{{ row.application.nom }}</strong> — {{ row.access_status }}
-        </li>
-    </ul>
-
     <h4 class="mt-4">Réserves liées</h4>
-    <ul *ngIf="me?.reserves?.length">
-        <li *ngFor="let r of me!.reserves">{{ r.area_name }} ({{ r.area_code }})</li>
-    </ul>
-    <p *ngIf="!me?.reserves?.length">Aucune réserve enregistrée pour le moment.</p>
+    <div class="reserves-section">
+        <div *ngIf="currentReserves.length; else noReserveState" class="reserve-list">
+            <div class="reserve-card" *ngFor="let r of currentReserves">
+                <div class="reserve-main">
+                    <div class="reserve-title">{{ r.area_name }}</div>
+                    <div class="reserve-code">{{ r.area_code }}</div>
+                    <div class="reserve-badges">
+                        <span *ngIf="r.referent" class="reserve-chip reserve-chip-success">Référent de cette réserve</span>
+                        <span *ngIf="!r.referent && r.referent_pending" class="badge text-bg-warning">Demande en attente</span>
+                    </div>
+                </div>
+                <div class="reserve-actions">
+                    <button
+                        *ngIf="!r.referent && !r.referent_pending"
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        (click)="requestReferent(r.area_code)"
+                        [disabled]="!!referentSavingCode"
+                    >
+                        {{ referentSavingCode === r.area_code ? 'Envoi...' : 'Demander statut référent' }}
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        (click)="removeReserve(r.area_code)"
+                        [disabled]="reserveSaving"
+                    >
+                        Retirer
+                    </button>
+                </div>
+            </div>
+        </div>
+        <ng-template #noReserveState>
+            <p class="text-muted mb-0">Aucune réserve enregistrée pour le moment.</p>
+        </ng-template>
 
-    <h4 class="mt-4">Notifications</h4>
-    <ul>
-        <li *ngFor="let n of notifications">
-            <strong>{{ n.title }}</strong> — {{ n.body }}
-            <button type="button" class="btn btn-link btn-sm" *ngIf="!n.read" (click)="markRead(n.id)">Marquer lu</button>
-        </li>
-    </ul>
+        <div class="reserve-add-box mt-3">
+            <label class="form-label mb-2">Ajouter une réserve liée à votre organisme</label>
+            <div class="reserve-add-row">
+                <select class="form-select" [(ngModel)]="selectedReserveToAdd" [ngModelOptions]="{standalone: true}">
+                    <option value="">Sélectionner une réserve</option>
+                    <option *ngFor="let r of availableReserveOptions" [value]="r.area_code">
+                        {{ r.area_name }} ({{ r.area_code }})
+                    </option>
+                </select>
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    (click)="addReserve()"
+                    [disabled]="reserveSaving || !selectedReserveToAdd"
+                >
+                    {{ reserveSaving ? 'Ajout...' : 'Ajouter' }}
+                </button>
+            </div>
+            <small class="text-muted" *ngIf="!availableReserveOptions.length">Aucune autre réserve disponible pour votre organisme.</small>
+        </div>
+    </div>
 
-    <h4 class="mt-4">Demander un accès supplémentaire</h4>
-    <p>Indiquez les slugs d’applications (séparés par des virgules), ex. <code>waterwise, opnl</code></p>
-    <div class="mb-2">
-        <input class="form-control" [(ngModel)]="extraSlugs" name="extraSlugs" placeholder="slug1, slug2" />
-    </div>
-    <div class="mb-2">
-        <textarea class="form-control" [(ngModel)]="extraRemarks" name="extraRemarks" rows="2" placeholder="Remarques"></textarea>
-    </div>
-    <button type="button" class="btn btn-primary" (click)="sendAdditional()">Envoyer la demande</button>
     <br><br>
 </div>

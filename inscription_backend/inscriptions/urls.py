@@ -13,6 +13,14 @@ urlpatterns = [
     path("auth/token/", views.TokenExchangeView.as_view()),
     path("auth/refresh/", views.RefreshTokenView.as_view()),
     path("me/", views.MeView.as_view()),
+    path("me/reserve-options/", views.MeReserveOptionsView.as_view()),
+    path("me/reserves/<str:area_code>/", views.MeReserveLinkDetailView.as_view()),
+    path("me/reserves/<str:area_code>/referent-request/", views.MeReserveReferentRequestView.as_view()),
+    path("me/referent/reserves-members/", views.MeReferentReservesMembersView.as_view()),
+    path(
+        "me/referent/reserves/<str:area_code>/removal-requests/",
+        views.MeReferentReserveRemovalRequestView.as_view(),
+    ),
     path("me/additional-access/", views.AdditionalAccessCreateView.as_view()),
     path("notifications/", views.NotificationListView.as_view()),
     path("notifications/<int:pk>/mark-read/", views.NotificationMarkReadView.as_view()),
@@ -21,6 +29,17 @@ urlpatterns = [
     path("admin/registration-requests/<uuid:public_id>/super-approve/", views.AdminSuperApproveView.as_view()),
     path("admin/registration-requests/<uuid:public_id>/super-reject/", views.AdminSuperRejectView.as_view()),
     path("admin/pending-items/", views.AdminPendingItemsView.as_view()),
+    path("admin/my-validation-applications/", views.AdminMyValidationApplicationsView.as_view()),
+    path("admin/keycloak-users-search/", views.AdminKeycloakUsersSearchView.as_view()),
+    path("admin/application-admins/", views.AdminApplicationAdminsView.as_view()),
+    path(
+        "admin/applications/<slug:application_slug>/admins/",
+        views.AdminApplicationAdminAssignView.as_view(),
+    ),
+    path(
+        "admin/applications/<slug:application_slug>/admins/<str:user_sub>/",
+        views.AdminApplicationAdminRemoveView.as_view(),
+    ),
     path(
         "admin/registration-items/<int:item_id>/<str:decision>/",
         views.AdminDecideRegistrationItemView.as_view(),
@@ -32,5 +51,23 @@ urlpatterns = [
     path(
         "admin/applications/<slug:application_slug>/revoke/<str:user_sub>/",
         views.AdminRevokeAccessView.as_view(),
+    ),
+    path("admin/reserve-member-removal-requests/", views.AdminReserveMemberRemovalRequestsView.as_view()),
+    path(
+        "admin/reserves/<str:area_code>/members/add/",
+        views.AdminReserveMemberDirectAddView.as_view(),
+    ),
+    path(
+        "admin/reserves/<str:area_code>/members/<str:user_sub>/remove/",
+        views.AdminReserveMemberDirectRemoveView.as_view(),
+    ),
+    path(
+        "admin/reserve-member-removal-requests/<int:req_id>/<str:decision>/",
+        views.AdminDecideReserveMemberRemovalRequestView.as_view(),
+    ),
+    path("admin/reserve-referent-requests/", views.AdminReserveReferentRequestsView.as_view()),
+    path(
+        "admin/reserve-referent-requests/<int:req_id>/<str:decision>/",
+        views.AdminDecideReserveReferentRequestView.as_view(),
     ),
 ]

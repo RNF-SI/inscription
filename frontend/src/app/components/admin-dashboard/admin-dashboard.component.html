@@ -1,74 +1,441 @@
 <div class="container p-3">
   <h3>Administration</h3>
   <p *ngIf="loading">Chargement…</p>
+  <ul class="nav nav-tabs mt-3">
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'requests'"
+        (click)="setActiveTab('requests')"
+      >
+        Toutes les demandes
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'reserves'"
+        (click)="setActiveTab('reserves')"
+      >
+        Membres des réserves
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'app-admins'"
+        (click)="setActiveTab('app-admins')"
+      >
+        Admins d’applications
+      </button>
+    </li>
+  </ul>
 
-  <h4 class="mt-4">Demandes d’inscription</h4>
-  <table class="table table-sm" *ngIf="registrations.length">
-    <thead>
-      <tr>
-        <th>Email</th>
-        <th>Statut</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let r of registrations">
-        <td>{{ r.email }}</td>
-        <td>{{ r.status }}</td>
-        <td>
-          <button class="btn btn-sm btn-success me-1" *ngIf="r.status === 'pending_super'" (click)="approveReg(r.public_id)">Valider (super)</button>
-          <button class="btn btn-sm btn-outline-danger" *ngIf="r.status === 'pending_super'" (click)="rejectReg(r.public_id)">Refuser</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="pt-3" *ngIf="activeTab === 'requests'">
+    <h4 class="mt-2" *ngIf="isSuperAdmin">Demandes d’inscription</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && pendingRegistrations.length">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Prénom</th>
+          <th>Fonction</th>
+          <th>Organisme</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of pendingRegistrations">
+          <td>{{ r.last_name || '-' }}</td>
+          <td>{{ r.first_name || '-' }}</td>
+          <td>{{ r.fonction || '-' }}</td>
+          <td>{{ r.organisme || '-' }}</td>
+          <td>
+            <button class="btn btn-sm btn-success me-1" *ngIf="r.status === 'pending_super'" (click)="approveReg(r.public_id)">Valider</button>
+            <button class="btn btn-sm btn-outline-danger" *ngIf="r.status === 'pending_super'" (click)="rejectReg(r.public_id)">Refuser</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !pendingRegistrations.length">
+      Aucune demande d’inscription en attente.
+    </p>
 
-  <h4 class="mt-4">Demandes d’accès en attente</h4>
-  <table class="table table-sm" *ngIf="pending.length">
-    <thead>
-      <tr>
-        <th>Application</th>
-        <th>Demandeur</th>
-        <th>Type</th>
-        <th>Justification</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let p of pending">
-        <td>{{ p.application.nom }}</td>
-        <td>{{ p.applicant_email }}</td>
-        <td>{{ p.kind }}</td>
-        <td>{{ p.request_justification || '-' }}</td>
-        <td>
+    <h4 class="mt-4" *ngIf="canValidateApplications">Demandes d’accès en attente</h4>
+    <p class="text-muted mb-2" *ngIf="canValidateApplications">
+      Vous pouvez valider les demandes pour :
+      {{ validationApplicationsLabel }}.
+    </p>
+    <table class="table table-sm" *ngIf="canValidateApplications && pending.length">
+      <thead>
+        <tr>
+          <th>Application</th>
+          <th>Demandeur</th>
+          <th>Justification</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of pending">
+          <td class="align-middle">{{ p.application.nom }}</td>
+          <td class="align-middle">{{ formatApplicantLabel(p) }}</td>
+          <td class="align-middle">{{ p.request_justification || '-' }}</td>
+          <td class="align-middle text-nowrap">
+            <div class="d-inline-flex align-items-center gap-2">
+            <button
+              class="btn btn-sm btn-success me-1"
+              (click)="decide(p.item_id, p.kind, true)"
+              [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+            >
+              <span
+                *ngIf="isDecisionLoading(p.item_id, p.kind, true)"
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+                aria-hidden="true"
+              ></span>
+              <span>{{ isDecisionLoading(p.item_id, p.kind, true) ? 'Envoi…' : 'Accorder' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              (click)="openRejectionModal(p.item_id, p.kind)"
+              [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+            >
+              <span
+                *ngIf="isDecisionLoading(p.item_id, p.kind, false)"
+                class="spinner-border spinner-border-sm me-1"
+                role="status"
+                aria-hidden="true"
+              ></span>
+              <span>{{ isDecisionLoading(p.item_id, p.kind, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="canValidateApplications && !pending.length">
+      Aucune demande d’accès à une application en attente.
+    </p>
+
+    <h4 class="mt-4" *ngIf="isSuperAdmin">Demandes de statut référent</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && reserveReferentRequests.length">
+      <thead>
+        <tr>
+          <th>Réserve</th>
+          <th>Demandeur</th>
+          <th>Fonction</th>
+          <th>Motif refus</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let rr of reserveReferentRequests">
+          <td>{{ rr.reserve.area_name }} ({{ rr.reserve.area_code }})</td>
+          <td>{{ rr.user_first_name }} {{ rr.user_last_name }} ({{ rr.user_email }})</td>
+          <td>{{ rr.user_fonction || '-' }}</td>
+          <td>
+            <input
+              class="form-control form-control-sm"
+              [(ngModel)]="reserveReferentNoteById[rr.id]"
+              [name]="'reserve-referent-note-' + rr.id"
+              placeholder="Requis si refus"
+            />
+          </td>
+          <td class="text-nowrap">
+            <button
+              class="btn btn-sm btn-success me-1"
+              (click)="decideReserveReferent(rr.id, true)"
+              [disabled]="isReserveReferentLoading(rr.id, true) || isReserveReferentLoading(rr.id, false)"
+            >
+              Accorder
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              (click)="decideReserveReferent(rr.id, false)"
+              [disabled]="
+                isReserveReferentLoading(rr.id, true) ||
+                isReserveReferentLoading(rr.id, false) ||
+                !(reserveReferentNoteById[rr.id] || '').trim()
+              "
+            >
+              Refuser
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !reserveReferentRequests.length">
+      Aucune demande de statut référent en attente.
+    </p>
+
+    <h4 class="mt-4" *ngIf="isSuperAdmin">Demandes de retrait de membres (référents)</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && reserveRemovalRequests.length">
+      <thead>
+        <tr>
+          <th>Réserve</th>
+          <th>Demandeur</th>
+          <th>Membre ciblé</th>
+          <th>Motif</th>
+          <th>Motif refus</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let rr of reserveRemovalRequests">
+          <td>{{ rr.reserve.area_name }} ({{ rr.reserve.area_code }})</td>
+          <td>{{ rr.requester_name }} ({{ rr.requester_email }})</td>
+          <td>{{ rr.target_first_name }} {{ rr.target_last_name }} ({{ rr.target_email || rr.target_sub }})</td>
+          <td>{{ rr.reason }}</td>
+          <td>
+            <input
+              class="form-control form-control-sm"
+              [(ngModel)]="reserveRemovalNoteById[rr.id]"
+              [name]="'reserve-removal-note-' + rr.id"
+              placeholder="Requis si refus"
+            />
+          </td>
+          <td class="text-nowrap">
+            <button
+              class="btn btn-sm btn-success me-1"
+              (click)="decideReserveRemoval(rr.id, true)"
+              [disabled]="isReserveRemovalLoading(rr.id, true) || isReserveRemovalLoading(rr.id, false)"
+            >
+              Accorder
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              (click)="decideReserveRemoval(rr.id, false)"
+              [disabled]="
+                isReserveRemovalLoading(rr.id, true) ||
+                isReserveRemovalLoading(rr.id, false) ||
+                !(reserveRemovalNoteById[rr.id] || '').trim()
+              "
+            >
+              Refuser
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !reserveRemovalRequests.length">
+      Aucune demande de retrait de membre en attente.
+    </p>
+  </div>
+
+  <div class="pt-3" *ngIf="activeTab === 'reserves'">
+    <div *ngIf="referentReserves.length; else noReserveMembers">
+      <h4 class="mt-2">Membres de vos réserves référentes</h4>
+      <div class="mb-3" *ngIf="useReferentReserveSelector">
+        <label class="form-label">Choisir une réserve</label>
+        <select
+          class="form-select"
+          [(ngModel)]="selectedReferentReserveCode"
+          [ngModelOptions]="{standalone: true}"
+        >
+          <option *ngFor="let row of referentReserves" [value]="row.reserve.area_code">
+            {{ row.reserve.area_name }} ({{ row.reserve.area_code }})
+          </option>
+        </select>
+      </div>
+      <div *ngFor="let row of displayedReferentReserves" class="mt-3">
+        <h6>{{ row.reserve.area_name }} ({{ row.reserve.area_code }})</h6>
+        <div class="d-flex gap-2 mb-2" *ngIf="row.can_direct_add">
+          <input
+            class="form-control form-control-sm"
+            [(ngModel)]="reserveMemberAddEmailByCode[row.reserve.area_code]"
+            [ngModelOptions]="{standalone: true}"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            [attr.list]="'reserve-member-suggestions-' + row.reserve.area_code"
+            (input)="onReserveMemberAddInput(row.reserve.area_code)"
+            placeholder="email de l'utilisateur à lier à cette réserve"
+          />
+          <datalist [id]="'reserve-member-suggestions-' + row.reserve.area_code">
+            <option
+              *ngFor="let s of reserveMemberAddSuggestionsByCode[row.reserve.area_code] || []"
+              [value]="s.email || s.username"
+            >
+              {{ s.label }}
+            </option>
+          </datalist>
           <button
-            class="btn btn-sm btn-success me-1"
-            (click)="decide(p.item_id, p.kind, true)"
-            [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+            type="button"
+            class="btn btn-sm btn-primary"
+            (click)="directAddReserveMember(row.reserve.area_code)"
+            [disabled]="isDirectAddLoading(row.reserve.area_code) || !(reserveMemberAddEmailByCode[row.reserve.area_code] || '').trim()"
           >
-            <span
-              *ngIf="isDecisionLoading(p.item_id, p.kind, true)"
-              class="spinner-border spinner-border-sm me-1"
-              role="status"
-              aria-hidden="true"
-            ></span>
-            <span>{{ isDecisionLoading(p.item_id, p.kind, true) ? 'Envoi…' : 'Accorder' }}</span>
+            {{ isDirectAddLoading(row.reserve.area_code) ? 'Ajout...' : 'Ajouter à la réserve' }}
           </button>
-          <button
-            class="btn btn-sm btn-outline-danger"
-            (click)="decide(p.item_id, p.kind, false)"
-            [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
-          >
-            <span
-              *ngIf="isDecisionLoading(p.item_id, p.kind, false)"
-              class="spinner-border spinner-border-sm me-1"
-              role="status"
-              aria-hidden="true"
-            ></span>
-            <span>{{ isDecisionLoading(p.item_id, p.kind, false) ? 'Envoi…' : 'Refuser' }}</span>
-          </button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+        </div>
+        <small class="text-muted d-block mb-2" *ngIf="row.can_direct_add">
+          {{ isReserveMemberSearchLoading(row.reserve.area_code) ? 'Recherche utilisateurs Keycloak…' : 'Commencez à saisir un nom, un email ou un identifiant.' }}
+        </small>
+        <ul class="list-group">
+          <li *ngFor="let m of row.members" class="list-group-item">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <div class="fw-semibold small">
+                {{ m.first_name }} {{ m.last_name }} ({{ m.email || m.username }})
+              </div>
+              <button
+                *ngIf="row.can_direct_remove"
+                type="button"
+                class="btn btn-sm btn-danger"
+                (click)="directRemoveReserveMember(row.reserve.area_code, m)"
+                [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+              >
+                Retirer directement
+              </button>
+              <button
+                *ngIf="row.can_request_removal && !m.pending_removal_request && canRequestRemovalForMember(m.sub)"
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                (click)="openReferentRemovalModal(row.reserve.area_code, row.reserve.area_name, m)"
+                [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+              >
+                Demander retrait
+              </button>
+              <span
+                *ngIf="row.can_request_removal && m.pending_removal_request && canRequestRemovalForMember(m.sub)"
+                class="badge text-bg-warning"
+              >
+                Demande en attente
+              </span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <ng-template #noReserveMembers>
+      <p class="text-muted mt-2">Aucune réserve à afficher.</p>
+    </ng-template>
+  </div>
+
+  <div class="pt-3" *ngIf="activeTab === 'app-admins'">
+    <h4 class="mt-2">Administrateurs d’applications</h4>
+    <table class="table table-sm" *ngIf="appAdminAvailable && appAdminRows.length">
+      <thead>
+        <tr>
+          <th>Application</th>
+          <th>Admins actuels</th>
+          <th>Ajouter un admin (email)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of appAdminRows">
+          <td>{{ row.application.nom }}</td>
+          <td>
+            <span *ngIf="!row.admins.length" class="text-muted">Aucun admin</span>
+            <div *ngFor="let adm of row.admins" class="d-flex align-items-center mb-1">
+              <span class="me-2">{{ adm.email }}</span>
+              <button
+                class="btn btn-sm btn-outline-danger"
+                (click)="removeAppAdmin(row.application.slug, adm.keycloak_sub)"
+                [disabled]="isAppAdminActionLoading('remove:' + row.application.slug + ':' + adm.keycloak_sub)"
+              >
+                Retirer
+              </button>
+            </div>
+          </td>
+          <td>
+            <div class="d-flex gap-2">
+              <input
+                class="form-control form-control-sm"
+                [(ngModel)]="appAdminEmailBySlug[row.application.slug]"
+                [name]="'app-admin-email-' + row.application.slug"
+                placeholder="email@exemple.fr"
+              />
+              <button
+                class="btn btn-sm btn-primary"
+                (click)="assignAppAdmin(row.application.slug)"
+                [disabled]="isAppAdminActionLoading('assign:' + row.application.slug)"
+              >
+                Ajouter
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="!appAdminAvailable || !appAdminRows.length">
+      Aucun périmètre d’administration d’applications.
+    </p>
+  </div>
 </div>
+
+<div *ngIf="rejectionModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Motif du refus</h5>
+        <button type="button" class="btn-close" aria-label="Close" (click)="cancelRejectionModal()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Merci de saisir la justification qui sera transmise au demandeur.</p>
+        <textarea
+          class="form-control"
+          rows="4"
+          [(ngModel)]="rejectionReason"
+          name="rejectionReason"
+          placeholder="Ex: La demande ne correspond pas aux critères d'accès."
+        ></textarea>
+        <small class="text-danger" *ngIf="!rejectionReason.trim()">La justification est obligatoire.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelRejectionModal()">Annuler</button>
+        <button
+          type="button"
+          class="btn btn-danger"
+          (click)="confirmRejectionModal()"
+          [disabled]="!rejectionReason.trim()"
+        >
+          Confirmer le refus
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="rejectionModalOpen" class="modal-backdrop fade show"></div>
+
+<div *ngIf="referentRemovalModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Demande de retrait d’un membre</h5>
+        <button type="button" class="btn-close" aria-label="Close" (click)="cancelReferentRemovalModal()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          Réserve : <strong>{{ referentRemovalTarget?.reserveName }}</strong>
+        </p>
+        <p class="mb-2">
+          Membre : <strong>{{ referentRemovalTarget?.member?.first_name }} {{ referentRemovalTarget?.member?.last_name }}</strong>
+          ({{ referentRemovalTarget?.member?.email || referentRemovalTarget?.member?.sub }})
+        </p>
+        <textarea
+          class="form-control"
+          rows="4"
+          [(ngModel)]="referentRemovalReason"
+          [ngModelOptions]="{standalone: true}"
+          placeholder="Motif de la demande de retrait"
+        ></textarea>
+        <small class="text-danger" *ngIf="!referentRemovalReason.trim()">Le motif est obligatoire.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelReferentRemovalModal()">Annuler</button>
+        <button
+          type="button"
+          class="btn btn-danger"
+          (click)="confirmReferentRemovalModal()"
+          [disabled]="!referentRemovalReason.trim()"
+        >
+          Envoyer la demande
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="referentRemovalModalOpen" class="modal-backdrop fade show"></div>

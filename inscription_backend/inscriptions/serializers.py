@@ -100,9 +100,9 @@ class SignupSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         identifiant = (attrs.get("identifiant") or "").strip()
-        if not re.fullmatch(r"[A-Za-z0-9]+", identifiant):
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", identifiant):
             raise serializers.ValidationError(
-                {"identifiant": "Le login ne doit contenir que des lettres et des chiffres."}
+                {"identifiant": "Le login ne doit contenir que des lettres, chiffres, points (.), tirets (-) ou underscores (_)."}
             )
         attrs["identifiant"] = identifiant
         if attrs["password"] != attrs["password_confirmation"]:
@@ -197,9 +197,29 @@ class MeSerializer(serializers.ModelSerializer):
             "username",
             "first_name",
             "last_name",
+            "fonction",
             "is_super_admin",
             "legacy_id_role",
         )
+
+
+class MeUpdateSerializer(serializers.Serializer):
+    username = serializers.CharField(required=False, allow_blank=False, max_length=200)
+    email = serializers.EmailField(required=False)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    fonction = serializers.CharField(required=False, allow_blank=True, max_length=200)
+
+    def validate_username(self, value: str) -> str:
+        username = (value or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9._@-]+", username):
+            raise serializers.ValidationError(
+                "L'identifiant ne doit contenir que des lettres, chiffres ou . _ @ -"
+            )
+        return username
+
+    def validate_email(self, value: str) -> str:
+        return (value or "").strip().lower()
 
 
 class AdditionalAccessSerializer(serializers.Serializer):
