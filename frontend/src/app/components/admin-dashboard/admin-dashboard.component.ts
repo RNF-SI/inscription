@@ -18,6 +18,16 @@ import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
 })
 export class AdminDashboardComponent implements OnInit {
   activeTab: 'requests' | 'reserves' | 'app-admins' = 'requests';
+  tabLoading: Record<'requests' | 'reserves' | 'app-admins', boolean> = {
+    requests: false,
+    reserves: false,
+    'app-admins': false,
+  };
+  tabLoaded: Record<'requests' | 'reserves' | 'app-admins', boolean> = {
+    requests: false,
+    reserves: false,
+    'app-admins': false,
+  };
   isSuperAdmin = false;
   registrations: {
     public_id: string;
@@ -38,7 +48,6 @@ export class AdminDashboardComponent implements OnInit {
     request_justification?: string;
   }[] = [];
   validationApplications: ApplicationDto[] = [];
-  loading = true;
   decisionLoadingKey: string | null = null;
   appAdminRows: ApplicationAdminsRowDto[] = [];
   appAdminAvailable = true;
@@ -69,37 +78,26 @@ export class AdminDashboardComponent implements OnInit {
   reserveMemberAddLoadingCode: string | null = null;
   reserveMemberSearchLoadingCode: string | null = null;
   reserveMemberAddSuggestionsByCode: Record<string, KeycloakUserSuggestionDto[]> = {};
+  isReserveReferent = false;
 
   constructor(private api: ApiService, private auth: AuthService) {}
 
   ngOnInit(): void {
-    this.isSuperAdmin = !!this.auth.getMeSnapshot()?.profile?.is_super_admin;
-    forkJoin({
-      regs: this.api.getAdminRegistrations().pipe(catchError(() => of([]))),
-      pend: this.api.getPendingItems().pipe(catchError(() => of([]))),
-      validationApps: this.api.getMyValidationApplications().pipe(catchError(() => of([]))),
-      appAdmins: this.api.getApplicationAdmins().pipe(catchError(() => of(null))),
-      reserveRemoval: this.api.getAdminReserveMemberRemovalRequests().pipe(catchError(() => of([]))),
-      referentReserves: this.api.getReferentReserveMembers().pipe(catchError(() => of([]))),
-      reserveReferentRequests: this.api.getAdminReserveReferentRequests().pipe(catchError(() => of([]))),
-    })
-      .pipe(finalize(() => (this.loading = false)))
-      .subscribe(({ regs, pend, validationApps, appAdmins, reserveRemoval, referentReserves, reserveReferentRequests }) => {
-        this.registrations = regs;
-        this.pending = pend;
-        this.validationApplications = validationApps;
-        this.appAdminAvailable = Array.isArray(appAdmins);
-        this.appAdminRows = Array.isArray(appAdmins) ? appAdmins : [];
-        this.reserveRemovalRequests = reserveRemoval;
-        this.referentReserves = referentReserves;
-        if (
-          this.referentReserves.length &&
-          !this.referentReserves.some((r) => r.reserve.area_code === this.selectedReferentReserveCode)
-        ) {
-          this.selectedReferentReserveCode = this.referentReserves[0].reserve.area_code;
-        }
-        this.reserveReferentRequests = reserveReferentRequests;
-      });
+    const me = this.auth.getMeSnapshot();
+    this.isSuperAdmin = !!me?.profile?.is_super_admin;
+    this.isReserveReferent = !!me?.reserves?.some((r) => !!r.referent);
+    if (!this.canShowRequestsTab && this.canShowReservesTab) {
+      this.activeTab = 'reserves';
+    } else if (!this.canShowRequestsTab && this.activeTab === 'requests') {
+      this.activeTab = this.canShowAppAdminsTab ? 'app-admins' : 'requests';
+    }
+    if (!this.canShowReservesTab && this.activeTab === 'reserves') {
+      this.activeTab = this.canShowRequestsTab ? 'requests' : 'app-admins';
+    }
+    if (!this.canShowAppAdminsTab && this.activeTab === 'app-admins') {
+      this.activeTab = this.canShowRequestsTab ? 'requests' : 'reserves';
+    }
+    this.loadTab(this.activeTab);
   }
 
   get canValidateApplications(): boolean {
@@ -131,11 +129,11 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   approveReg(id: string) {
-    this.api.superApprove(id).subscribe(() => this.ngOnInit());
+    this.api.superApprove(id).subscribe(() => this.loadRequestsTab(true));
   }
 
   rejectReg(id: string) {
-    this.api.superReject(id).subscribe(() => this.ngOnInit());
+    this.api.superReject(id).subscribe(() => this.loadRequestsTab(true));
   }
 
   decide(itemId: number, kind: string, approve: boolean) {
@@ -176,7 +174,7 @@ export class AdminDashboardComponent implements OnInit {
         ? this.api.decideAdditionalItem(itemId, approve, note)
         : this.api.decideRegistrationItem(itemId, approve, note);
     obs.subscribe({
-      next: () => this.ngOnInit(),
+      next: () => this.loadRequestsTab(true),
       error: () => {
         this.decisionLoadingKey = null;
       },
@@ -245,7 +243,7 @@ export class AdminDashboardComponent implements OnInit {
     }
     this.reserveRemovalLoadingKey = key;
     this.api.decideAdminReserveMemberRemovalRequest(reqId, approve, note).subscribe({
-      next: () => this.ngOnInit(),
+      next: () => this.loadRequestsTab(true),
       error: () => {
         this.reserveRemovalLoadingKey = null;
       },
@@ -303,7 +301,7 @@ export class AdminDashboardComponent implements OnInit {
       reason,
     }).subscribe({
       next: () => {
-        this.ngOnInit();
+        this.loadReservesTab(true);
       },
       error: () => {
         this.referentRemovalSavingKey = null;
@@ -321,7 +319,7 @@ export class AdminDashboardComponent implements OnInit {
     }
     this.referentRemovalSavingKey = key;
     this.api.directRemoveReserveMember(areaCode, member.sub).subscribe({
-      next: () => this.ngOnInit(),
+      next: () => this.loadReservesTab(true),
       error: () => {
         this.referentRemovalSavingKey = null;
       },
@@ -340,7 +338,7 @@ export class AdminDashboardComponent implements OnInit {
     this.api.directAddReserveMember(areaCode, email).subscribe({
       next: () => {
         this.reserveMemberAddEmailByCode[areaCode] = '';
-        this.ngOnInit();
+        this.loadReservesTab(true);
       },
       error: () => {
         this.reserveMemberAddLoadingCode = null;
@@ -391,7 +389,7 @@ export class AdminDashboardComponent implements OnInit {
     }
     this.reserveReferentLoadingKey = key;
     this.api.decideAdminReserveReferentRequest(reqId, approve, note).subscribe({
-      next: () => this.ngOnInit(),
+      next: () => this.loadRequestsTab(true),
       error: () => {
         this.reserveReferentLoadingKey = null;
       },
@@ -403,13 +401,131 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   setActiveTab(tab: 'requests' | 'reserves' | 'app-admins'): void {
+    if (tab === 'requests' && !this.canShowRequestsTab) {
+      return;
+    }
+    if (tab === 'reserves' && !this.canShowReservesTab) {
+      return;
+    }
+    if (tab === 'app-admins' && !this.canShowAppAdminsTab) {
+      return;
+    }
     this.activeTab = tab;
+    this.loadTab(tab);
+  }
+
+  get canShowReservesTab(): boolean {
+    return this.isSuperAdmin || this.isReserveReferent;
+  }
+
+  get canShowAppAdminsTab(): boolean {
+    return this.isSuperAdmin;
+  }
+
+  get canShowRequestsTab(): boolean {
+    return this.isSuperAdmin || this.canValidateApplications;
+  }
+
+  get visibleTabsCount(): number {
+    return [this.canShowRequestsTab, this.canShowReservesTab, this.canShowAppAdminsTab].filter(Boolean).length;
+  }
+
+  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins'): boolean {
+    return this.tabLoading[tab];
+  }
+
+  private loadTab(tab: 'requests' | 'reserves' | 'app-admins', force = false): void {
+    if (this.tabLoading[tab] || (!force && this.tabLoaded[tab])) {
+      return;
+    }
+    if (tab === 'requests') {
+      this.loadRequestsTab(force);
+      return;
+    }
+    if (tab === 'reserves') {
+      this.loadReservesTab(force);
+      return;
+    }
+    this.loadAppAdminsTab(force);
+  }
+
+  private loadRequestsTab(force = false): void {
+    if (this.tabLoading.requests || (!force && this.tabLoaded.requests)) {
+      return;
+    }
+    this.tabLoading.requests = true;
+    forkJoin({
+      regs: this.api.getAdminRegistrations().pipe(catchError(() => of([]))),
+      pend: this.api.getPendingItems().pipe(catchError(() => of([]))),
+      validationApps: this.api.getMyValidationApplications().pipe(catchError(() => of([]))),
+      reserveRemoval: this.api.getAdminReserveMemberRemovalRequests().pipe(catchError(() => of([]))),
+      reserveReferentRequests: this.api.getAdminReserveReferentRequests().pipe(catchError(() => of([]))),
+    })
+      .pipe(
+        finalize(() => {
+          this.tabLoading.requests = false;
+        })
+      )
+      .subscribe(({ regs, pend, validationApps, reserveRemoval, reserveReferentRequests }) => {
+        this.registrations = regs;
+        this.pending = pend;
+        this.validationApplications = validationApps;
+        this.reserveRemovalRequests = reserveRemoval;
+        this.reserveReferentRequests = reserveReferentRequests;
+        this.tabLoaded.requests = true;
+      });
+  }
+
+  private loadReservesTab(force = false): void {
+    if (this.tabLoading.reserves || (!force && this.tabLoaded.reserves)) {
+      return;
+    }
+    this.tabLoading.reserves = true;
+    this.api
+      .getReferentReserveMembers()
+      .pipe(
+        catchError(() => of([])),
+        finalize(() => {
+          this.tabLoading.reserves = false;
+        })
+      )
+      .subscribe((referentReserves) => {
+        this.referentReserves = referentReserves;
+        if (
+          this.referentReserves.length &&
+          !this.referentReserves.some((r) => r.reserve.area_code === this.selectedReferentReserveCode)
+        ) {
+          this.selectedReferentReserveCode = this.referentReserves[0].reserve.area_code;
+        }
+        this.tabLoaded.reserves = true;
+      });
+  }
+
+  private loadAppAdminsTab(force = false): void {
+    if (this.tabLoading['app-admins'] || (!force && this.tabLoaded['app-admins'])) {
+      return;
+    }
+    this.tabLoading['app-admins'] = true;
+    this.api
+      .getApplicationAdmins()
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => {
+          this.tabLoading['app-admins'] = false;
+        })
+      )
+      .subscribe((appAdmins) => {
+        this.appAdminAvailable = Array.isArray(appAdmins);
+        this.appAdminRows = Array.isArray(appAdmins) ? appAdmins : [];
+        this.tabLoaded['app-admins'] = true;
+      });
   }
 
   private reloadAppAdmins(): void {
     this.api.getApplicationAdmins().subscribe({
       next: (rows) => {
         this.appAdminRows = rows;
+        this.tabLoaded['app-admins'] = true;
         this.appAdminActionKey = null;
       },
       error: () => {

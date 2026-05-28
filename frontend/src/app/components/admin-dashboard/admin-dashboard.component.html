@@ -1,12 +1,12 @@
 <div class="container p-3">
   <h3>Administration</h3>
-  <p *ngIf="loading">Chargement…</p>
-  <ul class="nav nav-tabs mt-3">
+  <ul class="nav nav-tabs mt-3" *ngIf="visibleTabsCount > 1">
     <li class="nav-item">
       <button
         type="button"
         class="nav-link"
         [class.active]="activeTab === 'requests'"
+        *ngIf="canShowRequestsTab"
         (click)="setActiveTab('requests')"
       >
         Toutes les demandes
@@ -17,6 +17,7 @@
         type="button"
         class="nav-link"
         [class.active]="activeTab === 'reserves'"
+        *ngIf="canShowReservesTab"
         (click)="setActiveTab('reserves')"
       >
         Membres des réserves
@@ -27,6 +28,7 @@
         type="button"
         class="nav-link"
         [class.active]="activeTab === 'app-admins'"
+        *ngIf="canShowAppAdminsTab"
         (click)="setActiveTab('app-admins')"
       >
         Admins d’applications
@@ -34,7 +36,11 @@
     </li>
   </ul>
 
-  <div class="pt-3" *ngIf="activeTab === 'requests'">
+  <div class="pt-3" *ngIf="activeTab === 'requests' && canShowRequestsTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('requests')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('requests')">
     <h4 class="mt-2" *ngIf="isSuperAdmin">Demandes d’inscription</h4>
     <table class="table table-sm" *ngIf="isSuperAdmin && pendingRegistrations.length">
       <thead>
@@ -222,9 +228,14 @@
     <p class="text-muted" *ngIf="isSuperAdmin && !reserveRemovalRequests.length">
       Aucune demande de retrait de membre en attente.
     </p>
+    </ng-container>
   </div>
 
-  <div class="pt-3" *ngIf="activeTab === 'reserves'">
+  <div class="pt-3" *ngIf="activeTab === 'reserves' && canShowReservesTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('reserves')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('reserves')">
     <div *ngIf="referentReserves.length; else noReserveMembers">
       <h4 class="mt-2">Membres de vos réserves référentes</h4>
       <div class="mb-3" *ngIf="useReferentReserveSelector">
@@ -312,9 +323,14 @@
     <ng-template #noReserveMembers>
       <p class="text-muted mt-2">Aucune réserve à afficher.</p>
     </ng-template>
+    </ng-container>
   </div>
 
-  <div class="pt-3" *ngIf="activeTab === 'app-admins'">
+  <div class="pt-3" *ngIf="activeTab === 'app-admins' && canShowAppAdminsTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('app-admins')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('app-admins')">
     <h4 class="mt-2">Administrateurs d’applications</h4>
     <table class="table table-sm" *ngIf="appAdminAvailable && appAdminRows.length">
       <thead>
@@ -363,6 +379,7 @@
     <p class="text-muted" *ngIf="!appAdminAvailable || !appAdminRows.length">
       Aucun périmètre d’administration d’applications.
     </p>
+    </ng-container>
   </div>
 </div>
 
