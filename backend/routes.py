@@ -1,4 +1,4 @@
-from flask import Flask, request, Response, render_template, redirect, Blueprint, jsonify, g
+from flask import Flask, request, Response, render_template, redirect, Blueprint, jsonify, g, current_app
 import requests
 import json
 
@@ -12,7 +12,18 @@ from pypnusershub import routes as fnauth
 
 from flask_login import login_required
 
+from usershub_client import post_usershub_api, usershub_response_tuple
+
 mail = Mail(app)
+
+
+def _send_mail_safe(msg):
+    """Envoie un mail sans faire échouer la requête si le SMTP est indisponible."""
+    try:
+        mail.send(msg)
+    except Exception:
+        current_app.logger.exception("Échec d'envoi d'e-mail")
+
 
 @bp.route('/organismes', methods=['GET'])
 # @fnauth.check_auth(1)
@@ -87,24 +98,26 @@ def inscription():
 
     data = request.get_json()
 
-    if (data["id_organisme"] == '') :
+    if data.get("id_organisme") in ("", None):
         data["id_organisme"] = None
         orgadb = None
-    else :
-        organisme = Bib_Organismes.query.filter_by(id_organisme=data["id_organisme"]).first()
-        orgadb = organisme.nom_organisme
+    else:
+        organisme = Bib_Organismes.query.filter_by(
+            id_organisme=data["id_organisme"]
+        ).first()
+        orgadb = organisme.nom_organisme if organisme else None
 
     # ajout des valeurs non présentes dans le form
-    data["id_application"] = 6
+    data["id_application"] = app.config.get("ID_APP", 6)
     data["groupe"] = False
     data["confirmation_url"] = app.config["API_ENDPOINT"] + "/after_confirmation"
 
-    r = s.post(
-        url=app.config["API_ENDPOINT"] + "/pypn/register/post_usershub/create_temp_user",
-        json=data,
-    )
+    try:
+        r = post_usershub_api("create_temp_user", data)
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 500
 
-    if (r.status_code == 200) :
+    if r.status_code == 200:
 
         subject = "Demande d'inscription au SI"
         template = "email_global.html"
@@ -124,9 +137,10 @@ def inscription():
             recipients=recipients
         )
         msg.html = msg_html
-        mail.send(msg)
+        _send_mail_safe(msg)
 
-        if (data['champs_addi']['ancrage']) :
+        champs_addi = data.get("champs_addi") or {}
+        if champs_addi.get("ancrage"):
             subject = "Demande de compte pour la BAO Ancrage"
             template = "email_ancrage.html"
             recipients = [app.config["MAIL_ANCRAGE"]]
@@ -141,7 +155,7 @@ def inscription():
                 recipients=recipients
             )
             msg.html = msg_html
-            mail.send(msg)
+            _send_mail_safe(msg)
 
         # if (data['champs_addi']['psdrf']) :
         #     subject = "Demande de compte pour le module PSDRF"
@@ -161,7 +175,8 @@ def inscription():
         #     mail.send(msg)
 
 
-    return Response(r), r.status_code
+    body, status = usershub_response_tuple(r)
+    return body, status
 
 @bp.route('/login/recovery', methods=["POST"])
 def login_recovery():
@@ -172,12 +187,12 @@ def login_recovery():
     """
     data = request.get_json()
 
-    r = s.post(
-        url=app.config["API_ENDPOINT"] + "/pypn/register/post_usershub/create_cor_role_token",
-        json=data,
-    )
+    try:
+        r = post_usershub_api("create_cor_role_token", data)
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 500
 
-    if (r.status_code == 200) :
+    if r.status_code == 200:
 
         user = json.loads(r.text)['role']
 
@@ -204,7 +219,8 @@ def login_recovery():
 
         print("message envoyé")
 
-    return Response(r), r.status_code
+    body, status = usershub_response_tuple(r)
+    return body, status
 
 @bp.route("/after_confirmation", methods=["POST"])
 def after_confirmation():
@@ -289,10 +305,10 @@ def new_password():
     if not data.get("token", None):
         return {"msg": "Erreur serveur"}, 500
 
-    r = s.post(
-        url=app.config["API_ENDPOINT"] + "/pypn/register/post_usershub/change_password",
-        json=data,
-    )
+    try:
+        r = post_usershub_api("change_password", data)
+    except ValueError as exc:
+        return {"msg": str(exc)}, 500
 
     if r.status_code != 200:
         # comme concerne le password, on explicite pas le message
