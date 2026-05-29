@@ -137,7 +137,7 @@ def inscription():
             recipients=recipients
         )
         msg.html = msg_html
-        _send_mail_safe(msg)
+        mail.send(msg)
 
         champs_addi = data.get("champs_addi") or {}
         if champs_addi.get("ancrage"):
@@ -155,7 +155,7 @@ def inscription():
                 recipients=recipients
             )
             msg.html = msg_html
-            _send_mail_safe(msg)
+            mail.send(msg)
 
         # if (data['champs_addi']['psdrf']) :
         #     subject = "Demande de compte pour le module PSDRF"
