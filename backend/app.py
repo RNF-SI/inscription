@@ -1,3 +1,5 @@
+import os
+
 import requests
 import json
 
@@ -6,38 +8,54 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 
-from importlib import import_module
-
 from config import Config
-
-import flask_login
-from flask_login import current_user
-
-from pypnusershub.login_manager import login_manager
 
 # from models import Bib_Organismes
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# login_manager = flask_login.LoginManager() # importé depuis pypnusershub
-login_manager.init_app(app)
+db = SQLAlchemy()
+ma = Marshmallow()
+
+# Partager db/ma avec pypnusershub (obligatoire en 3.x)
+os.environ.setdefault("FLASK_SQLALCHEMY_DB", "app.db")
+os.environ.setdefault("FLASK_MARSHMALLOW", "app.ma")
+
+db.init_app(app)
+ma.init_app(app)
+
+from pypnusershub.auth.auth_manager import auth_manager
+from pypnusershub import routes_register
+
+_DEFAULT_AUTH_PROVIDERS = [
+    {
+        "module": "pypnusershub.auth.providers.default.LocalProvider",
+        "id_provider": "local_provider",
+    },
+]
+
+
+def _auth_providers():
+    """Liste des fournisseurs d'identité (config optionnelle AUTHENTICATION.PROVIDERS)."""
+    return app.config.get("AUTHENTICATION", {}).get("PROVIDERS", _DEFAULT_AUTH_PROVIDERS)
+
+
+auth_manager.init_app(
+    app,
+    prefix="/auth",
+    providers_declaration=_auth_providers(),
+)
 
 # blueprint relié au module usershub-authentification
-from pypnusershub import routes_register
-app.register_blueprint(routes_register.bp, url_prefix='/pypn/register')
+app.register_blueprint(routes_register.bp, url_prefix="/pypn/register")
 
 # cors = CORS(app, resources={ r'/*': {'origins': "*"}},supports_credentials=True)
 CORS(app, supports_credentials=True)
 
-db = SQLAlchemy(app) 
-ma = Marshmallow(app)
-
 import routes
-app.register_blueprint(routes.bp)
 
-from pypnusershub.routes import routes
-app.register_blueprint(routes, url_prefix='/auth')
+app.register_blueprint(routes.bp)
 
 # @app.before_request
 # def load_current_user():

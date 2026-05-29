@@ -323,7 +323,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         exclude = ("active", "date_insert", "date_update", "desc_role", "groupe")
         load_relationships = True
 
-    groupes = ma.Nested(lambda: RoleSchema, many = True)
+    groups = ma.Nested(lambda: RoleSchema, many=True)
     rns = ma.Nested(lambda: RnsUsersSchema, many = True)
     organisme = ma.Nested(lambda: OrganismeSchemaComplet, many = False)
 
