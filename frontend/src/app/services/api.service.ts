@@ -109,6 +109,19 @@ export interface KeycloakUserSuggestionDto {
   label: string;
 }
 
+export interface UserApplicationAccessRowDto {
+  application: ApplicationDto;
+  has_access: boolean;
+  auto_granted: boolean;
+  editable: boolean;
+  pending_request: boolean;
+}
+
+export interface UserApplicationAccessDto {
+  user: KeycloakUserSuggestionDto;
+  applications: UserApplicationAccessRowDto[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   constructor(private http: HttpClient) {}
@@ -252,6 +265,19 @@ export class ApiService {
   searchKeycloakUsers(query: string): Observable<KeycloakUserSuggestionDto[]> {
     return this.http.get<KeycloakUserSuggestionDto[]>(
       `${environment.apiUrl}/admin/keycloak-users-search/?q=${encodeURIComponent(query)}`
+    );
+  }
+
+  getUserApplicationAccess(userSub: string): Observable<UserApplicationAccessDto> {
+    return this.http.get<UserApplicationAccessDto>(
+      `${environment.apiUrl}/admin/users/${encodeURIComponent(userSub)}/application-access/`
+    );
+  }
+
+  updateUserApplicationAccess(userSub: string, access: Record<string, boolean>): Observable<UserApplicationAccessDto> {
+    return this.http.put<UserApplicationAccessDto>(
+      `${environment.apiUrl}/admin/users/${encodeURIComponent(userSub)}/application-access/`,
+      { access }
     );
   }
 

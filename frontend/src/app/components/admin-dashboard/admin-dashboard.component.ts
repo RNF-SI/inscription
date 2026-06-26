@@ -8,6 +8,8 @@ import {
   ApplicationDto,
   ApplicationAdminsRowDto,
   KeycloakUserSuggestionDto,
+  UserApplicationAccessDto,
+  UserApplicationAccessRowDto,
   ReferentReserveMembersRowDto,
 } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
@@ -17,16 +19,18 @@ import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
   templateUrl: './admin-dashboard.component.html',
 })
 export class AdminDashboardComponent implements OnInit {
-  activeTab: 'requests' | 'reserves' | 'app-admins' = 'requests';
-  tabLoading: Record<'requests' | 'reserves' | 'app-admins', boolean> = {
+  activeTab: 'requests' | 'reserves' | 'app-admins' | 'user-access' = 'requests';
+  tabLoading: Record<'requests' | 'reserves' | 'app-admins' | 'user-access', boolean> = {
     requests: false,
     reserves: false,
     'app-admins': false,
+    'user-access': false,
   };
-  tabLoaded: Record<'requests' | 'reserves' | 'app-admins', boolean> = {
+  tabLoaded: Record<'requests' | 'reserves' | 'app-admins' | 'user-access', boolean> = {
     requests: false,
     reserves: false,
     'app-admins': false,
+    'user-access': false,
   };
   isSuperAdmin = false;
   registrations: {
@@ -79,6 +83,15 @@ export class AdminDashboardComponent implements OnInit {
   reserveMemberSearchLoadingCode: string | null = null;
   reserveMemberAddSuggestionsByCode: Record<string, KeycloakUserSuggestionDto[]> = {};
   isReserveReferent = false;
+  userAccessSearchQuery = '';
+  userAccessSuggestions: KeycloakUserSuggestionDto[] = [];
+  userAccessSearchLoading = false;
+  selectedUserAccessSub = '';
+  selectedUserAccessLabel = '';
+  userAccessData: UserApplicationAccessDto | null = null;
+  userAccessDraft: Record<string, boolean> = {};
+  userAccessSaving = false;
+  userAccessLoadError = '';
 
   constructor(private api: ApiService, private auth: AuthService) {}
 
@@ -400,7 +413,7 @@ export class AdminDashboardComponent implements OnInit {
     return this.reserveReferentLoadingKey === `${reqId}:${approve ? 'approve' : 'reject'}`;
   }
 
-  setActiveTab(tab: 'requests' | 'reserves' | 'app-admins'): void {
+  setActiveTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access'): void {
     if (tab === 'requests' && !this.canShowRequestsTab) {
       return;
     }
@@ -408,6 +421,9 @@ export class AdminDashboardComponent implements OnInit {
       return;
     }
     if (tab === 'app-admins' && !this.canShowAppAdminsTab) {
+      return;
+    }
+    if (tab === 'user-access' && !this.canShowUserAccessTab) {
       return;
     }
     this.activeTab = tab;
@@ -422,19 +438,23 @@ export class AdminDashboardComponent implements OnInit {
     return this.isSuperAdmin;
   }
 
+  get canShowUserAccessTab(): boolean {
+    return this.isSuperAdmin;
+  }
+
   get canShowRequestsTab(): boolean {
     return this.isSuperAdmin || this.canValidateApplications;
   }
 
   get visibleTabsCount(): number {
-    return [this.canShowRequestsTab, this.canShowReservesTab, this.canShowAppAdminsTab].filter(Boolean).length;
+    return [this.canShowRequestsTab, this.canShowReservesTab, this.canShowAppAdminsTab, this.canShowUserAccessTab].filter(Boolean).length;
   }
 
-  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins'): boolean {
+  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access'): boolean {
     return this.tabLoading[tab];
   }
 
-  private loadTab(tab: 'requests' | 'reserves' | 'app-admins', force = false): void {
+  private loadTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access', force = false): void {
     if (this.tabLoading[tab] || (!force && this.tabLoaded[tab])) {
       return;
     }
@@ -444,6 +464,10 @@ export class AdminDashboardComponent implements OnInit {
     }
     if (tab === 'reserves') {
       this.loadReservesTab(force);
+      return;
+    }
+    if (tab === 'user-access') {
+      this.loadUserAccessTab(force);
       return;
     }
     this.loadAppAdminsTab(force);
@@ -519,6 +543,112 @@ export class AdminDashboardComponent implements OnInit {
         this.appAdminRows = Array.isArray(appAdmins) ? appAdmins : [];
         this.tabLoaded['app-admins'] = true;
       });
+  }
+
+
+  onUserAccessSearchInput(): void {
+    const query = (this.userAccessSearchQuery || '').trim();
+    if (query.length < 2) {
+      this.userAccessSuggestions = [];
+      return;
+    }
+    this.userAccessSearchLoading = true;
+    this.api.searchKeycloakUsers(query).subscribe({
+      next: (rows) => {
+        this.userAccessSuggestions = rows || [];
+      },
+      error: () => {
+        this.userAccessSuggestions = [];
+      },
+      complete: () => {
+        this.userAccessSearchLoading = false;
+      },
+    });
+  }
+
+  selectUserForAccess(user: KeycloakUserSuggestionDto): void {
+    this.selectedUserAccessSub = user.keycloak_sub;
+    this.selectedUserAccessLabel = user.label || user.email;
+    this.userAccessSearchQuery = this.selectedUserAccessLabel;
+    this.userAccessSuggestions = [];
+    this.loadUserAccessForSelectedUser();
+  }
+
+  onUserAccessToggle(slug: string, checked: boolean): void {
+    const row = this.userAccessData?.applications.find((r) => r.application.slug === slug);
+    if (!row?.editable) {
+      return;
+    }
+    this.userAccessDraft[slug] = checked;
+  }
+
+  isUserAccessChecked(row: UserApplicationAccessRowDto): boolean {
+    const slug = row.application.slug;
+    if (slug in this.userAccessDraft) {
+      return !!this.userAccessDraft[slug];
+    }
+    return row.has_access;
+  }
+
+  saveUserApplicationAccess(): void {
+    if (!this.selectedUserAccessSub || this.userAccessSaving) {
+      return;
+    }
+    const editable = (this.userAccessData?.applications || []).filter((r) => r.editable);
+    const access: Record<string, boolean> = {};
+    for (const row of editable) {
+      access[row.application.slug] = this.isUserAccessChecked(row);
+    }
+    this.userAccessSaving = true;
+    this.userAccessLoadError = '';
+    this.api.updateUserApplicationAccess(this.selectedUserAccessSub, access).subscribe({
+      next: (data) => {
+        this.userAccessData = data;
+        this.userAccessDraft = {};
+        this.tabLoaded['user-access'] = true;
+      },
+      error: (err) => {
+        this.userAccessLoadError = err?.error?.detail || 'Enregistrement impossible.';
+      },
+      complete: () => {
+        this.userAccessSaving = false;
+      },
+    });
+  }
+
+  private loadUserAccessTab(force = false): void {
+    if (this.tabLoading['user-access'] || (!force && this.tabLoaded['user-access'] && !this.selectedUserAccessSub)) {
+      return;
+    }
+    this.tabLoading['user-access'] = true;
+    if (!this.selectedUserAccessSub) {
+      this.tabLoading['user-access'] = false;
+      this.tabLoaded['user-access'] = true;
+      return;
+    }
+    this.loadUserAccessForSelectedUser(force);
+  }
+
+  private loadUserAccessForSelectedUser(force = false): void {
+    if (!this.selectedUserAccessSub) {
+      return;
+    }
+    this.tabLoading['user-access'] = true;
+    this.userAccessLoadError = '';
+    this.api.getUserApplicationAccess(this.selectedUserAccessSub).subscribe({
+      next: (data) => {
+        this.userAccessData = data;
+        this.userAccessDraft = {};
+        this.tabLoaded['user-access'] = true;
+      },
+      error: (err) => {
+        this.userAccessData = null;
+        this.userAccessLoadError = err?.error?.detail || 'Chargement impossible.';
+      },
+      complete: () => {
+        this.tabLoading['user-access'] = false;
+      },
+    });
   }
 
   private reloadAppAdmins(): void {

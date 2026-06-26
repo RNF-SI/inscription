@@ -34,6 +34,17 @@
         Admins d’applications
       </button>
     </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'user-access'"
+        *ngIf="canShowUserAccessTab"
+        (click)="setActiveTab('user-access')"
+      >
+        Accès utilisateurs
+      </button>
+    </li>
   </ul>
 
   <div class="pt-3" *ngIf="activeTab === 'requests' && canShowRequestsTab">
@@ -381,6 +392,92 @@
     </p>
     </ng-container>
   </div>
+  <div class="pt-3" *ngIf="activeTab === 'user-access' && canShowUserAccessTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('user-access')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('user-access')">
+      <h4 class="mt-2">Droits d'accès aux applications</h4>
+      <p class="text-muted">Recherchez un utilisateur Keycloak, puis modifiez ses accès applicatifs.</p>
+
+      <div class="mb-3" style="max-width: 42rem;">
+        <label class="form-label mb-1">Utilisateur</label>
+        <input
+          class="form-control"
+          [(ngModel)]="userAccessSearchQuery"
+          name="userAccessSearchQuery"
+          placeholder="Nom, email ou identifiant (min. 2 caractères)"
+          (input)="onUserAccessSearchInput()"
+        />
+        <small class="text-muted d-block" *ngIf="userAccessSearchLoading">Recherche…</small>
+        <ul class="list-group mt-1" *ngIf="userAccessSuggestions.length">
+          <li
+            class="list-group-item list-group-item-action py-1"
+            *ngFor="let s of userAccessSuggestions"
+            (click)="selectUserForAccess(s)"
+            style="cursor: pointer;"
+          >
+            {{ s.label }}
+          </li>
+        </ul>
+      </div>
+
+      <p class="text-danger" *ngIf="userAccessLoadError">{{ userAccessLoadError }}</p>
+
+      <div *ngIf="userAccessData">
+        <p class="mb-2">
+          <strong>{{ userAccessData.user.label || userAccessData.user.email }}</strong>
+        </p>
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Application</th>
+              <th>Accès</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of userAccessData.applications">
+              <td>{{ row.application.nom }}</td>
+              <td>
+                <div class="form-check form-switch mb-0">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    [id]="'access-' + row.application.slug"
+                    [checked]="isUserAccessChecked(row)"
+                    [disabled]="!row.editable || userAccessSaving"
+                    (change)="onUserAccessToggle(row.application.slug, $any($event.target).checked)"
+                  />
+                  <label class="form-check-label" [for]="'access-' + row.application.slug">
+                    {{ isUserAccessChecked(row) ? 'Oui' : 'Non' }}
+                  </label>
+                </div>
+              </td>
+              <td>
+                <span class="badge text-bg-secondary" *ngIf="row.auto_granted">Accès automatique</span>
+                <span class="badge text-bg-warning" *ngIf="row.pending_request">Demande en attente</span>
+                <span class="text-muted" *ngIf="!row.auto_granted && !row.pending_request && row.editable">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="saveUserApplicationAccess()"
+          [disabled]="userAccessSaving"
+        >
+          Enregistrer les modifications
+        </button>
+      </div>
+
+      <p class="text-muted mt-3" *ngIf="!selectedUserAccessSub && !userAccessLoadError">
+        Sélectionnez un utilisateur pour afficher ses droits.
+      </p>
+    </ng-container>
+  </div>
+
 </div>
 
 <div *ngIf="rejectionModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">

@@ -415,6 +415,19 @@ class KeycloakAdminClient:
             logger.error("update_user_profile %s: %s", resp.status_code, resp.text[:500])
             raise KeycloakAdminError(f"update_user_failed:{resp.status_code}")
 
+    def get_user(self, user_id: str) -> dict:
+        r = self._get(f"/users/{user_id}")
+        if r.status_code != 200:
+            raise KeycloakAdminError(f"get_user_failed:{r.status_code}")
+        return r.json() or {}
+
+    def get_user_groups(self, user_id: str) -> list[dict]:
+        r = self._get(f"/users/{user_id}/groups?briefRepresentation=false")
+        if r.status_code != 200:
+            raise KeycloakAdminError(f"get_user_groups_failed:{r.status_code}")
+        payload = r.json() or []
+        return payload if isinstance(payload, list) else []
+
     def list_group_members(self, group_id: str, max_count: int = 200) -> list[dict]:
         r = self._get(f"/groups/{group_id}/members?first=0&max={max_count}")
         if r.status_code != 200:

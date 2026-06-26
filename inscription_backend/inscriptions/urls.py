@@ -31,6 +31,10 @@ urlpatterns = [
     path("admin/pending-items/", views.AdminPendingItemsView.as_view()),
     path("admin/my-validation-applications/", views.AdminMyValidationApplicationsView.as_view()),
     path("admin/keycloak-users-search/", views.AdminKeycloakUsersSearchView.as_view()),
+    path(
+        "admin/users/<str:user_sub>/application-access/",
+        views.AdminUserApplicationAccessView.as_view(),
+    ),
     path("admin/application-admins/", views.AdminApplicationAdminsView.as_view()),
     path(
         "admin/applications/<slug:application_slug>/admins/",

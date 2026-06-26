@@ -37,6 +37,7 @@ from inscriptions.serializers import (
     ReserveSerializer,
     SignupSerializer,
 )
+from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import workflows
 
 logger = logging.getLogger(__name__)
@@ -1230,3 +1231,85 @@ class AdminApplicationAdminRemoveView(APIView):
         user = get_object_or_404(UserProfile, keycloak_sub=user_sub)
         ApplicationAdmin.objects.filter(application=app, user=user).delete()
         return Response(status=204)
+
+
+class AdminUserApplicationAccessView(APIView):
+    """Super-admin : consulter et modifier les accès applicatifs d'un utilisateur Keycloak."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request, user_sub):
+        user_sub = (user_sub or "").strip()
+        if not user_sub:
+            return Response({"detail": "Utilisateur invalide"}, status=400)
+        try:
+            kc = KeycloakAdminClient()
+            kc_user = kc.get_user(user_sub)
+            groups = kc.get_user_groups(user_sub)
+        except KeycloakAdminError as exc:
+            logger.warning("Lecture accès utilisateur Keycloak impossible: %s", exc)
+            return Response({"detail": "Utilisateur Keycloak introuvable ou API indisponible"}, status=502)
+
+        group_paths = app_access_svc._group_paths(groups)
+        apps = list(app_access_svc.si_managed_applications())
+        pending_ids = app_access_svc.pending_application_ids_for_user(user_sub)
+        rows = app_access_svc.build_user_application_access_rows(apps, group_paths, pending_ids)
+
+        email = (kc_user.get("email") or "").strip()
+        first_name = (kc_user.get("firstName") or "").strip()
+        last_name = (kc_user.get("lastName") or "").strip()
+        username = (kc_user.get("username") or "").strip()
+        label_name = f"{first_name} {last_name}".strip()
+        label = f"{label_name} ({email or username})" if label_name else (email or username)
+
+        return Response(
+            {
+                "user": {
+                    "keycloak_sub": user_sub,
+                    "email": email,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "username": username,
+                    "label": label,
+                },
+                "applications": [
+                    {
+                        "application": ApplicationSerializer(row["application"]).data,
+                        "has_access": row["has_access"],
+                        "auto_granted": row["auto_granted"],
+                        "editable": row["editable"],
+                        "pending_request": row["pending_request"],
+                    }
+                    for row in rows
+                ],
+            }
+        )
+
+    def put(self, request, user_sub):
+        user_sub = (user_sub or "").strip()
+        if not user_sub:
+            return Response({"detail": "Utilisateur invalide"}, status=400)
+        access = request.data.get("access")
+        if not isinstance(access, dict):
+            return Response({"detail": "Champ access requis (objet slug -> booléen)"}, status=400)
+
+        desired: dict[str, bool] = {}
+        for slug, value in access.items():
+            if not isinstance(slug, str) or not slug.strip():
+                continue
+            desired[slug.strip()] = bool(value)
+
+        if not desired:
+            return Response({"detail": "Aucune application à modifier"}, status=400)
+
+        try:
+            kc = KeycloakAdminClient()
+            kc.get_user(user_sub)
+            groups = kc.get_user_groups(user_sub)
+            current_paths = app_access_svc._group_paths(groups)
+            app_access_svc.apply_application_access_changes(kc, user_sub, current_paths, desired)
+        except KeycloakAdminError as exc:
+            logger.exception("Modification accès Keycloak")
+            return Response({"detail": str(exc) or "Échec de la modification Keycloak"}, status=502)
+
+        return self.get(request, user_sub)
