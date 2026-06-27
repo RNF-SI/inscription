@@ -45,6 +45,17 @@
         Accès utilisateurs
       </button>
     </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'applications'"
+        *ngIf="canShowApplicationsTab"
+        (click)="setActiveTab('applications')"
+      >
+        Applications
+      </button>
+    </li>
   </ul>
 
   <div class="pt-3" *ngIf="activeTab === 'requests' && canShowRequestsTab">
@@ -478,7 +489,232 @@
     </ng-container>
   </div>
 
+  <div class="pt-3" *ngIf="activeTab === 'applications' && canShowApplicationsTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('applications')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('applications')">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h4 class="mt-2 mb-0">Catalogue des applications</h4>
+        <button type="button" class="btn btn-sm btn-primary" (click)="openCatalogModalForNew()">
+          Nouvelle application
+        </button>
+      </div>
+
+      <table class="table table-sm align-middle" *ngIf="catalogApplications.length">
+        <thead>
+          <tr>
+            <th>Image</th>
+            <th>Nom</th>
+            <th>Slug</th>
+            <th>Gérée SI</th>
+            <th>Demande d'accès</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let app of catalogApplications">
+            <td>
+              <img
+                *ngIf="app.image"
+                [src]="applicationImageUrl(app.image)"
+                [alt]="app.nom"
+                class="rounded border"
+                style="width: 48px; height: 48px; object-fit: cover;"
+              />
+              <span *ngIf="!app.image" class="text-muted small">—</span>
+            </td>
+            <td>{{ app.nom }}</td>
+            <td><code>{{ app.slug }}</code></td>
+            <td>{{ app.managed_by_si ? 'Oui' : 'Non' }}</td>
+            <td>{{ app.requires_access_request ? 'Oui' : 'Non' }}</td>
+            <td class="text-end">
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openCatalogModalForEdit(app)">
+                Modifier
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-muted" *ngIf="!catalogApplications.length">Aucune application enregistrée.</p>
+    </ng-container>
+  </div>
+
 </div>
+
+<div *ngIf="catalogModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ catalogEditingSlug ? 'Modifier l’application' : 'Nouvelle application' }}</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="closeCatalogModal()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-nom">Nom</label>
+            <input id="catalog-nom" class="form-control" [(ngModel)]="catalogForm.nom" name="catalogNom" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-slug">Slug</label>
+            <input
+              id="catalog-slug"
+              class="form-control"
+              [(ngModel)]="catalogForm.slug"
+              name="catalogSlug"
+              [readonly]="!!catalogEditingSlug"
+              placeholder="ex: geonature-saisie"
+            />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Image</label>
+            <div class="d-flex align-items-start gap-3 flex-wrap">
+              <div
+                class="border rounded d-flex align-items-center justify-content-center bg-light"
+                style="width: 120px; height: 120px;"
+              >
+                <img
+                  *ngIf="catalogForm.image"
+                  [src]="applicationImageUrl(catalogForm.image)"
+                  [alt]="catalogForm.nom || 'Image application'"
+                  class="rounded"
+                  style="max-width: 100%; max-height: 100%; object-fit: contain;"
+                />
+                <span *ngIf="!catalogForm.image" class="text-muted small px-2 text-center">Aucune image</span>
+              </div>
+              <div class="d-flex flex-column gap-2">
+                <input
+                  #catalogImageInput
+                  type="file"
+                  class="d-none"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  (change)="onCatalogImageSelected($event)"
+                />
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  (click)="catalogImageInput.click()"
+                  [disabled]="!canManageCatalogImage || catalogImageUploading || catalogSaving || catalogCropModalOpen"
+                >
+                  {{ catalogImageUploading ? 'Import…' : 'Importer une image' }}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-danger"
+                  (click)="removeCatalogImage()"
+                  [disabled]="!canManageCatalogImage || !catalogForm.image || catalogImageUploading || catalogSaving || catalogCropModalOpen"
+                >
+                  Supprimer l'image
+                </button>
+                <small class="text-muted">
+                  Format {{ applicationImageWidth }}×{{ applicationImageHeight }} px (recadrage automatique).
+                </small>
+                <small class="text-muted" *ngIf="!canManageCatalogImage">
+                  Enregistrez l'application pour pouvoir importer une image.
+                </small>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="catalog-url">URL</label>
+            <input id="catalog-url" class="form-control" [(ngModel)]="catalogForm.url" name="catalogUrl" />
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="catalog-description">Description</label>
+            <textarea id="catalog-description" class="form-control" rows="2" [(ngModel)]="catalogForm.description" name="catalogDescription"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-keycloak-client">Client Keycloak (optionnel)</label>
+            <input id="catalog-keycloak-client" class="form-control" [(ngModel)]="catalogForm.keycloak_client_id" name="catalogKeycloakClient" />
+          </div>
+          <div class="col-md-3">
+            <div class="form-check mt-4">
+              <input
+                id="catalog-managed-by-si"
+                class="form-check-input"
+                type="checkbox"
+                [(ngModel)]="catalogForm.managed_by_si"
+                name="catalogManagedBySi"
+              />
+              <label class="form-check-label" for="catalog-managed-by-si">Gérée par le SI</label>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="form-check mt-4">
+              <input
+                id="catalog-requires-access"
+                class="form-check-input"
+                type="checkbox"
+                [(ngModel)]="catalogForm.requires_access_request"
+                name="catalogRequiresAccess"
+              />
+              <label class="form-check-label" for="catalog-requires-access">Demande d'accès requise</label>
+            </div>
+          </div>
+        </div>
+        <p class="text-danger mt-3 mb-0" *ngIf="catalogFormError">{{ catalogFormError }}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="closeCatalogModal()" [disabled]="catalogSaving">
+          Annuler
+        </button>
+        <button type="button" class="btn btn-primary" (click)="saveCatalogApplication()" [disabled]="catalogSaving || catalogImageUploading">
+          {{ catalogSaving ? 'Enregistrement…' : 'Enregistrer' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="catalogModalOpen" class="modal-backdrop fade show"></div>
+
+<div
+  *ngIf="catalogCropModalOpen"
+  class="modal fade show d-block"
+  tabindex="-1"
+  role="dialog"
+  aria-modal="true"
+  style="z-index: 1060;"
+>
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Recadrer l'image</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="cancelCatalogImageCrop()" [disabled]="catalogImageUploading"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Ajustez le cadrage. L'image sera exportée en {{ applicationImageWidth }}×{{ applicationImageHeight }} px.
+        </p>
+        <div class="catalog-cropper-wrap" *ngIf="catalogCropImageFile">
+          <image-cropper
+            [imageFile]="catalogCropImageFile"
+            [maintainAspectRatio]="true"
+            [aspectRatio]="applicationImageAspectRatio"
+            [resizeToWidth]="applicationImageWidth"
+            format="png"
+            (imageCropped)="onCatalogImageCropped($event)"
+            (loadImageFailed)="onCatalogCropImageFailed()"
+          ></image-cropper>
+        </div>
+        <p class="text-danger small mb-0" *ngIf="catalogCropLoadError">{{ catalogCropLoadError }}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelCatalogImageCrop()" [disabled]="catalogImageUploading">
+          Annuler
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="confirmCatalogImageCrop()"
+          [disabled]="catalogImageUploading || !catalogCroppedFile"
+        >
+          {{ catalogImageUploading ? 'Import…' : 'Valider et importer' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="catalogCropModalOpen" class="modal-backdrop fade show" style="z-index: 1055;"></div>
 
 <div *ngIf="rejectionModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
   <div class="modal-dialog modal-dialog-centered" role="document">

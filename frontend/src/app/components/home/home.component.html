@@ -22,7 +22,7 @@
                     
                     <mat-card-title>{{app.nom}}</mat-card-title>
                 </mat-card-header>
-                        <img mat-card-image *ngIf="app.image" src="/assets/images/{{app.image}}" alt="">
+                        <img mat-card-image *ngIf="app.image" [src]="applicationImageUrl(app.image)" alt="">
                 <mat-card-content>
                     <p [innerHTML]="app.description">
                     </p>

@@ -6,6 +6,7 @@ import { Organisme } from '../../models/models';
 import { ApiService, ApplicationDto, MeApplicationRow } from 'src/app/services/api.service';
 import { ToastrService } from 'ngx-toastr';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
+import { applicationImageUrl } from 'src/app/utils/application-image.util';
 
 @Component({
   selector: 'app-home',
@@ -29,6 +30,8 @@ export class HomeComponent implements OnInit {
   faCheck = faCheck;
   faClock = faClock;
   faBan = faBan;
+
+  readonly applicationImageUrl = applicationImageUrl;
 
   applications: (ApplicationDto & { access_status?: string })[] = [];
   loadingRequestBySlug: { [slug: string]: boolean } = {};

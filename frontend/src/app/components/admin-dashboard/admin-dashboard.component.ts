@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { forkJoin, of } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
+import { ImageCroppedEvent, base64ToFile } from 'ngx-image-cropper';
 import {
   AdminReserveReferentRequestDto,
   AdminReserveMemberRemovalRequestDto,
@@ -13,24 +14,34 @@ import {
   ReferentReserveMembersRowDto,
 } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import {
+  APPLICATION_IMAGE_ASPECT_RATIO,
+  APPLICATION_IMAGE_HEIGHT,
+  APPLICATION_IMAGE_WIDTH,
+} from 'src/app/constants/application-image.constants';
+import { applicationImageUrl } from 'src/app/utils/application-image.util';
 
 @Component({
   selector: 'app-admin-dashboard',
   templateUrl: './admin-dashboard.component.html',
+  styleUrls: ['./admin-dashboard.component.scss'],
 })
 export class AdminDashboardComponent implements OnInit {
-  activeTab: 'requests' | 'reserves' | 'app-admins' | 'user-access' = 'requests';
-  tabLoading: Record<'requests' | 'reserves' | 'app-admins' | 'user-access', boolean> = {
+  @ViewChild('catalogImageInput') catalogImageInput?: ElementRef<HTMLInputElement>;
+  activeTab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications' = 'requests';
+  tabLoading: Record<'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', boolean> = {
     requests: false,
     reserves: false,
     'app-admins': false,
     'user-access': false,
+    applications: false,
   };
-  tabLoaded: Record<'requests' | 'reserves' | 'app-admins' | 'user-access', boolean> = {
+  tabLoaded: Record<'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', boolean> = {
     requests: false,
     reserves: false,
     'app-admins': false,
     'user-access': false,
+    applications: false,
   };
   isSuperAdmin = false;
   registrations: {
@@ -92,6 +103,22 @@ export class AdminDashboardComponent implements OnInit {
   userAccessDraft: Record<string, boolean> = {};
   userAccessSaving = false;
   userAccessLoadError = '';
+  catalogApplications: ApplicationDto[] = [];
+  catalogEditingSlug = '';
+  catalogForm: ApplicationDto = this.emptyCatalogForm();
+  catalogSaving = false;
+  catalogFormError = '';
+  catalogModalOpen = false;
+  catalogImageUploading = false;
+  catalogImageCacheBust = Date.now();
+  catalogCropModalOpen = false;
+  catalogCropImageFile: File | null = null;
+  catalogCroppedFile: File | null = null;
+  catalogCropLoadError = '';
+
+  readonly applicationImageWidth = APPLICATION_IMAGE_WIDTH;
+  readonly applicationImageHeight = APPLICATION_IMAGE_HEIGHT;
+  readonly applicationImageAspectRatio = APPLICATION_IMAGE_ASPECT_RATIO;
 
   constructor(private api: ApiService, private auth: AuthService) {}
 
@@ -109,6 +136,9 @@ export class AdminDashboardComponent implements OnInit {
     }
     if (!this.canShowAppAdminsTab && this.activeTab === 'app-admins') {
       this.activeTab = this.canShowRequestsTab ? 'requests' : 'reserves';
+    }
+    if (!this.canShowApplicationsTab && this.activeTab === 'applications') {
+      this.activeTab = this.canShowRequestsTab ? 'requests' : 'app-admins';
     }
     this.loadTab(this.activeTab);
   }
@@ -413,7 +443,7 @@ export class AdminDashboardComponent implements OnInit {
     return this.reserveReferentLoadingKey === `${reqId}:${approve ? 'approve' : 'reject'}`;
   }
 
-  setActiveTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access'): void {
+  setActiveTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications'): void {
     if (tab === 'requests' && !this.canShowRequestsTab) {
       return;
     }
@@ -424,6 +454,9 @@ export class AdminDashboardComponent implements OnInit {
       return;
     }
     if (tab === 'user-access' && !this.canShowUserAccessTab) {
+      return;
+    }
+    if (tab === 'applications' && !this.canShowApplicationsTab) {
       return;
     }
     this.activeTab = tab;
@@ -442,19 +475,29 @@ export class AdminDashboardComponent implements OnInit {
     return this.isSuperAdmin;
   }
 
+  get canShowApplicationsTab(): boolean {
+    return this.isSuperAdmin;
+  }
+
   get canShowRequestsTab(): boolean {
     return this.isSuperAdmin || this.canValidateApplications;
   }
 
   get visibleTabsCount(): number {
-    return [this.canShowRequestsTab, this.canShowReservesTab, this.canShowAppAdminsTab, this.canShowUserAccessTab].filter(Boolean).length;
+    return [
+      this.canShowRequestsTab,
+      this.canShowReservesTab,
+      this.canShowAppAdminsTab,
+      this.canShowUserAccessTab,
+      this.canShowApplicationsTab,
+    ].filter(Boolean).length;
   }
 
-  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access'): boolean {
+  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications'): boolean {
     return this.tabLoading[tab];
   }
 
-  private loadTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access', force = false): void {
+  private loadTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', force = false): void {
     if (this.tabLoading[tab] || (!force && this.tabLoaded[tab])) {
       return;
     }
@@ -468,6 +511,10 @@ export class AdminDashboardComponent implements OnInit {
     }
     if (tab === 'user-access') {
       this.loadUserAccessTab(force);
+      return;
+    }
+    if (tab === 'applications') {
+      this.loadApplicationsTab(force);
       return;
     }
     this.loadAppAdminsTab(force);
@@ -660,6 +707,254 @@ export class AdminDashboardComponent implements OnInit {
       },
       error: () => {
         this.appAdminActionKey = null;
+      },
+    });
+  }
+
+  private emptyCatalogForm(): ApplicationDto {
+    return {
+      slug: '',
+      nom: '',
+      url: '',
+      image: '',
+      description: '',
+      managed_by_si: true,
+      requires_access_request: true,
+      keycloak_client_id: '',
+    };
+  }
+
+  startNewCatalogApplication(): void {
+    this.catalogEditingSlug = '';
+    this.catalogForm = this.emptyCatalogForm();
+    this.catalogFormError = '';
+  }
+
+  openCatalogModalForNew(): void {
+    this.startNewCatalogApplication();
+    this.catalogModalOpen = true;
+  }
+
+  editCatalogApplication(app: ApplicationDto): void {
+    this.catalogEditingSlug = app.slug;
+    this.catalogForm = {
+      slug: app.slug,
+      nom: app.nom,
+      url: app.url || '',
+      image: app.image || '',
+      description: app.description || '',
+      managed_by_si: !!app.managed_by_si,
+      requires_access_request: app.requires_access_request !== false,
+      keycloak_client_id: app.keycloak_client_id || '',
+    };
+    this.catalogFormError = '';
+  }
+
+  openCatalogModalForEdit(app: ApplicationDto): void {
+    this.editCatalogApplication(app);
+    this.catalogModalOpen = true;
+  }
+
+  closeCatalogModal(): void {
+    this.catalogModalOpen = false;
+    this.catalogFormError = '';
+  }
+
+  applicationImageUrl(image?: string): string {
+    return applicationImageUrl(image, this.catalogImageCacheBust);
+  }
+
+  get canManageCatalogImage(): boolean {
+    return !!this.catalogEditingSlug;
+  }
+
+  onCatalogImageSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !this.catalogEditingSlug || this.catalogImageUploading) {
+      return;
+    }
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+      this.catalogFormError = 'Seules les images raster (png, jpg, webp, gif) sont acceptées.';
+      this.resetCatalogImageInput();
+      return;
+    }
+    this.catalogFormError = '';
+    this.catalogCropLoadError = '';
+    this.catalogCropImageFile = file;
+    this.catalogCroppedFile = null;
+    this.catalogCropModalOpen = true;
+  }
+
+  onCatalogImageCropped(event: ImageCroppedEvent): void {
+    if (!event.base64 || !this.catalogEditingSlug) {
+      this.catalogCroppedFile = null;
+      return;
+    }
+    const blob = base64ToFile(event.base64);
+    this.catalogCroppedFile = new File([blob], `${this.catalogEditingSlug}.png`, { type: 'image/png' });
+  }
+
+  cancelCatalogImageCrop(): void {
+    this.catalogCropModalOpen = false;
+    this.catalogCropImageFile = null;
+    this.catalogCroppedFile = null;
+    this.catalogCropLoadError = '';
+    this.resetCatalogImageInput();
+  }
+
+  onCatalogCropImageFailed(): void {
+    this.catalogCropLoadError = 'Impossible de charger cette image. Essayez un fichier PNG ou JPEG.';
+    this.catalogCroppedFile = null;
+  }
+
+  private resetCatalogImageInput(): void {
+    const input = this.catalogImageInput?.nativeElement;
+    if (input) {
+      input.value = '';
+    }
+  }
+
+  confirmCatalogImageCrop(): void {
+    if (!this.catalogEditingSlug || !this.catalogCroppedFile || this.catalogImageUploading) {
+      return;
+    }
+    const file = this.catalogCroppedFile;
+    this.catalogImageUploading = true;
+    this.catalogFormError = '';
+    this.api.uploadAdminApplicationImage(this.catalogEditingSlug, file).subscribe({
+      next: (saved) => {
+        this.catalogForm.image = saved.image || '';
+        this.catalogImageCacheBust = Date.now();
+        this.reloadApplicationsCatalog();
+        this.cancelCatalogImageCrop();
+      },
+      error: (err) => {
+        this.catalogFormError = err?.error?.detail || 'Import impossible.';
+      },
+      complete: () => {
+        this.catalogImageUploading = false;
+      },
+    });
+  }
+
+  removeCatalogImage(): void {
+    if (!this.catalogEditingSlug || this.catalogImageUploading || !this.catalogForm.image) {
+      return;
+    }
+    this.catalogImageUploading = true;
+    this.catalogFormError = '';
+    this.api.deleteAdminApplicationImage(this.catalogEditingSlug).subscribe({
+      next: (saved) => {
+        this.catalogForm.image = saved.image || '';
+        this.catalogImageCacheBust = Date.now();
+        this.reloadApplicationsCatalog();
+      },
+      error: (err) => {
+        this.catalogFormError = err?.error?.detail || 'Suppression impossible.';
+      },
+      complete: () => {
+        this.catalogImageUploading = false;
+      },
+    });
+  }
+
+  saveCatalogApplication(): void {
+    if (this.catalogSaving) {
+      return;
+    }
+    const payload = {
+      slug: (this.catalogForm.slug || '').trim(),
+      nom: (this.catalogForm.nom || '').trim(),
+      url: (this.catalogForm.url || '').trim(),
+      description: (this.catalogForm.description || '').trim(),
+      managed_by_si: !!this.catalogForm.managed_by_si,
+      requires_access_request: !!this.catalogForm.requires_access_request,
+      keycloak_client_id: (this.catalogForm.keycloak_client_id || '').trim(),
+    };
+    if (!payload.nom) {
+      this.catalogFormError = 'Le nom est requis.';
+      return;
+    }
+    if (!this.catalogEditingSlug && !payload.slug) {
+      this.catalogFormError = 'Le slug est requis pour une nouvelle application.';
+      return;
+    }
+
+    this.catalogSaving = true;
+    this.catalogFormError = '';
+    const req = this.catalogEditingSlug
+      ? this.api.updateAdminApplication(this.catalogEditingSlug, {
+          nom: payload.nom,
+          url: payload.url,
+          description: payload.description,
+          managed_by_si: payload.managed_by_si,
+          requires_access_request: payload.requires_access_request,
+          keycloak_client_id: payload.keycloak_client_id,
+        })
+      : this.api.createAdminApplication(payload);
+
+    req.subscribe({
+      next: (saved) => {
+        this.catalogEditingSlug = saved.slug;
+        this.catalogForm = {
+          slug: saved.slug,
+          nom: saved.nom,
+          url: saved.url || '',
+          image: saved.image || '',
+          description: saved.description || '',
+          managed_by_si: !!saved.managed_by_si,
+          requires_access_request: saved.requires_access_request !== false,
+          keycloak_client_id: saved.keycloak_client_id || '',
+        };
+        this.reloadApplicationsCatalog();
+      },
+      error: (err) => {
+        const errors = err?.error;
+        if (errors && typeof errors === 'object') {
+          const firstKey = Object.keys(errors)[0];
+          const firstVal = firstKey ? errors[firstKey] : null;
+          if (Array.isArray(firstVal) && firstVal.length) {
+            this.catalogFormError = String(firstVal[0]);
+            return;
+          }
+          if (typeof firstVal === 'string') {
+            this.catalogFormError = firstVal;
+            return;
+          }
+        }
+        this.catalogFormError = err?.error?.detail || 'Enregistrement impossible.';
+      },
+      complete: () => {
+        this.catalogSaving = false;
+      },
+    });
+  }
+
+  private loadApplicationsTab(force = false): void {
+    if (this.tabLoading.applications || (!force && this.tabLoaded.applications)) {
+      return;
+    }
+    this.tabLoading.applications = true;
+    this.api
+      .getAdminApplicationCatalog()
+      .pipe(
+        catchError(() => of([])),
+        finalize(() => {
+          this.tabLoading.applications = false;
+        })
+      )
+      .subscribe((apps) => {
+        this.catalogApplications = apps || [];
+        this.tabLoaded.applications = true;
+      });
+  }
+
+  private reloadApplicationsCatalog(): void {
+    this.api.getAdminApplicationCatalog().subscribe({
+      next: (apps) => {
+        this.catalogApplications = apps || [];
+        this.tabLoaded.applications = true;
       },
     });
   }

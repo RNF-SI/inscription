@@ -57,6 +57,52 @@ class ApplicationSerializer(serializers.ModelSerializer):
         )
 
 
+class AdminApplicationWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Application
+        fields = (
+            "slug",
+            "nom",
+            "url",
+            "image",
+            "description",
+            "managed_by_si",
+            "requires_access_request",
+            "keycloak_client_id",
+        )
+        extra_kwargs = {
+            "url": {"required": False, "allow_blank": True},
+            "image": {"read_only": True},
+            "description": {"required": False, "allow_blank": True},
+            "keycloak_client_id": {"required": False, "allow_blank": True},
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is not None:
+            self.fields["slug"].read_only = True
+
+    def validate_slug(self, value):
+        slug = (value or "").strip().lower()
+        if not slug:
+            raise serializers.ValidationError("Slug requis.")
+        qs = Application.objects.filter(slug=slug)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Ce slug existe déjà.")
+        return slug
+
+    def validate(self, attrs):
+        attrs["nom"] = (attrs.get("nom") or "").strip()
+        if not attrs["nom"]:
+            raise serializers.ValidationError({"nom": "Nom requis."})
+        for field in ("url", "description", "keycloak_client_id"):
+            if field in attrs and attrs[field] is not None:
+                attrs[field] = str(attrs[field]).strip()
+        return attrs
+
+
 class SignupItemSerializer(serializers.Serializer):
     application_slug = serializers.SlugField()
     justification = serializers.CharField(required=False, allow_blank=True)

@@ -41,6 +41,7 @@ import { AdminDashboardComponent } from './components/admin-dashboard/admin-dash
 import { NotificationsComponent } from './components/notifications/notifications.component';
 import { NotificationBadgeService } from './home-rnf/services/notification-badge.service';
 import { InscriptionNotificationBadgeService } from './services/inscription-notification-badge.service';
+import { ImageCropperModule } from 'ngx-image-cropper';
 
 @NgModule({
   declarations: [
@@ -79,7 +80,8 @@ import { InscriptionNotificationBadgeService } from './services/inscription-noti
     RouterModule,
     FontAwesomeModule,
     HomeRnfModule,
-    NgMultiSelectDropDownModule.forRoot()
+    NgMultiSelectDropDownModule.forRoot(),
+    ImageCropperModule,
   ],
   providers: [
     { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true },

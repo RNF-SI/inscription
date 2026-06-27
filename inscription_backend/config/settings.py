@@ -74,6 +74,13 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+APPLICATION_IMAGES_DIR = env(
+    "APPLICATION_IMAGES_DIR",
+    default=str(MEDIA_ROOT / "application-images"),
+)
+
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:4200", "http://127.0.0.1:4200"],

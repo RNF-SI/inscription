@@ -105,7 +105,20 @@ launch.json
 .vscode/chrome
 tasks.json
 
-.idea/
-*.iml
-.DS_Store
+# Vignettes applications (upload admin, hors git)
+inscription_backend/media/application-images/*
+!inscription_backend/media/application-images/.gitkeep
 
+# Anciennes vignettes catalogue dans les assets Angular (ne plus versionner)
+frontend/src/assets/images/ancrage.png
+frontend/src/assets/images/assoconnect.png
+frontend/src/assets/images/boutique.png
+frontend/src/assets/images/geonature-global.png
+frontend/src/assets/images/geonature-saisie.png
+frontend/src/assets/images/naturadapt.png
+frontend/src/assets/images/odase.png
+frontend/src/assets/images/opnl.png
+frontend/src/assets/images/pearltrees.png
+frontend/src/assets/images/site.png
+frontend/src/assets/images/socle.png
+frontend/src/assets/images/tourbieres.png

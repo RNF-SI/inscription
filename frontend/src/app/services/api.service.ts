@@ -11,6 +11,17 @@ export interface ApplicationDto {
   description: string;
   managed_by_si: boolean;
   requires_access_request: boolean;
+  keycloak_client_id?: string;
+}
+
+export interface ApplicationCatalogInput {
+  slug: string;
+  nom: string;
+  url?: string;
+  description?: string;
+  managed_by_si: boolean;
+  requires_access_request: boolean;
+  keycloak_client_id?: string;
 }
 
 export interface MeApplicationRow {
@@ -283,6 +294,36 @@ export class ApiService {
 
   getApplicationAdmins(): Observable<ApplicationAdminsRowDto[]> {
     return this.http.get<ApplicationAdminsRowDto[]>(`${environment.apiUrl}/admin/application-admins/`);
+  }
+
+  getAdminApplicationCatalog(): Observable<ApplicationDto[]> {
+    return this.http.get<ApplicationDto[]>(`${environment.apiUrl}/admin/catalog/applications/`);
+  }
+
+  createAdminApplication(payload: ApplicationCatalogInput): Observable<ApplicationDto> {
+    return this.http.post<ApplicationDto>(`${environment.apiUrl}/admin/catalog/applications/`, payload);
+  }
+
+  updateAdminApplication(slug: string, payload: Partial<ApplicationCatalogInput>): Observable<ApplicationDto> {
+    return this.http.patch<ApplicationDto>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/`,
+      payload
+    );
+  }
+
+  uploadAdminApplicationImage(slug: string, file: File): Observable<ApplicationDto> {
+    const formData = new FormData();
+    formData.append('image', file);
+    return this.http.post<ApplicationDto>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/image/`,
+      formData
+    );
+  }
+
+  deleteAdminApplicationImage(slug: string): Observable<ApplicationDto> {
+    return this.http.delete<ApplicationDto>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/image/`
+    );
   }
 
   assignApplicationAdmin(applicationSlug: string, email: string): Observable<unknown> {

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import time
 from typing import Any
 
 import requests
 from django.conf import settings
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -29,6 +31,7 @@ from inscriptions.models import (
 from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin, is_app_admin
 from inscriptions.serializers import (
     AdditionalAccessSerializer,
+    AdminApplicationWriteSerializer,
     ApplicationSerializer,
     MeUpdateSerializer,
     NotificationSerializer,
@@ -38,6 +41,7 @@ from inscriptions.serializers import (
     SignupSerializer,
 )
 from inscriptions.services import application_access as app_access_svc
+from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import workflows
 
 logger = logging.getLogger(__name__)
@@ -219,6 +223,25 @@ class ApplicationListView(APIView):
     def get(self, request):
         qs = Application.objects.all()
         return Response(ApplicationSerializer(qs, many=True).data)
+
+
+class ApplicationImageServeView(APIView):
+    """Sert les vignettes du catalogue (hors dépôt git, dossier media/)."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request, filename):
+        from inscriptions.services.application_images import ApplicationImageError, application_image_path
+
+        try:
+            path = application_image_path(filename)
+        except ApplicationImageError as exc:
+            raise Http404 from exc
+        if not path.is_file():
+            raise Http404
+        content_type, _ = mimetypes.guess_type(path.name)
+        return FileResponse(path.open("rb"), content_type=content_type or "application/octet-stream")
 
 
 class RegisterView(APIView):
@@ -1171,6 +1194,80 @@ class AdminRevokeAccessView(APIView):
         except Exception:
             logger.exception("revoke keycloak")
         return Response({"ok": True})
+
+
+class AdminApplicationCatalogListCreateView(APIView):
+    """Super-admin : consulter et créer des applications du catalogue."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request):
+        qs = Application.objects.all().order_by("nom")
+        return Response(ApplicationSerializer(qs, many=True).data)
+
+    def post(self, request):
+        ser = AdminApplicationWriteSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+        app = ser.save()
+        return Response(ApplicationSerializer(app).data, status=status.HTTP_201_CREATED)
+
+
+class AdminApplicationCatalogDetailView(APIView):
+    """Super-admin : consulter et modifier une application du catalogue."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request, application_slug):
+        app = get_object_or_404(Application, slug=application_slug)
+        return Response(ApplicationSerializer(app).data)
+
+    def put(self, request, application_slug):
+        return self._update(request, application_slug, partial=False)
+
+    def patch(self, request, application_slug):
+        return self._update(request, application_slug, partial=True)
+
+    def _update(self, request, application_slug, *, partial: bool):
+        app = get_object_or_404(Application, slug=application_slug)
+        ser = AdminApplicationWriteSerializer(app, data=request.data, partial=partial)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+        app = ser.save()
+        return Response(ApplicationSerializer(app).data)
+
+
+class AdminApplicationCatalogImageView(APIView):
+    """Super-admin : importer ou supprimer l'image d'une application."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def post(self, request, application_slug):
+        app = get_object_or_404(Application, slug=application_slug)
+        uploaded = request.FILES.get("image")
+        if not uploaded:
+            return Response({"detail": "Fichier image requis."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            save_application_image(app, uploaded)
+        except ApplicationImageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except OSError:
+            logger.exception("Écriture image application %s", application_slug)
+            return Response({"detail": "Impossible d'enregistrer l'image."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        app.refresh_from_db()
+        return Response(ApplicationSerializer(app).data)
+
+    def delete(self, request, application_slug):
+        app = get_object_or_404(Application, slug=application_slug)
+        try:
+            remove_application_image(app)
+        except ApplicationImageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except OSError:
+            logger.exception("Suppression image application %s", application_slug)
+            return Response({"detail": "Impossible de supprimer l'image."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        app.refresh_from_db()
+        return Response(ApplicationSerializer(app).data)
 
 
 class AdminApplicationAdminsView(APIView):
