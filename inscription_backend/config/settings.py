@@ -97,7 +97,8 @@ REST_FRAMEWORK = {
 }
 
 KEYCLOAK_BASE_URL = env("KEYCLOAK_BASE_URL", default="http://localhost:8080").rstrip("/")
-KEYCLOAK_REALM = env("KEYCLOAK_REALM", default="master")
+# django-environ ne gère pas les commentaires en fin de ligne (# …)
+KEYCLOAK_REALM = env("KEYCLOAK_REALM", default="master").split("#", 1)[0].strip()
 KEYCLOAK_ADMIN_CLIENT_ID = env("KEYCLOAK_ADMIN_CLIENT_ID", default="admin-cli")
 KEYCLOAK_ADMIN_CLIENT_SECRET = env("KEYCLOAK_ADMIN_CLIENT_SECRET", default="").strip()
 KEYCLOAK_APP_CLIENT_ID = env("KEYCLOAK_APP_CLIENT_ID", default="inscription-spa")

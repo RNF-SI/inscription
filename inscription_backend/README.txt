@@ -23,6 +23,7 @@ Commandes utiles
   python manage.py migrate_legacy          # si LEGACY_DATABASE_URL (PostgreSQL legacy)
   python manage.py import_application_images  # vignettes catalogue → media/application-images/
   python manage.py promote_super --email=vous@exemple.org
+  pip install -r requirements-dev.txt && pytest   # tests unitaires (voir inscriptions/tests/README.md)
 
 Documentation
 ---------------
