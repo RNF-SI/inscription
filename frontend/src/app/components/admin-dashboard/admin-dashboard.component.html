@@ -27,17 +27,6 @@
       <button
         type="button"
         class="nav-link"
-        [class.active]="activeTab === 'app-admins'"
-        *ngIf="canShowAppAdminsTab"
-        (click)="setActiveTab('app-admins')"
-      >
-        Admins d’applications
-      </button>
-    </li>
-    <li class="nav-item">
-      <button
-        type="button"
-        class="nav-link"
         [class.active]="activeTab === 'user-access'"
         *ngIf="canShowUserAccessTab"
         (click)="setActiveTab('user-access')"
@@ -348,61 +337,6 @@
     </ng-container>
   </div>
 
-  <div class="pt-3" *ngIf="activeTab === 'app-admins' && canShowAppAdminsTab">
-    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('app-admins')">
-      <app-loading-spinner></app-loading-spinner>
-    </div>
-    <ng-container *ngIf="!isTabLoading('app-admins')">
-    <h4 class="mt-2">Administrateurs d’applications</h4>
-    <table class="table table-sm" *ngIf="appAdminAvailable && appAdminRows.length">
-      <thead>
-        <tr>
-          <th>Application</th>
-          <th>Admins actuels</th>
-          <th>Ajouter un admin (email)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let row of appAdminRows">
-          <td>{{ row.application.nom }}</td>
-          <td>
-            <span *ngIf="!row.admins.length" class="text-muted">Aucun admin</span>
-            <div *ngFor="let adm of row.admins" class="d-flex align-items-center mb-1">
-              <span class="me-2">{{ adm.email }}</span>
-              <button
-                class="btn btn-sm btn-outline-danger"
-                (click)="removeAppAdmin(row.application.slug, adm.keycloak_sub)"
-                [disabled]="isAppAdminActionLoading('remove:' + row.application.slug + ':' + adm.keycloak_sub)"
-              >
-                Retirer
-              </button>
-            </div>
-          </td>
-          <td>
-            <div class="d-flex gap-2">
-              <input
-                class="form-control form-control-sm"
-                [(ngModel)]="appAdminEmailBySlug[row.application.slug]"
-                [name]="'app-admin-email-' + row.application.slug"
-                placeholder="email@exemple.fr"
-              />
-              <button
-                class="btn btn-sm btn-primary"
-                (click)="assignAppAdmin(row.application.slug)"
-                [disabled]="isAppAdminActionLoading('assign:' + row.application.slug)"
-              >
-                Ajouter
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="text-muted" *ngIf="!appAdminAvailable || !appAdminRows.length">
-      Aucun périmètre d’administration d’applications.
-    </p>
-    </ng-container>
-  </div>
   <div class="pt-3" *ngIf="activeTab === 'user-access' && canShowUserAccessTab">
     <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('user-access')">
       <app-loading-spinner></app-loading-spinner>
@@ -509,6 +443,7 @@
             <th>Slug</th>
             <th>Gérée SI</th>
             <th>Demande d'accès</th>
+            <th class="text-end">Admins</th>
             <th class="text-end">Utilisateurs</th>
             <th></th>
           </tr>
@@ -529,6 +464,7 @@
             <td><code>{{ app.slug }}</code></td>
             <td>{{ app.managed_by_si ? 'Oui' : 'Non' }}</td>
             <td>{{ app.requires_access_request ? 'Oui' : 'Non' }}</td>
+            <td class="text-end">{{ app.managed_by_si && app.requires_access_request ? (app.admin_count ?? 0) : '—' }}</td>
             <td class="text-end">{{ formatApplicationMemberCount(app) }}</td>
             <td class="text-end">
               <div class="d-inline-flex gap-1">
@@ -661,6 +597,52 @@
                 name="catalogRequiresAccess"
               />
               <label class="form-check-label" for="catalog-requires-access">Demande d'accès requise</label>
+            </div>
+          </div>
+          <div class="col-12" *ngIf="canManageCatalogAdmins">
+            <hr class="my-2" />
+            <label class="form-label mb-2">Administrateurs de l'application</label>
+            <p class="text-muted small mb-2">
+              Les administrateurs peuvent valider les demandes d'accès pour cette application. Plusieurs admins sont possibles.
+            </p>
+            <div class="catalog-admin-chips" *ngIf="catalogAdminDraft.length">
+              <span *ngFor="let admin of catalogAdminDraft" class="catalog-admin-chip">
+                <span class="catalog-admin-chip__label">{{ formatCatalogAdminLabel(admin) }}</span>
+                <button
+                  type="button"
+                  class="catalog-admin-chip__remove"
+                  (click)="removeCatalogAdmin(admin.keycloak_sub)"
+                  [disabled]="catalogSaving"
+                  [attr.aria-label]="'Retirer ' + formatCatalogAdminLabel(admin)"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+            <div *ngIf="!catalogAdminDraft.length" class="text-muted small mb-2">Aucun administrateur défini.</div>
+            <div class="mb-2" style="max-width: 36rem;">
+              <input
+                class="form-control form-control-sm"
+                [(ngModel)]="catalogAdminSearchQuery"
+                name="catalogAdminSearchQuery"
+                placeholder="Rechercher un utilisateur Keycloak (min. 2 caractères)"
+                (input)="onCatalogAdminSearchInput()"
+                [disabled]="catalogSaving"
+              />
+              <small class="text-muted d-block" *ngIf="catalogAdminSearchLoading">Recherche…</small>
+              <small class="text-muted d-block">
+                Les administrateurs seront enregistrés lors de la validation du formulaire.
+              </small>
+              <ul class="list-group mt-1" *ngIf="catalogAdminSuggestions.length">
+                <li
+                  class="list-group-item list-group-item-action py-1"
+                  *ngFor="let suggestion of catalogAdminSuggestions"
+                  (click)="addCatalogAdminFromSuggestion(suggestion)"
+                  style="cursor: pointer;"
+                >
+                  {{ suggestion.label }}
+                </li>
+              </ul>
             </div>
           </div>
         </div>

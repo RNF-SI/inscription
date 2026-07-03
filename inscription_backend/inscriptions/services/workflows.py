@@ -24,6 +24,7 @@ from inscriptions.models import (
 )
 from inscriptions.services import mail as mail_svc
 from inscriptions.services import provisioning as prov
+from inscriptions.services import reserve_notifications as reserve_notify
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,13 @@ def _notify_user(profile: UserProfile, title: str, body: str) -> None:
     Notification.objects.create(user=profile, title=title, body=body)
 
 
+def _app_admins(application: Application) -> list[UserProfile]:
+    return [a.user for a in ApplicationAdmin.objects.filter(application=application).select_related("user")]
+
+
 def _notify_app_admins(application: Application, title: str, body: str) -> None:
-    admins = ApplicationAdmin.objects.filter(application=application).select_related("user")
-    for a in admins:
-        _notify_user(a.user, title, body)
+    for admin in _app_admins(application):
+        _notify_user(admin, title, body)
 
 
 def _notify_super_admins(title: str, body: str) -> None:
@@ -55,10 +59,8 @@ def _cleanup_completed_registration(registration: RegistrationRequest, actor_sub
 
 
 def on_registration_created(registration: RegistrationRequest) -> None:
-    mail_svc.notify_superadmins(
-        subject="Nouvelle demande d'inscription",
-        body=f"Demande {registration.public_id} — {registration.email} — {registration.first_name} {registration.last_name}",
-    )
+    mail_svc.send_registration_submitted_user_mail(registration)
+    mail_svc.notify_superadmins_registration(registration)
     _notify_super_admins(
         title="Nouvelle demande d'inscription",
         body=(
@@ -130,6 +132,8 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
         r = Reserve.objects.filter(area_code=code).first()
         if r:
             UserReserveLink.objects.get_or_create(user=profile, reserve=r)
+            if settings.KEYCLOAK_SYNC_ENABLED:
+                reserve_notify.notify_referents_new_member(profile, r)
 
     # Les demandes de statut referent saisies a l'inscription ne sont creees
     # qu'une fois l'utilisateur valide (meme logique que les acces applicatifs).
@@ -153,12 +157,15 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
         reserve = Reserve.objects.filter(area_code=code).first()
         if not reserve:
             continue
-        ReserveReferentRequest.objects.get_or_create(
+        _referent_req, created = ReserveReferentRequest.objects.get_or_create(
             user=profile,
             reserve=reserve,
             status=ReserveReferentRequest.STATUS_PENDING,
         )
+        if created:
+            reserve_notify.notify_referent_request_created(profile, reserve)
 
+    applicant_name = f"{registration.first_name} {registration.last_name}".strip()
     for item in registration.items.select_related("application"):
         justification = (item.request_justification or "").strip()
         justification_text = justification if justification else "Aucune justification fournie."
@@ -166,17 +173,20 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
             item.application,
             title="Nouvelle demande d'accès",
             body=(
-                f"{registration.first_name} {registration.last_name} ({registration.email}) "
+                f"{applicant_name} ({registration.email}) "
                 f"demande l'accès à {item.application.nom}. "
                 f"Justification: {justification_text}"
             ),
         )
+        mail_svc.send_app_access_request_admin_mail(
+            admins=_app_admins(item.application),
+            applicant_name=applicant_name,
+            applicant_email=registration.email,
+            application=item.application,
+            justification=justification_text,
+        )
 
-    mail_svc.send_user_mail(
-        registration.email,
-        "Votre demande a été acceptée (étape 1)",
-        "Un administrateur a validé votre inscription. Les gestionnaires des applications vont traiter vos accès.",
-    )
+    mail_svc.send_registration_approved_user_mail(registration)
     _notify_user(profile, "Inscription validée", "Vos demandes d'accès aux applications sont en cours de traitement.")
     _log(actor_sub, "super_admin_approve", {"registration": str(registration.public_id)})
 
@@ -189,11 +199,7 @@ def super_admin_approve(registration: RegistrationRequest, actor: UserProfile, a
 def super_admin_reject(registration: RegistrationRequest, actor_sub: str, note: str = "") -> None:
     registration.status = RegistrationRequest.STATUS_SUPER_REJECTED
     registration.save(update_fields=["status", "updated_at"])
-    mail_svc.send_user_mail(
-        registration.email,
-        "Demande d'inscription",
-        "Votre demande n'a pas été retenue à ce stade.",
-    )
+    mail_svc.send_registration_rejected_user_mail(registration, note=note)
     _log(actor_sub, "super_admin_reject", {"registration": str(registration.public_id), "note": note})
 
 
@@ -205,12 +211,6 @@ def _finalize_registration_if_done(registration: RegistrationRequest) -> None:
         return
     registration.status = RegistrationRequest.STATUS_COMPLETED
     registration.save(update_fields=["status", "updated_at"])
-    if registration.created_profile:
-        _notify_user(
-            registration.created_profile,
-            "Traitement terminé",
-            "Toutes vos demandes d'accès aux applications ont reçu une réponse.",
-        )
     _cleanup_completed_registration(registration)
 
 
@@ -250,18 +250,10 @@ def app_admin_decide_item(
         except KeycloakAdminError as exc:
             logger.exception("provision app group failed")
             raise ValueError("Échec du provisioning Keycloak pour cette application.") from exc
-        mail_svc.send_user_mail(
-            profile.email,
-            f"Accès à {item.application.nom}",
-            "Votre accès a été accordé.",
-        )
+        mail_svc.send_app_access_granted_user_mail(profile=profile, application=item.application)
         _notify_user(profile, f"Accès : {item.application.nom}", "Votre demande a été acceptée.")
     else:
-        mail_svc.send_user_mail(
-            profile.email,
-            f"Accès à {item.application.nom}",
-            "Votre demande d'accès n'a pas été acceptée.",
-        )
+        mail_svc.send_app_access_rejected_user_mail(profile=profile, application=item.application, note=note)
         _notify_user(
             profile,
             f"Accès : {item.application.nom}",
@@ -302,14 +294,23 @@ def create_additional_access_request(profile: UserProfile, slugs: Iterable[str],
         )
         created_count += 1
         created_apps.append(app)
+        applicant_name = f"{profile.first_name} {profile.last_name}".strip()
+        justification_text = justification or "Aucune justification fournie."
         _notify_app_admins(
             app,
             "Demande d'accès supplémentaire",
             (
-                f"{profile.first_name} {profile.last_name} ({profile.email}) "
+                f"{applicant_name} ({profile.email}) "
                 f"demande l'accès à {app.nom}. "
-                f"Justification: {justification or 'Aucune justification fournie.'}"
+                f"Justification: {justification_text}"
             ),
+        )
+        mail_svc.send_app_access_request_admin_mail(
+            admins=_app_admins(app),
+            applicant_name=applicant_name,
+            applicant_email=profile.email,
+            application=app,
+            justification=justification_text,
         )
     if created_count == 0:
         raise ValueError("no_new_access_request")
@@ -354,8 +355,10 @@ def app_admin_decide_additional_item(
         except KeycloakAdminError as exc:
             logger.exception("provision additional app failed")
             raise ValueError("Échec du provisioning Keycloak pour cette application.") from exc
+        mail_svc.send_app_access_granted_user_mail(profile=profile, application=item.application)
         _notify_user(profile, f"Accès : {item.application.nom}", "Votre demande a été acceptée.")
     else:
+        mail_svc.send_app_access_rejected_user_mail(profile=profile, application=item.application, note=note)
         _notify_user(
             profile,
             f"Accès : {item.application.nom}",

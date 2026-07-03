@@ -51,7 +51,7 @@ class SignupApiTests(BaseApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         reg = RegistrationRequest.objects.get(email=payload["email"])
         self.assertEqual(reg.items.filter(application__slug="waterwise").count(), 1)
-        self.assertGreaterEqual(len(mail.outbox), 1)
+        self.assertGreaterEqual(len(mail.outbox), 2)
 
     def test_register_sends_superadmin_notification(self):
         make_application(slug="ancrage", nom="Ancrage")
@@ -59,6 +59,8 @@ class SignupApiTests(BaseApiTestCase):
         self.client.post("/api/register/", payload, format="json")
         subjects = [m.subject for m in mail.outbox]
         self.assertTrue(any("inscription" in s.lower() for s in subjects))
+        recipients = {addr for message in mail.outbox for addr in message.to}
+        self.assertIn(payload["email"], recipients)
 
 
 class PublicCatalogApiTests(BaseApiTestCase):

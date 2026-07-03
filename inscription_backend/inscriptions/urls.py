@@ -37,6 +37,14 @@ urlpatterns = [
         views.AdminApplicationCatalogDetailView.as_view(),
     ),
     path(
+        "admin/catalog/applications/<slug:application_slug>/admins/",
+        views.AdminApplicationCatalogAdminsView.as_view(),
+    ),
+    path(
+        "admin/catalog/applications/<slug:application_slug>/admins/<str:user_sub>/",
+        views.AdminApplicationCatalogAdminRemoveView.as_view(),
+    ),
+    path(
         "admin/catalog/applications/<slug:application_slug>/image/",
         views.AdminApplicationCatalogImageView.as_view(),
     ),

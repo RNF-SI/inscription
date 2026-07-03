@@ -236,6 +236,45 @@ class AdminApplicationMembersApiTests(BaseApiTestCase):
         self.assertEqual(revoke.call_count, 2)
 
 
+class AdminCatalogAdminsApiTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.super_admin = make_profile(sub="super-admin-sub", email="super@test.local", is_super_admin=True)
+        self.app_admin = make_profile(sub="app-admin-sub", email="appadmin@test.local")
+        self.managed_app = make_application(slug="geonature-saisie", nom="GeoNature Saisie")
+
+    def test_sync_catalog_admins(self):
+        auth_client(self.client, self.super_admin)
+        response = self.client.put(
+            f"/api/admin/catalog/applications/{self.managed_app.slug}/admins/",
+            {"keycloak_subs": [self.app_admin.keycloak_sub]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["admins"]), 1)
+        list_response = self.client.get(f"/api/admin/catalog/applications/{self.managed_app.slug}/admins/")
+        self.assertEqual(len(list_response.json()), 1)
+
+    @patch("inscriptions.services.application_admins.KeycloakAdminClient")
+    def test_assign_legacy_endpoint_accepts_keycloak_sub(self, kc_cls):
+        auth_client(self.client, self.super_admin)
+        kc = kc_cls.return_value
+        kc.get_user.return_value = {
+            "id": "kc-new-admin",
+            "email": "newadmin@test.local",
+            "username": "newadmin",
+            "firstName": "New",
+            "lastName": "Admin",
+        }
+        with self.settings(KEYCLOAK_SYNC_ENABLED=True):
+            response = self.client.post(
+                f"/api/admin/applications/{self.managed_app.slug}/admins/",
+                {"keycloak_sub": "kc-new-admin"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
 class AdminApplicationAccessApiTests(BaseApiTestCase):
     def setUp(self):
         super().setUp()

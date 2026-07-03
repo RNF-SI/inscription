@@ -13,6 +13,7 @@ export interface ApplicationDto {
   requires_access_request: boolean;
   keycloak_client_id?: string;
   member_count?: number | null;
+  admin_count?: number;
 }
 
 export interface ApplicationCatalogInput {
@@ -75,6 +76,7 @@ export interface MeResponse {
   applications: MeApplicationRow[];
   reserves: { area_code: string; area_name: string; referent: boolean; referent_valid: boolean; referent_pending?: boolean }[];
   is_app_admin: boolean;
+  is_reserve_referent?: boolean;
   unread_notifications: number;
 }
 
@@ -402,8 +404,21 @@ export class ApiService {
     return this.removeApplicationMembers(slug, [userSub]) as unknown as Observable<void>;
   }
 
-  assignApplicationAdmin(applicationSlug: string, email: string): Observable<unknown> {
-    return this.http.post(`${environment.apiUrl}/admin/applications/${applicationSlug}/admins/`, { email });
+  assignApplicationAdmin(applicationSlug: string, payload: { email?: string; keycloak_sub?: string }): Observable<unknown> {
+    return this.http.post(`${environment.apiUrl}/admin/applications/${applicationSlug}/admins/`, payload);
+  }
+
+  getCatalogApplicationAdmins(slug: string): Observable<ApplicationAdminUserDto[]> {
+    return this.http.get<ApplicationAdminUserDto[]>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/admins/`
+    );
+  }
+
+  syncCatalogApplicationAdmins(slug: string, keycloakSubs: string[]): Observable<{ admins: ApplicationAdminUserDto[] }> {
+    return this.http.put<{ admins: ApplicationAdminUserDto[] }>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/admins/`,
+      { keycloak_subs: keycloakSubs }
+    );
   }
 
   removeApplicationAdmin(applicationSlug: string, userSub: string): Observable<unknown> {

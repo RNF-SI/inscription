@@ -1,6 +1,6 @@
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { forkJoin, of } from 'rxjs';
-import { catchError, finalize } from 'rxjs/operators';
+import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { ImageCroppedEvent, base64ToFile } from 'ngx-image-cropper';
 import {
   AdminReserveReferentRequestDto,
@@ -8,7 +8,7 @@ import {
   ApiService,
   ApplicationDto,
   ApplicationMemberDto,
-  ApplicationAdminsRowDto,
+  ApplicationAdminUserDto,
   KeycloakUserSuggestionDto,
   UserApplicationAccessDto,
   UserApplicationAccessRowDto,
@@ -29,18 +29,16 @@ import { applicationImageUrl } from 'src/app/utils/application-image.util';
 })
 export class AdminDashboardComponent implements OnInit {
   @ViewChild('catalogImageInput') catalogImageInput?: ElementRef<HTMLInputElement>;
-  activeTab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications' = 'requests';
-  tabLoading: Record<'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', boolean> = {
+  activeTab: 'requests' | 'reserves' | 'user-access' | 'applications' = 'requests';
+  tabLoading: Record<'requests' | 'reserves' | 'user-access' | 'applications', boolean> = {
     requests: false,
     reserves: false,
-    'app-admins': false,
     'user-access': false,
     applications: false,
   };
-  tabLoaded: Record<'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', boolean> = {
+  tabLoaded: Record<'requests' | 'reserves' | 'user-access' | 'applications', boolean> = {
     requests: false,
     reserves: false,
-    'app-admins': false,
     'user-access': false,
     applications: false,
   };
@@ -65,10 +63,6 @@ export class AdminDashboardComponent implements OnInit {
   }[] = [];
   validationApplications: ApplicationDto[] = [];
   decisionLoadingKey: string | null = null;
-  appAdminRows: ApplicationAdminsRowDto[] = [];
-  appAdminAvailable = true;
-  appAdminEmailBySlug: Record<string, string> = {};
-  appAdminActionKey: string | null = null;
   rejectionModalOpen = false;
   rejectionReason = '';
   rejectionTarget: { itemId: number; kind: string } | null = null;
@@ -138,6 +132,10 @@ export class AdminDashboardComponent implements OnInit {
   catalogMembersError = '';
   catalogMembersDataLoading = false;
   catalogMembersSaving = false;
+  catalogAdminDraft: ApplicationAdminUserDto[] = [];
+  catalogAdminSearchQuery = '';
+  catalogAdminSuggestions: KeycloakUserSuggestionDto[] = [];
+  catalogAdminSearchLoading = false;
 
   readonly applicationImageWidth = APPLICATION_IMAGE_WIDTH;
   readonly applicationImageHeight = APPLICATION_IMAGE_HEIGHT;
@@ -148,20 +146,17 @@ export class AdminDashboardComponent implements OnInit {
   ngOnInit(): void {
     const me = this.auth.getMeSnapshot();
     this.isSuperAdmin = !!me?.profile?.is_super_admin;
-    this.isReserveReferent = !!me?.reserves?.some((r) => !!r.referent);
+    this.isReserveReferent = !!me?.is_reserve_referent || !!me?.reserves?.some((r) => !!r.referent);
     if (!this.canShowRequestsTab && this.canShowReservesTab) {
       this.activeTab = 'reserves';
     } else if (!this.canShowRequestsTab && this.activeTab === 'requests') {
-      this.activeTab = this.canShowAppAdminsTab ? 'app-admins' : 'requests';
+      this.activeTab = this.canShowApplicationsTab ? 'applications' : 'requests';
     }
     if (!this.canShowReservesTab && this.activeTab === 'reserves') {
-      this.activeTab = this.canShowRequestsTab ? 'requests' : 'app-admins';
-    }
-    if (!this.canShowAppAdminsTab && this.activeTab === 'app-admins') {
-      this.activeTab = this.canShowRequestsTab ? 'requests' : 'reserves';
+      this.activeTab = this.canShowRequestsTab ? 'requests' : 'applications';
     }
     if (!this.canShowApplicationsTab && this.activeTab === 'applications') {
-      this.activeTab = this.canShowRequestsTab ? 'requests' : 'app-admins';
+      this.activeTab = this.canShowRequestsTab ? 'requests' : 'reserves';
     }
     this.loadTab(this.activeTab);
   }
@@ -266,39 +261,6 @@ export class AdminDashboardComponent implements OnInit {
 
   get pendingRegistrations() {
     return this.registrations.filter((r) => r.status === 'pending_super');
-  }
-
-  assignAppAdmin(applicationSlug: string): void {
-    const email = (this.appAdminEmailBySlug[applicationSlug] || '').trim();
-    if (!email) {
-      return;
-    }
-    const key = `assign:${applicationSlug}`;
-    this.appAdminActionKey = key;
-    this.api.assignApplicationAdmin(applicationSlug, email).subscribe({
-      next: () => {
-        this.appAdminEmailBySlug[applicationSlug] = '';
-        this.reloadAppAdmins();
-      },
-      error: () => {
-        this.appAdminActionKey = null;
-      },
-    });
-  }
-
-  removeAppAdmin(applicationSlug: string, userSub: string): void {
-    const key = `remove:${applicationSlug}:${userSub}`;
-    this.appAdminActionKey = key;
-    this.api.removeApplicationAdmin(applicationSlug, userSub).subscribe({
-      next: () => this.reloadAppAdmins(),
-      error: () => {
-        this.appAdminActionKey = null;
-      },
-    });
-  }
-
-  isAppAdminActionLoading(key: string): boolean {
-    return this.appAdminActionKey === key;
   }
 
   decideReserveRemoval(reqId: number, approve: boolean): void {
@@ -466,14 +428,11 @@ export class AdminDashboardComponent implements OnInit {
     return this.reserveReferentLoadingKey === `${reqId}:${approve ? 'approve' : 'reject'}`;
   }
 
-  setActiveTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications'): void {
+  setActiveTab(tab: 'requests' | 'reserves' | 'user-access' | 'applications'): void {
     if (tab === 'requests' && !this.canShowRequestsTab) {
       return;
     }
     if (tab === 'reserves' && !this.canShowReservesTab) {
-      return;
-    }
-    if (tab === 'app-admins' && !this.canShowAppAdminsTab) {
       return;
     }
     if (tab === 'user-access' && !this.canShowUserAccessTab) {
@@ -488,10 +447,6 @@ export class AdminDashboardComponent implements OnInit {
 
   get canShowReservesTab(): boolean {
     return this.isSuperAdmin || this.isReserveReferent;
-  }
-
-  get canShowAppAdminsTab(): boolean {
-    return this.isSuperAdmin;
   }
 
   get canShowUserAccessTab(): boolean {
@@ -510,17 +465,16 @@ export class AdminDashboardComponent implements OnInit {
     return [
       this.canShowRequestsTab,
       this.canShowReservesTab,
-      this.canShowAppAdminsTab,
       this.canShowUserAccessTab,
       this.canShowApplicationsTab,
     ].filter(Boolean).length;
   }
 
-  isTabLoading(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications'): boolean {
+  isTabLoading(tab: 'requests' | 'reserves' | 'user-access' | 'applications'): boolean {
     return this.tabLoading[tab];
   }
 
-  private loadTab(tab: 'requests' | 'reserves' | 'app-admins' | 'user-access' | 'applications', force = false): void {
+  private loadTab(tab: 'requests' | 'reserves' | 'user-access' | 'applications', force = false): void {
     if (this.tabLoading[tab] || (!force && this.tabLoaded[tab])) {
       return;
     }
@@ -538,9 +492,7 @@ export class AdminDashboardComponent implements OnInit {
     }
     if (tab === 'applications') {
       this.loadApplicationsTab(force);
-      return;
     }
-    this.loadAppAdminsTab(force);
   }
 
   private loadRequestsTab(force = false): void {
@@ -594,27 +546,6 @@ export class AdminDashboardComponent implements OnInit {
         this.tabLoaded.reserves = true;
       });
   }
-
-  private loadAppAdminsTab(force = false): void {
-    if (this.tabLoading['app-admins'] || (!force && this.tabLoaded['app-admins'])) {
-      return;
-    }
-    this.tabLoading['app-admins'] = true;
-    this.api
-      .getApplicationAdmins()
-      .pipe(
-        catchError(() => of(null)),
-        finalize(() => {
-          this.tabLoading['app-admins'] = false;
-        })
-      )
-      .subscribe((appAdmins) => {
-        this.appAdminAvailable = Array.isArray(appAdmins);
-        this.appAdminRows = Array.isArray(appAdmins) ? appAdmins : [];
-        this.tabLoaded['app-admins'] = true;
-      });
-  }
-
 
   onUserAccessSearchInput(): void {
     const query = (this.userAccessSearchQuery || '').trim();
@@ -721,19 +652,6 @@ export class AdminDashboardComponent implements OnInit {
     });
   }
 
-  private reloadAppAdmins(): void {
-    this.api.getApplicationAdmins().subscribe({
-      next: (rows) => {
-        this.appAdminRows = rows;
-        this.tabLoaded['app-admins'] = true;
-        this.appAdminActionKey = null;
-      },
-      error: () => {
-        this.appAdminActionKey = null;
-      },
-    });
-  }
-
   private emptyCatalogForm(): ApplicationDto {
     return {
       slug: '',
@@ -751,6 +669,9 @@ export class AdminDashboardComponent implements OnInit {
     this.catalogEditingSlug = '';
     this.catalogForm = this.emptyCatalogForm();
     this.catalogFormError = '';
+    this.catalogAdminDraft = [];
+    this.catalogAdminSearchQuery = '';
+    this.catalogAdminSuggestions = [];
   }
 
   openCatalogModalForNew(): void {
@@ -771,6 +692,9 @@ export class AdminDashboardComponent implements OnInit {
       keycloak_client_id: app.keycloak_client_id || '',
     };
     this.catalogFormError = '';
+    this.catalogAdminSearchQuery = '';
+    this.catalogAdminSuggestions = [];
+    this.loadCatalogAdmins(app.slug);
   }
 
   openCatalogModalForEdit(app: ApplicationDto): void {
@@ -802,6 +726,75 @@ export class AdminDashboardComponent implements OnInit {
 
   canManageApplicationMembers(app: ApplicationDto): boolean {
     return !!app.managed_by_si && !!app.requires_access_request;
+  }
+
+  get canManageCatalogAdmins(): boolean {
+    return !!this.catalogForm.managed_by_si && !!this.catalogForm.requires_access_request;
+  }
+
+  loadCatalogAdmins(slug: string): void {
+    if (!slug) {
+      this.catalogAdminDraft = [];
+      return;
+    }
+    this.api.getCatalogApplicationAdmins(slug).subscribe({
+      next: (admins) => {
+        this.catalogAdminDraft = admins || [];
+      },
+      error: () => {
+        this.catalogAdminDraft = [];
+      },
+    });
+  }
+
+  onCatalogAdminSearchInput(): void {
+    const query = (this.catalogAdminSearchQuery || '').trim();
+    if (query.length < 2) {
+      this.catalogAdminSuggestions = [];
+      return;
+    }
+    this.catalogAdminSearchLoading = true;
+    this.api.searchKeycloakUsers(query).subscribe({
+      next: (rows) => {
+        const existing = new Set(this.catalogAdminDraft.map((a) => a.keycloak_sub));
+        this.catalogAdminSuggestions = (rows || []).filter((row) => !existing.has(row.keycloak_sub));
+      },
+      error: () => {
+        this.catalogAdminSuggestions = [];
+      },
+      complete: () => {
+        this.catalogAdminSearchLoading = false;
+      },
+    });
+  }
+
+  addCatalogAdminFromSuggestion(suggestion: KeycloakUserSuggestionDto): void {
+    if (this.catalogAdminDraft.some((a) => a.keycloak_sub === suggestion.keycloak_sub)) {
+      return;
+    }
+    this.catalogAdminDraft = [
+      ...this.catalogAdminDraft,
+      {
+        keycloak_sub: suggestion.keycloak_sub,
+        email: suggestion.email,
+        first_name: suggestion.first_name,
+        last_name: suggestion.last_name,
+      },
+    ];
+    this.catalogAdminSearchQuery = '';
+    this.catalogAdminSuggestions = [];
+  }
+
+  removeCatalogAdmin(userSub: string): void {
+    this.catalogAdminDraft = this.catalogAdminDraft.filter((a) => a.keycloak_sub !== userSub);
+  }
+
+  formatCatalogAdminLabel(admin: ApplicationAdminUserDto): string {
+    const fullName = `${admin.first_name || ''} ${admin.last_name || ''}`.trim();
+    if (fullName) {
+      return `${fullName} (${admin.email})`;
+    }
+    return admin.email;
   }
 
   openCatalogMembersModal(app: ApplicationDto): void {
@@ -1246,8 +1239,8 @@ export class AdminDashboardComponent implements OnInit {
         })
       : this.api.createAdminApplication(payload);
 
-    req.subscribe({
-      next: (saved) => {
+    req.pipe(
+      switchMap((saved) => {
         this.catalogEditingSlug = saved.slug;
         this.catalogForm = {
           slug: saved.slug,
@@ -1259,6 +1252,15 @@ export class AdminDashboardComponent implements OnInit {
           requires_access_request: saved.requires_access_request !== false,
           keycloak_client_id: saved.keycloak_client_id || '',
         };
+        if (!this.canManageCatalogAdmins) {
+          this.catalogAdminDraft = [];
+          return of(saved);
+        }
+        const subs = this.catalogAdminDraft.map((admin) => admin.keycloak_sub);
+        return this.api.syncCatalogApplicationAdmins(saved.slug, subs).pipe(map(() => saved));
+      })
+    ).subscribe({
+      next: () => {
         this.reloadApplicationsCatalog();
       },
       error: (err) => {

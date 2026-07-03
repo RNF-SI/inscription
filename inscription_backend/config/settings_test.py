@@ -15,6 +15,7 @@ DATABASES = {
 
 KEYCLOAK_SYNC_ENABLED = False
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+SUPERADMIN_NOTIFY_EMAILS = ["admin@test.local"]
 
 APPLICATION_IMAGES_DIR = str(BASE_DIR / "media" / "application-images")
 

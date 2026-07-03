@@ -120,6 +120,8 @@ class ReserveReferentRequestApiTests(BaseApiTestCase):
             response = self.client.post(f"/api/admin/reserve-referent-requests/{req.id}/approve/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(ReserveReferentRequest.objects.filter(pk=req.id).exists())
+        self.assertTrue(Notification.objects.filter(user=self.user).exists())
+        self.assertGreaterEqual(len(mail.outbox), 1)
 
     def test_decide_reject_deletes_request(self):
         req = ReserveReferentRequest.objects.create(user=self.user, reserve=self.reserve)

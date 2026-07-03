@@ -29,6 +29,38 @@ class MeApiTests(BaseApiTestCase):
         self.assertEqual(data["profile"]["email"], self.regular_user.email)
         self.assertIn("applications", data)
 
+    def test_me_flags_reserve_referent_from_token_groups(self):
+        from inscriptions.tests.helpers import make_reserve
+
+        reserve = make_reserve(area_code="RNN42", area_name="Réserve test")
+        auth_client(
+            self.client,
+            self.regular_user,
+            groups=[f"reserves/{reserve.area_code}/referent", f"reserves/{reserve.area_code}"],
+        )
+        response = self.client.get("/api/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertTrue(data["is_reserve_referent"])
+        self.assertTrue(any(r["area_code"] == reserve.area_code and r["referent"] for r in data["reserves"]))
+
+    def test_me_flags_reserve_referent_from_keycloak_when_token_has_no_groups(self):
+        from inscriptions.tests.helpers import make_reserve
+
+        reserve = make_reserve(area_code="RNN43", area_name="Réserve KC")
+        auth_client(self.client, self.regular_user, groups=[])
+        with self.settings(KEYCLOAK_SYNC_ENABLED=True):
+            with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+                kc = kc_cls.return_value
+                kc.get_user_groups.return_value = [
+                    {"path": f"/reserves/{reserve.area_code}/referent"},
+                    {"path": f"/reserves/{reserve.area_code}"},
+                ]
+                response = self.client.get("/api/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertTrue(data["is_reserve_referent"])
+
     def test_me_patch_accepts_fonction(self):
         auth_client(self.client, self.regular_user)
         with patch("inscriptions.views.KeycloakAdminClient.update_user_profile"):
