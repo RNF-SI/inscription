@@ -41,6 +41,22 @@ urlpatterns = [
         views.AdminApplicationCatalogImageView.as_view(),
     ),
     path(
+        "admin/catalog/applications/<slug:application_slug>/members/dual/",
+        views.AdminApplicationCatalogDualMembersView.as_view(),
+    ),
+    path(
+        "admin/catalog/applications/<slug:application_slug>/members/",
+        views.AdminApplicationCatalogMembersView.as_view(),
+    ),
+    path(
+        "admin/catalog/applications/<slug:application_slug>/members/remove/",
+        views.AdminApplicationCatalogMembersBulkRemoveView.as_view(),
+    ),
+    path(
+        "admin/catalog/applications/<slug:application_slug>/members/<str:user_sub>/",
+        views.AdminApplicationCatalogMemberRemoveView.as_view(),
+    ),
+    path(
         "admin/users/<str:user_sub>/application-access/",
         views.AdminUserApplicationAccessView.as_view(),
     ),

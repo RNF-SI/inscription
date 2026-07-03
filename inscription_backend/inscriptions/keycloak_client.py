@@ -56,6 +56,9 @@ class KeycloakAdminClient:
             raise KeycloakAdminError("keycloak_token_missing")
         return self._token
 
+    def reset_token(self) -> None:
+        self._token = None
+
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.get_access_token()}", "Content-Type": "application/json"}
 
@@ -436,3 +439,51 @@ class KeycloakAdminClient:
         if not isinstance(payload, list):
             return []
         return payload
+
+    def count_group_members(self, group_id: str, page_size: int = 200) -> int:
+        total = 0
+        first = 0
+        while True:
+            r = self._get(f"/groups/{group_id}/members?first={first}&max={page_size}")
+            if r.status_code != 200:
+                raise KeycloakAdminError(f"count_group_members:{r.status_code}")
+            batch = r.json() or []
+            if not isinstance(batch, list):
+                break
+            total += len(batch)
+            if len(batch) < page_size:
+                break
+            first += page_size
+        return total
+
+    def list_all_group_members(self, group_id: str, page_size: int = 200) -> list[dict]:
+        out: list[dict] = []
+        first = 0
+        while True:
+            r = self._get(f"/groups/{group_id}/members?first={first}&max={page_size}")
+            if r.status_code != 200:
+                raise KeycloakAdminError(f"list_all_group_members:{r.status_code}")
+            batch = r.json() or []
+            if not isinstance(batch, list):
+                break
+            out.extend(batch)
+            if len(batch) < page_size:
+                break
+            first += page_size
+        return out
+
+    def list_all_users(self, page_size: int = 200) -> list[dict]:
+        out: list[dict] = []
+        first = 0
+        while True:
+            r = self._get(f"/users?first={first}&max={page_size}")
+            if r.status_code != 200:
+                raise KeycloakAdminError(f"list_all_users:{r.status_code}")
+            batch = r.json() or []
+            if not isinstance(batch, list):
+                break
+            out.extend(batch)
+            if len(batch) < page_size:
+                break
+            first += page_size
+        return out

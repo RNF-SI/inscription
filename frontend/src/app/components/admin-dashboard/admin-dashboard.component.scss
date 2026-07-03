@@ -11,3 +11,26 @@
   display: block;
   max-height: 65vh;
 }
+
+.dual-listbox-panel {
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  background: #fff;
+}
+
+.dual-listbox-table-wrap {
+  min-height: 280px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.dual-listbox-actions .btn {
+  min-width: 3rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.catalog-members-save-btn mat-spinner {
+  --mdc-circular-progress-active-indicator-color: #fff;
+}

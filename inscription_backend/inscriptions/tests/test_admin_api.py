@@ -30,9 +30,21 @@ class AdminCatalogApiTests(BaseApiTestCase):
 
     def test_list_applications(self):
         auth_client(self.client, self.super_admin)
-        response = self.client.get("/api/admin/catalog/applications/")
+        with self.settings(KEYCLOAK_SYNC_ENABLED=True):
+            with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+                kc = kc_cls.return_value
+                kc.find_group_by_path.return_value = {"id": "group-ancrage"}
+                kc.count_group_members.return_value = 2
+                response = self.client.get("/api/admin/catalog/applications/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(any(row["slug"] == self.managed_app.slug for row in response.json()))
+        rows = response.json()
+        self.assertTrue(any(row["slug"] == self.managed_app.slug for row in rows))
+        ancrage = next(row for row in rows if row["slug"] == self.managed_app.slug)
+        self.assertEqual(ancrage["member_count"], 2)
+        socle = next(row for row in rows if row["slug"] == self.auto_app.slug)
+        self.assertIsNone(socle["member_count"])
+        naturadapt = next(row for row in rows if row["slug"] == self.out_of_si_app.slug)
+        self.assertIsNone(naturadapt["member_count"])
 
     def test_create_application(self):
         auth_client(self.client, self.super_admin)
@@ -86,6 +98,142 @@ class AdminCatalogApiTests(BaseApiTestCase):
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.managed_app.refresh_from_db()
             self.assertEqual(self.managed_app.image, "")
+
+
+class AdminApplicationMembersApiTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.super_admin = make_profile(sub="super-admin-sub", email="super@test.local", is_super_admin=True)
+        self.regular_user = make_profile(sub="user-sub", email="user@test.local")
+        self.managed_app = make_application(slug="ancrage", nom="Ancrage")
+        self.auto_app = make_application(slug="socle", nom="SOCLE", requires_access_request=False)
+
+    def test_list_members_requires_super_admin(self):
+        auth_client(self.client, self.regular_user)
+        response = self.client.get(f"/api/admin/catalog/applications/{self.managed_app.slug}/members/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_list_members_paginated(self):
+        auth_client(self.client, self.super_admin)
+        members = [{"id": f"user-{i}", "email": f"user{i}@test.local", "firstName": "User", "lastName": str(i)} for i in range(12)]
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.find_group_by_path.return_value = {"id": "group-ancrage"}
+            kc.list_all_group_members.return_value = members
+            response = self.client.get(
+                f"/api/admin/catalog/applications/{self.managed_app.slug}/members/?page=2&page_size=10"
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["total"], 12)
+        self.assertEqual(payload["page"], 2)
+        self.assertEqual(payload["page_size"], 10)
+        self.assertEqual(len(payload["members"]), 2)
+
+    def test_list_available_members(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.find_group_by_path.return_value = {"id": "group-ancrage"}
+            kc.list_all_group_members.return_value = [
+                {"id": "in-group", "email": "in@test.local", "firstName": "In", "lastName": "Group"}
+            ]
+            kc.list_all_users.return_value = [
+                {"id": "in-group", "email": "in@test.local", "firstName": "In", "lastName": "Group"},
+                {"id": "out-group", "email": "out@test.local", "firstName": "Out", "lastName": "Group"},
+            ]
+            response = self.client.get(
+                f"/api/admin/catalog/applications/{self.managed_app.slug}/members/?side=available"
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["members"][0]["keycloak_sub"], "out-group")
+
+    def test_list_dual_members(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.find_group_by_path.return_value = {"id": "group-ancrage"}
+            kc.list_all_group_members.return_value = [
+                {"id": "in-group", "email": "in@test.local", "firstName": "In", "lastName": "Group"}
+            ]
+            kc.list_all_users.return_value = [
+                {"id": "in-group", "email": "in@test.local", "firstName": "In", "lastName": "Group"},
+                {"id": "out-group", "email": "out@test.local", "firstName": "Out", "lastName": "Group"},
+            ]
+            response = self.client.get(
+                f"/api/admin/catalog/applications/{self.managed_app.slug}/members/dual/"
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(len(payload["members"]), 1)
+        self.assertEqual(len(payload["available"]), 1)
+        self.assertEqual(payload["members"][0]["keycloak_sub"], "in-group")
+        self.assertEqual(payload["available"][0]["keycloak_sub"], "out-group")
+
+    def test_list_members_rejects_auto_access_app(self):
+        auth_client(self.client, self.super_admin)
+        response = self.client.get(f"/api/admin/catalog/applications/{self.auto_app.slug}/members/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_member(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.get_user.return_value = {"id": "new-user-sub"}
+            kc.get_user_groups.return_value = []
+            with patch("inscriptions.services.provisioning.provision_application_access") as provision:
+                response = self.client.post(
+                    f"/api/admin/catalog/applications/{self.managed_app.slug}/members/",
+                    {"keycloak_sub": "new-user-sub"},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        provision.assert_called_once()
+
+    def test_add_members_bulk(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.get_user.return_value = {"id": "user-sub"}
+            kc.get_user_groups.return_value = []
+            with patch("inscriptions.services.provisioning.provision_application_access") as provision:
+                response = self.client.post(
+                    f"/api/admin/catalog/applications/{self.managed_app.slug}/members/",
+                    {"keycloak_subs": ["user-a", "user-b"]},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["count"], 2)
+        self.assertEqual(provision.call_count, 2)
+
+    def test_remove_member(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.get_user.return_value = {"id": "target-user-sub"}
+            with patch("inscriptions.services.provisioning.revoke_application_access") as revoke:
+                response = self.client.delete(
+                    f"/api/admin/catalog/applications/{self.managed_app.slug}/members/target-user-sub/"
+                )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        revoke.assert_called_once()
+
+    def test_remove_members_bulk(self):
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.get_user.return_value = {"id": "target-user-sub"}
+            with patch("inscriptions.services.provisioning.revoke_application_access") as revoke:
+                response = self.client.post(
+                    f"/api/admin/catalog/applications/{self.managed_app.slug}/members/remove/",
+                    {"keycloak_subs": ["user-a", "user-b"]},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["count"], 2)
+        self.assertEqual(revoke.call_count, 2)
 
 
 class AdminApplicationAccessApiTests(BaseApiTestCase):

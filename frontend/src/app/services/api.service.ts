@@ -12,6 +12,7 @@ export interface ApplicationDto {
   managed_by_si: boolean;
   requires_access_request: boolean;
   keycloak_client_id?: string;
+  member_count?: number | null;
 }
 
 export interface ApplicationCatalogInput {
@@ -22,6 +23,30 @@ export interface ApplicationCatalogInput {
   managed_by_si: boolean;
   requires_access_request: boolean;
   keycloak_client_id?: string;
+}
+
+export interface ApplicationMemberDto {
+  keycloak_sub: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  username: string;
+  label: string;
+}
+
+export interface ApplicationMembersPageDto {
+  application: ApplicationDto;
+  members: ApplicationMemberDto[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface ApplicationDualMembersDto {
+  application: ApplicationDto;
+  members: ApplicationMemberDto[];
+  available: ApplicationMemberDto[];
 }
 
 export interface MeApplicationRow {
@@ -324,6 +349,57 @@ export class ApiService {
     return this.http.delete<ApplicationDto>(
       `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/image/`
     );
+  }
+
+  getApplicationDualMembers(slug: string): Observable<ApplicationDualMembersDto> {
+    return this.http.get<ApplicationDualMembersDto>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/members/dual/`
+    );
+  }
+
+  getApplicationMembers(
+    slug: string,
+    params?: { side?: 'members' | 'available'; q?: string; page?: number; page_size?: number }
+  ): Observable<ApplicationMembersPageDto> {
+    const search = new URLSearchParams();
+    if (params?.side) {
+      search.set('side', params.side);
+    }
+    if (params?.q) {
+      search.set('q', params.q);
+    }
+    if (params?.page) {
+      search.set('page', String(params.page));
+    }
+    if (params?.page_size) {
+      search.set('page_size', String(params.page_size));
+    }
+    const qs = search.toString();
+    return this.http.get<ApplicationMembersPageDto>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/members/${qs ? `?${qs}` : ''}`
+    );
+  }
+
+  addApplicationMembers(slug: string, keycloakSubs: string[]): Observable<{ ok: boolean; count: number }> {
+    return this.http.post<{ ok: boolean; count: number }>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/members/`,
+      { keycloak_subs: keycloakSubs }
+    );
+  }
+
+  removeApplicationMembers(slug: string, keycloakSubs: string[]): Observable<{ ok: boolean; count: number }> {
+    return this.http.post<{ ok: boolean; count: number }>(
+      `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/members/remove/`,
+      { keycloak_subs: keycloakSubs }
+    );
+  }
+
+  addApplicationMember(slug: string, keycloakSub: string): Observable<{ ok: boolean }> {
+    return this.addApplicationMembers(slug, [keycloakSub]);
+  }
+
+  removeApplicationMember(slug: string, userSub: string): Observable<void> {
+    return this.removeApplicationMembers(slug, [userSub]) as unknown as Observable<void>;
   }
 
   assignApplicationAdmin(applicationSlug: string, email: string): Observable<unknown> {

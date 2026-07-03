@@ -1202,8 +1202,20 @@ class AdminApplicationCatalogListCreateView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def get(self, request):
-        qs = Application.objects.all().order_by("nom")
-        return Response(ApplicationSerializer(qs, many=True).data)
+        apps = list(Application.objects.all().order_by("nom"))
+        rows = ApplicationSerializer(apps, many=True).data
+        kc = None
+        if settings.KEYCLOAK_SYNC_ENABLED:
+            try:
+                kc = KeycloakAdminClient()
+            except Exception:
+                logger.exception("keycloak client init for catalog list")
+        for i, app in enumerate(apps):
+            if kc is not None:
+                rows[i]["member_count"] = app_access_svc.count_application_group_members(kc, app)
+            else:
+                rows[i]["member_count"] = None
+        return Response(rows)
 
     def post(self, request):
         ser = AdminApplicationWriteSerializer(data=request.data)
@@ -1268,6 +1280,175 @@ class AdminApplicationCatalogImageView(APIView):
             return Response({"detail": "Impossible de supprimer l'image."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         app.refresh_from_db()
         return Response(ApplicationSerializer(app).data)
+
+
+def _parse_positive_int(value, default: int, *, minimum: int = 1, maximum: int = 100) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _parse_keycloak_subs(data) -> list[str]:
+    raw_list = data.get("keycloak_subs")
+    if isinstance(raw_list, list):
+        return [(str(s) or "").strip() for s in raw_list if (str(s) or "").strip()]
+    single = (data.get("keycloak_sub") or "").strip()
+    return [single] if single else []
+
+
+class AdminApplicationCatalogDualMembersView(APIView):
+    """Super-admin : lister en une fois tous les utilisateurs des deux côtés du dual-listbox."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request, application_slug):
+        app = get_object_or_404(Application, slug=application_slug)
+        if not app_access_svc.is_application_access_editable(app):
+            return Response(
+                {"detail": "Cette application n'a pas de groupe d'accès géré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            kc = KeycloakAdminClient()
+            payload = app_access_svc.list_application_dual_members(kc, app)
+        except KeycloakAdminError as exc:
+            logger.warning("Liste dual membres application impossible: %s", exc)
+            return Response({"detail": "Liste des utilisateurs indisponible"}, status=502)
+        return Response(
+            {
+                "application": ApplicationSerializer(app).data,
+                "members": payload["members"],
+                "available": payload["available"],
+            }
+        )
+
+
+class AdminApplicationCatalogMembersView(APIView):
+    """Super-admin : lister et ajouter les membres d'une application."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request, application_slug):
+        app = get_object_or_404(Application, slug=application_slug)
+        if not app_access_svc.is_application_access_editable(app):
+            return Response(
+                {"detail": "Cette application n'a pas de groupe d'accès géré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        q = (request.query_params.get("q") or "").strip()
+        page = _parse_positive_int(request.query_params.get("page"), 1, minimum=1, maximum=10_000)
+        page_size = _parse_positive_int(request.query_params.get("page_size"), 10, minimum=1, maximum=100)
+        side = (request.query_params.get("side") or "members").strip().lower()
+        try:
+            kc = KeycloakAdminClient()
+            if side == "available":
+                payload = app_access_svc.list_application_non_members_page(
+                    kc,
+                    app,
+                    query=q,
+                    page=page,
+                    page_size=page_size,
+                )
+            else:
+                payload = app_access_svc.list_application_group_members_page(
+                    kc,
+                    app,
+                    query=q,
+                    page=page,
+                    page_size=page_size,
+                )
+        except KeycloakAdminError as exc:
+            logger.warning("Liste membres application impossible: %s", exc)
+            return Response({"detail": "Liste des utilisateurs indisponible"}, status=502)
+        payload["application"] = ApplicationSerializer(app).data
+        return Response(payload)
+
+    def post(self, request, application_slug):
+        from inscriptions.services import provisioning as prov
+
+        app = get_object_or_404(Application, slug=application_slug)
+        if not app_access_svc.is_application_access_editable(app):
+            return Response(
+                {"detail": "Cette application n'a pas de groupe d'accès géré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_subs = _parse_keycloak_subs(request.data)
+        if not user_subs:
+            return Response({"detail": "keycloak_sub ou keycloak_subs requis."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            kc = KeycloakAdminClient()
+            added = 0
+            for user_sub in user_subs:
+                kc.get_user(user_sub)
+                groups = kc.get_user_groups(user_sub)
+                paths = app_access_svc._group_paths(groups)
+                if app_access_svc.user_has_application_access(paths, app):
+                    continue
+                prov.provision_application_access(kc, user_sub, app)
+                added += 1
+        except KeycloakAdminError as exc:
+            logger.warning("Ajout membre application impossible: %s", exc)
+            return Response({"detail": "Ajout utilisateur indisponible"}, status=502)
+        return Response({"ok": True, "count": added}, status=status.HTTP_201_CREATED)
+
+
+class AdminApplicationCatalogMembersBulkRemoveView(APIView):
+    """Super-admin : retirer plusieurs membres d'une application."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def post(self, request, application_slug):
+        from inscriptions.services import provisioning as prov
+
+        app = get_object_or_404(Application, slug=application_slug)
+        if not app_access_svc.is_application_access_editable(app):
+            return Response(
+                {"detail": "Cette application n'a pas de groupe d'accès géré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_subs = _parse_keycloak_subs(request.data)
+        if not user_subs:
+            return Response({"detail": "keycloak_subs requis."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            kc = KeycloakAdminClient()
+            removed = 0
+            for user_sub in user_subs:
+                kc.get_user(user_sub)
+                prov.revoke_application_access(kc, user_sub, app)
+                removed += 1
+        except KeycloakAdminError as exc:
+            logger.warning("Retrait membre application impossible: %s", exc)
+            return Response({"detail": "Retrait utilisateur indisponible"}, status=502)
+        return Response({"ok": True, "count": removed})
+
+
+class AdminApplicationCatalogMemberRemoveView(APIView):
+    """Super-admin : retirer un membre d'une application."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def delete(self, request, application_slug, user_sub):
+        from inscriptions.services import provisioning as prov
+
+        app = get_object_or_404(Application, slug=application_slug)
+        if not app_access_svc.is_application_access_editable(app):
+            return Response(
+                {"detail": "Cette application n'a pas de groupe d'accès géré."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_sub = (user_sub or "").strip()
+        if not user_sub:
+            return Response({"detail": "Utilisateur invalide."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            kc = KeycloakAdminClient()
+            kc.get_user(user_sub)
+            prov.revoke_application_access(kc, user_sub, app)
+        except KeycloakAdminError as exc:
+            logger.warning("Retrait membre application impossible: %s", exc)
+            return Response({"detail": "Retrait utilisateur indisponible"}, status=502)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminApplicationAdminsView(APIView):

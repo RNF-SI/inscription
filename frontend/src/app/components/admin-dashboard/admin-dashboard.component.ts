@@ -7,6 +7,7 @@ import {
   AdminReserveMemberRemovalRequestDto,
   ApiService,
   ApplicationDto,
+  ApplicationMemberDto,
   ApplicationAdminsRowDto,
   KeycloakUserSuggestionDto,
   UserApplicationAccessDto,
@@ -115,6 +116,28 @@ export class AdminDashboardComponent implements OnInit {
   catalogCropImageFile: File | null = null;
   catalogCroppedFile: File | null = null;
   catalogCropLoadError = '';
+  catalogMembersModalOpen = false;
+  catalogMembersApp: ApplicationDto | null = null;
+  catalogMembersDraft: ApplicationMemberDto[] = [];
+  catalogAvailableDraft: ApplicationMemberDto[] = [];
+  catalogMembersInitialSubs: string[] = [];
+  catalogMembers: ApplicationMemberDto[] = [];
+  catalogMembersTotal = 0;
+  catalogMembersPage = 1;
+  catalogMembersPageSize = 10;
+  catalogMembersTotalPages = 0;
+  catalogMembersSearchQuery = '';
+  catalogMembersSelected: Record<string, boolean> = {};
+  catalogAvailableMembers: ApplicationMemberDto[] = [];
+  catalogAvailableTotal = 0;
+  catalogAvailablePage = 1;
+  catalogAvailablePageSize = 10;
+  catalogAvailableTotalPages = 0;
+  catalogAvailableSearchQuery = '';
+  catalogAvailableSelected: Record<string, boolean> = {};
+  catalogMembersError = '';
+  catalogMembersDataLoading = false;
+  catalogMembersSaving = false;
 
   readonly applicationImageWidth = APPLICATION_IMAGE_WIDTH;
   readonly applicationImageHeight = APPLICATION_IMAGE_HEIGHT;
@@ -762,6 +785,335 @@ export class AdminDashboardComponent implements OnInit {
 
   applicationImageUrl(image?: string): string {
     return applicationImageUrl(image, this.catalogImageCacheBust);
+  }
+
+  formatApplicationMemberCount(app: ApplicationDto): string {
+    if (!app.managed_by_si) {
+      return '—';
+    }
+    if (!app.requires_access_request) {
+      return 'Tous';
+    }
+    if (app.member_count == null) {
+      return '—';
+    }
+    return String(app.member_count);
+  }
+
+  canManageApplicationMembers(app: ApplicationDto): boolean {
+    return !!app.managed_by_si && !!app.requires_access_request;
+  }
+
+  openCatalogMembersModal(app: ApplicationDto): void {
+    if (!this.canManageApplicationMembers(app)) {
+      return;
+    }
+    this.catalogMembersApp = app;
+    this.catalogMembersModalOpen = true;
+    this.catalogMembersPage = 1;
+    this.catalogAvailablePage = 1;
+    this.catalogMembersSearchQuery = '';
+    this.catalogAvailableSearchQuery = '';
+    this.catalogMembersSelected = {};
+    this.catalogAvailableSelected = {};
+    this.catalogMembersError = '';
+    this.loadCatalogMembersData();
+  }
+
+  closeCatalogMembersModal(): void {
+    if (this.hasCatalogMembersPendingChanges) {
+      const discard = window.confirm('Des modifications ne sont pas enregistrées. Fermer quand même ?');
+      if (!discard) {
+        return;
+      }
+    }
+    this.catalogMembersModalOpen = false;
+    this.catalogMembersApp = null;
+    this.catalogMembersDraft = [];
+    this.catalogAvailableDraft = [];
+    this.catalogMembersInitialSubs = [];
+    this.catalogMembers = [];
+    this.catalogAvailableMembers = [];
+    this.catalogMembersError = '';
+    this.catalogMembersSelected = {};
+    this.catalogAvailableSelected = {};
+    this.catalogMembersSaving = false;
+  }
+
+  onCatalogMembersSearchInput(): void {
+    this.catalogMembersPage = 1;
+    this.catalogMembersSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  onCatalogAvailableSearchInput(): void {
+    this.catalogAvailablePage = 1;
+    this.catalogAvailableSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  goCatalogMembersPage(page: number): void {
+    if (page < 1 || (this.catalogMembersTotalPages && page > this.catalogMembersTotalPages)) {
+      return;
+    }
+    this.catalogMembersPage = page;
+    this.catalogMembersSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  goCatalogAvailablePage(page: number): void {
+    if (page < 1 || (this.catalogAvailableTotalPages && page > this.catalogAvailableTotalPages)) {
+      return;
+    }
+    this.catalogAvailablePage = page;
+    this.catalogAvailableSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  loadCatalogMembersData(): void {
+    const app = this.catalogMembersApp;
+    if (!app) {
+      return;
+    }
+    this.catalogMembersDataLoading = true;
+    this.catalogMembersError = '';
+    this.api.getApplicationDualMembers(app.slug).subscribe({
+      next: (data) => {
+        this.catalogMembersDraft = [...(data.members || [])];
+        this.catalogAvailableDraft = [...(data.available || [])];
+        this.catalogMembersInitialSubs = this.catalogMembersDraft.map((m) => m.keycloak_sub);
+        this.refreshCatalogMemberViews();
+      },
+      error: () => {
+        this.catalogMembersError = 'Impossible de charger les utilisateurs.';
+        this.catalogMembersDraft = [];
+        this.catalogAvailableDraft = [];
+        this.refreshCatalogMemberViews();
+      },
+      complete: () => {
+        this.catalogMembersDataLoading = false;
+      },
+    });
+  }
+
+  refreshCatalogMemberViews(): void {
+    const availableView = this.paginateCatalogMembers(
+      this.filterCatalogMembers(this.catalogAvailableDraft, this.catalogAvailableSearchQuery),
+      this.catalogAvailablePage,
+      this.catalogAvailablePageSize
+    );
+    this.catalogAvailableMembers = availableView.items;
+    this.catalogAvailableTotal = availableView.total;
+    this.catalogAvailableTotalPages = availableView.totalPages;
+    if (this.catalogAvailableTotalPages && this.catalogAvailablePage > this.catalogAvailableTotalPages) {
+      this.catalogAvailablePage = this.catalogAvailableTotalPages;
+      this.refreshCatalogMemberViews();
+      return;
+    }
+
+    const membersView = this.paginateCatalogMembers(
+      this.filterCatalogMembers(this.catalogMembersDraft, this.catalogMembersSearchQuery),
+      this.catalogMembersPage,
+      this.catalogMembersPageSize
+    );
+    this.catalogMembers = membersView.items;
+    this.catalogMembersTotal = membersView.total;
+    this.catalogMembersTotalPages = membersView.totalPages;
+    if (this.catalogMembersTotalPages && this.catalogMembersPage > this.catalogMembersTotalPages) {
+      this.catalogMembersPage = this.catalogMembersTotalPages;
+      this.refreshCatalogMemberViews();
+    }
+  }
+
+  private filterCatalogMembers(rows: ApplicationMemberDto[], query: string): ApplicationMemberDto[] {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) {
+      return [...rows];
+    }
+    return rows.filter((member) => {
+      const haystack = [
+        member.email,
+        member.first_name,
+        member.last_name,
+        member.username,
+        member.label,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+
+  private paginateCatalogMembers(
+    rows: ApplicationMemberDto[],
+    page: number,
+    pageSize: number
+  ): { items: ApplicationMemberDto[]; total: number; totalPages: number } {
+    const total = rows.length;
+    const totalPages = total ? Math.ceil(total / pageSize) : 0;
+    const safePage = totalPages ? Math.min(Math.max(page, 1), totalPages) : 1;
+    const start = (safePage - 1) * pageSize;
+    return {
+      items: rows.slice(start, start + pageSize),
+      total,
+      totalPages,
+    };
+  }
+
+  private sortCatalogMembers(rows: ApplicationMemberDto[]): ApplicationMemberDto[] {
+    return [...rows].sort((a, b) => {
+      const left = `${a.last_name} ${a.first_name} ${a.email}`.toLowerCase();
+      const right = `${b.last_name} ${b.first_name} ${b.email}`.toLowerCase();
+      return left.localeCompare(right);
+    });
+  }
+
+  toggleCatalogAvailableSelectAll(checked: boolean): void {
+    const next: Record<string, boolean> = {};
+    if (checked) {
+      for (const member of this.catalogAvailableMembers) {
+        next[member.keycloak_sub] = true;
+      }
+    }
+    this.catalogAvailableSelected = next;
+  }
+
+  toggleCatalogMembersSelectAll(checked: boolean): void {
+    const next: Record<string, boolean> = {};
+    if (checked) {
+      for (const member of this.catalogMembers) {
+        next[member.keycloak_sub] = true;
+      }
+    }
+    this.catalogMembersSelected = next;
+  }
+
+  get selectedAvailableCount(): number {
+    return Object.values(this.catalogAvailableSelected).filter(Boolean).length;
+  }
+
+  get selectedMembersCount(): number {
+    return Object.values(this.catalogMembersSelected).filter(Boolean).length;
+  }
+
+  get isAllAvailableSelected(): boolean {
+    return (
+      this.catalogAvailableMembers.length > 0 &&
+      this.catalogAvailableMembers.every((m) => !!this.catalogAvailableSelected[m.keycloak_sub])
+    );
+  }
+
+  get isAllMembersSelected(): boolean {
+    return (
+      this.catalogMembers.length > 0 &&
+      this.catalogMembers.every((m) => !!this.catalogMembersSelected[m.keycloak_sub])
+    );
+  }
+
+  get hasCatalogMembersPendingChanges(): boolean {
+    const currentSubs = new Set(this.catalogMembersDraft.map((m) => m.keycloak_sub));
+    const initialSubs = new Set(this.catalogMembersInitialSubs);
+    if (currentSubs.size !== initialSubs.size) {
+      return true;
+    }
+    for (const sub of currentSubs) {
+      if (!initialSubs.has(sub)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  get catalogMembersPendingSummary(): string {
+    const currentSubs = new Set(this.catalogMembersDraft.map((m) => m.keycloak_sub));
+    const initialSubs = new Set(this.catalogMembersInitialSubs);
+    const toAdd = [...currentSubs].filter((sub) => !initialSubs.has(sub)).length;
+    const toRemove = [...initialSubs].filter((sub) => !currentSubs.has(sub)).length;
+    const parts: string[] = [];
+    if (toAdd) {
+      parts.push(`+${toAdd}`);
+    }
+    if (toRemove) {
+      parts.push(`-${toRemove}`);
+    }
+    return parts.join(', ');
+  }
+
+  private getSelectedSubs(selection: Record<string, boolean>): string[] {
+    return Object.entries(selection)
+      .filter(([, checked]) => checked)
+      .map(([sub]) => sub);
+  }
+
+  transferAvailableToMembers(): void {
+    const subs = new Set(this.getSelectedSubs(this.catalogAvailableSelected));
+    if (!subs.size) {
+      return;
+    }
+    const moving = this.catalogAvailableDraft.filter((m) => subs.has(m.keycloak_sub));
+    this.catalogAvailableDraft = this.catalogAvailableDraft.filter((m) => !subs.has(m.keycloak_sub));
+    this.catalogMembersDraft = this.sortCatalogMembers([...this.catalogMembersDraft, ...moving]);
+    this.catalogAvailableSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  transferMembersToAvailable(): void {
+    const subs = new Set(this.getSelectedSubs(this.catalogMembersSelected));
+    if (!subs.size) {
+      return;
+    }
+    const moving = this.catalogMembersDraft.filter((m) => subs.has(m.keycloak_sub));
+    this.catalogMembersDraft = this.catalogMembersDraft.filter((m) => !subs.has(m.keycloak_sub));
+    this.catalogAvailableDraft = this.sortCatalogMembers([...this.catalogAvailableDraft, ...moving]);
+    this.catalogMembersSelected = {};
+    this.refreshCatalogMemberViews();
+  }
+
+  saveCatalogMembers(): void {
+    const app = this.catalogMembersApp;
+    if (!app || this.catalogMembersSaving || !this.hasCatalogMembersPendingChanges) {
+      return;
+    }
+    const currentSubs = new Set(this.catalogMembersDraft.map((m) => m.keycloak_sub));
+    const initialSubs = new Set(this.catalogMembersInitialSubs);
+    const toAdd = [...currentSubs].filter((sub) => !initialSubs.has(sub));
+    const toRemove = [...initialSubs].filter((sub) => !currentSubs.has(sub));
+
+    const tasks = [];
+    if (toAdd.length) {
+      tasks.push(this.api.addApplicationMembers(app.slug, toAdd));
+    }
+    if (toRemove.length) {
+      tasks.push(this.api.removeApplicationMembers(app.slug, toRemove));
+    }
+    if (!tasks.length) {
+      return;
+    }
+
+    this.catalogMembersSaving = true;
+    this.catalogMembersError = '';
+    forkJoin(tasks).subscribe({
+      next: () => {
+        this.catalogMembersInitialSubs = this.catalogMembersDraft.map((m) => m.keycloak_sub);
+        this.bumpCatalogMemberCount(app.slug, toAdd.length - toRemove.length);
+      },
+      error: (err) => {
+        const detail = err?.error?.detail;
+        this.catalogMembersError =
+          typeof detail === 'string' ? detail : 'Impossible d’enregistrer les modifications.';
+      },
+      complete: () => {
+        this.catalogMembersSaving = false;
+      },
+    });
+  }
+
+  private bumpCatalogMemberCount(slug: string, delta: number): void {
+    const app = this.catalogApplications.find((a) => a.slug === slug);
+    if (!app || app.member_count == null) {
+      return;
+    }
+    app.member_count = Math.max(0, app.member_count + delta);
   }
 
   get canManageCatalogImage(): boolean {

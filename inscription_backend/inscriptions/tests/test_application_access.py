@@ -50,3 +50,36 @@ class ApplicationAccessServiceTests(BaseApiTestCase):
         with patch("inscriptions.services.application_access.prov.provision_application_access") as provision:
             svc.apply_application_access_changes(kc, "user-sub", set(), desired)
             provision.assert_not_called()
+
+    def test_list_members_page_filters_and_paginates(self):
+        kc = MagicMock()
+        kc.find_group_by_path.return_value = {"id": "group-id"}
+        kc.list_all_group_members.return_value = [
+            {"id": "1", "email": "alice@test.local", "firstName": "Alice", "lastName": "A"},
+            {"id": "2", "email": "bob@test.local", "firstName": "Bob", "lastName": "B"},
+            {"id": "3", "email": "carol@test.local", "firstName": "Carol", "lastName": "C"},
+        ]
+        payload = svc.list_application_group_members_page(
+            kc,
+            self.managed_app,
+            query="bob",
+            page=1,
+            page_size=10,
+        )
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["members"][0]["email"], "bob@test.local")
+
+    def test_list_non_members_excludes_group_users(self):
+        kc = MagicMock()
+        kc.find_group_by_path.return_value = {"id": "group-id"}
+        kc.list_all_group_members.return_value = [
+            {"id": "member-sub", "email": "member@test.local", "firstName": "Mem", "lastName": "Ber"}
+        ]
+        kc.list_all_users.return_value = [
+            {"id": "member-sub", "email": "member@test.local", "firstName": "Mem", "lastName": "Ber"},
+            {"id": "other-sub", "email": "other@test.local", "firstName": "Oth", "lastName": "Er"},
+        ]
+        payload = svc.list_application_dual_members(kc, self.managed_app)
+        self.assertEqual(len(payload["members"]), 1)
+        self.assertEqual(len(payload["available"]), 1)
+        self.assertEqual(payload["available"][0]["keycloak_sub"], "other-sub")
