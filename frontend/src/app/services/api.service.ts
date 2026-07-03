@@ -489,6 +489,10 @@ export class ApiService {
     return this.http.get<NotificationDto[]>(`${environment.apiUrl}/notifications/`);
   }
 
+  getUnreadNotificationCount(): Observable<{ count: number }> {
+    return this.http.get<{ count: number }>(`${environment.apiUrl}/notifications/unread-count/`);
+  }
+
   markNotificationRead(id: number): Observable<unknown> {
     return this.http.patch(`${environment.apiUrl}/notifications/${id}/mark-read/`, {});
   }

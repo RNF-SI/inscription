@@ -13,7 +13,8 @@ export const AppConfig = {
     "appSubTitle": "Tous les outils pour vous accompagner dans vos projets",
     "creditHeaderImage": "RNN Baie de St-Brieuc - © P. PIERRE",
     "features": {
-        "notifications": true
+        "notifications": true,
+        "notificationPollIntervalMs": 30000
     },
     "security": {
         "hideAdminMenuForNonAdmins": true,

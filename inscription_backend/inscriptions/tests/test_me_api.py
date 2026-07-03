@@ -82,6 +82,14 @@ class MeApiTests(BaseApiTestCase):
         self.assertGreaterEqual(len(payload), 1)
         self.assertEqual(payload[0]["admin_tab"], "requests")
 
+    def test_notifications_unread_count(self):
+        Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Lue", body="Corps", read=True)
+        Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Non lue", body="Corps", read=False)
+        auth_client(self.client, self.regular_user)
+        response = self.client.get("/api/notifications/unread-count/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["count"], 1)
+
     def test_mark_notification_read(self):
         notif = Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Test", body="Corps")
         auth_client(self.client, self.regular_user)

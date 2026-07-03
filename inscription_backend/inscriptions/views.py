@@ -969,6 +969,15 @@ class NotificationListView(APIView):
         return Response(NotificationSerializer(qs, many=True).data)
 
 
+class NotificationUnreadCountView(APIView):
+    def get(self, request):
+        user = require_keycloak_user(request)
+        if not user:
+            return Response(status=401)
+        count = Notification.objects.filter(user_sub=user.sub, read=False).count()
+        return Response({"count": count})
+
+
 class NotificationMarkReadView(APIView):
     def patch(self, request, pk):
         user = require_keycloak_user(request)

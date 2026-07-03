@@ -1,5 +1,6 @@
-import { Component, OnInit } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { forkJoin, Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { NotificationBadgeService } from 'src/app/home-rnf/services/notification-badge.service';
 import { AdminGuardService } from 'src/app/home-rnf/services/admin-guard.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
@@ -10,11 +11,14 @@ import { ApiService, NotificationAdminTab, NotificationDto } from 'src/app/servi
   templateUrl: './notifications.component.html',
   styleUrls: ['./notifications.component.scss']
 })
-export class NotificationsComponent implements OnInit {
+export class NotificationsComponent implements OnInit, OnDestroy {
   notifications: NotificationDto[] = [];
   loading = false;
   markingAll = false;
   deletingRead = false;
+
+  private readonly destroy$ = new Subject<void>();
+  private previousUnreadCount = 0;
 
   constructor(
     private api: ApiService,
@@ -25,6 +29,19 @@ export class NotificationsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadNotifications();
+    this.notificationBadge.getUnreadCount$()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((count) => {
+        if (count > this.previousUnreadCount) {
+          this.loadNotifications();
+        }
+        this.previousUnreadCount = count;
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   markRead(id: number): void {
@@ -106,6 +123,7 @@ export class NotificationsComponent implements OnInit {
     this.api.getNotifications().subscribe({
       next: (n) => {
         this.notifications = n;
+        this.previousUnreadCount = this.unreadCount;
         this.notificationBadge.setUnreadCount(this.unreadCount);
       },
       error: () => {
