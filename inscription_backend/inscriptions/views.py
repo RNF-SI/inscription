@@ -903,11 +903,6 @@ class AdminDecideReserveReferentRequestView(APIView):
                 logger.warning("Validation referent impossible côté Keycloak: %s", exc)
                 return Response({"detail": "Échec côté Keycloak"}, status=502)
 
-        req.status = ReserveReferentRequest.STATUS_APPROVED if approve else ReserveReferentRequest.STATUS_REJECTED
-        req.decided_by = prof
-        req.decided_at = timezone.now()
-        req.save(update_fields=["status", "decided_by", "decided_at"])
-
         Notification.objects.create(
             user=req.user,
             title=f"Demande référent : {req.reserve.area_code}",
@@ -917,6 +912,7 @@ class AdminDecideReserveReferentRequestView(APIView):
                 else f"Votre demande de statut référent a été refusée. Motif: {note}"
             ),
         )
+        req.delete()
         return Response({"ok": True})
 
 

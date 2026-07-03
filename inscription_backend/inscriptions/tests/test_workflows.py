@@ -104,6 +104,35 @@ class WorkflowTests(BaseApiTestCase):
         )
 
 
+class ReserveReferentRequestApiTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.super_admin = make_profile(sub="super-admin-sub", email="super@test.local", is_super_admin=True)
+        self.user = make_profile(sub="referent-user-sub", email="referent@test.local")
+        self.reserve = make_reserve()
+
+    def test_decide_approve_deletes_request(self):
+        req = ReserveReferentRequest.objects.create(user=self.user, reserve=self.reserve)
+        auth_client(self.client, self.super_admin)
+        with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            kc = kc_cls.return_value
+            kc.ensure_reserve_referent_group.return_value = "group-id"
+            response = self.client.post(f"/api/admin/reserve-referent-requests/{req.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(ReserveReferentRequest.objects.filter(pk=req.id).exists())
+
+    def test_decide_reject_deletes_request(self):
+        req = ReserveReferentRequest.objects.create(user=self.user, reserve=self.reserve)
+        auth_client(self.client, self.super_admin)
+        response = self.client.post(
+            f"/api/admin/reserve-referent-requests/{req.id}/reject/",
+            {"note": "Non éligible"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(ReserveReferentRequest.objects.filter(pk=req.id).exists())
+
+
 class AdminRegistrationApiTests(BaseApiTestCase):
     def setUp(self):
         super().setUp()

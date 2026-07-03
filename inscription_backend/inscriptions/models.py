@@ -254,6 +254,8 @@ class UserReserveLink(models.Model):
 
 
 class ReserveReferentRequest(models.Model):
+    """Demande en attente de statut référent. Supprimée dès validation (vérité = Keycloak)."""
+
     STATUS_PENDING = "pending"
     STATUS_APPROVED = "approved"
     STATUS_REJECTED = "rejected"
