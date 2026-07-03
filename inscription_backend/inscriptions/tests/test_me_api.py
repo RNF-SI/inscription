@@ -90,6 +90,22 @@ class MeApiTests(BaseApiTestCase):
         notif.refresh_from_db()
         self.assertTrue(notif.read)
 
+    def test_delete_read_notifications(self):
+        read_notif = Notification.objects.create(
+            user_sub=self.regular_user.keycloak_sub, title="Lue", body="Corps", read=True
+        )
+        unread_notif = Notification.objects.create(
+            user_sub=self.regular_user.keycloak_sub, title="Non lue", body="Corps", read=False
+        )
+        other_read = Notification.objects.create(user_sub="other-sub", title="Autre", body="Corps", read=True)
+        auth_client(self.client, self.regular_user)
+        response = self.client.post("/api/notifications/delete-read/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["deleted"], 1)
+        self.assertFalse(Notification.objects.filter(pk=read_notif.pk).exists())
+        self.assertTrue(Notification.objects.filter(pk=unread_notif.pk).exists())
+        self.assertTrue(Notification.objects.filter(pk=other_read.pk).exists())
+
 
 class ReferentRemovalRequestApiTests(BaseApiTestCase):
     def setUp(self):

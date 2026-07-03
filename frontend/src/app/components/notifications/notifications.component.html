@@ -17,6 +17,14 @@
       >
         {{ markingAll ? 'Traitement...' : 'Tout marquer comme lu' }}
       </button>
+      <button
+        type="button"
+        class="btn btn-outline-danger btn-sm"
+        (click)="deleteReadNotifications()"
+        [disabled]="readCount === 0 || deletingRead"
+      >
+        {{ deletingRead ? 'Suppression...' : 'Supprimer les lues' }}
+      </button>
     </div>
   </header>
 

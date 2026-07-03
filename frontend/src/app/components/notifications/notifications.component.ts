@@ -14,6 +14,7 @@ export class NotificationsComponent implements OnInit {
   notifications: NotificationDto[] = [];
   loading = false;
   markingAll = false;
+  deletingRead = false;
 
   constructor(
     private api: ApiService,
@@ -53,8 +54,31 @@ export class NotificationsComponent implements OnInit {
     });
   }
 
+  deleteReadNotifications(): void {
+    if (this.deletingRead || this.readCount === 0) {
+      return;
+    }
+    this.deletingRead = true;
+    this.api.deleteReadNotifications().subscribe({
+      next: () => {
+        this.loadNotifications();
+        this.notificationBadge.refreshUnreadCount();
+      },
+      error: () => {
+        this.deletingRead = false;
+      },
+      complete: () => {
+        this.deletingRead = false;
+      },
+    });
+  }
+
   get unreadCount(): number {
     return this.notifications.filter((n) => !n.read).length;
+  }
+
+  get readCount(): number {
+    return this.notifications.filter((n) => n.read).length;
   }
 
   canOpenAdminLink(notification: NotificationDto): boolean {

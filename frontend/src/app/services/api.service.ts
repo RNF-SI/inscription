@@ -492,4 +492,8 @@ export class ApiService {
   markNotificationRead(id: number): Observable<unknown> {
     return this.http.patch(`${environment.apiUrl}/notifications/${id}/mark-read/`, {});
   }
+
+  deleteReadNotifications(): Observable<{ deleted: number }> {
+    return this.http.post<{ deleted: number }>(`${environment.apiUrl}/notifications/delete-read/`, {});
+  }
 }

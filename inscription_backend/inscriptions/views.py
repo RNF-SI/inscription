@@ -980,6 +980,15 @@ class NotificationMarkReadView(APIView):
         return Response(NotificationSerializer(n).data)
 
 
+class NotificationDeleteReadView(APIView):
+    def post(self, request):
+        user = require_keycloak_user(request)
+        if not user:
+            return Response(status=401)
+        deleted, _ = Notification.objects.filter(user_sub=user.sub, read=True).delete()
+        return Response({"deleted": deleted})
+
+
 class AdditionalAccessCreateView(APIView):
     def post(self, request):
         user = require_keycloak_user(request)

@@ -23,6 +23,7 @@ urlpatterns = [
     ),
     path("me/additional-access/", views.AdditionalAccessCreateView.as_view()),
     path("notifications/", views.NotificationListView.as_view()),
+    path("notifications/delete-read/", views.NotificationDeleteReadView.as_view()),
     path("notifications/<int:pk>/mark-read/", views.NotificationMarkReadView.as_view()),
     path("admin/registration-requests/", views.AdminRegistrationListView.as_view()),
     path("admin/registration-requests/<uuid:public_id>/", views.AdminRegistrationDetailView.as_view()),

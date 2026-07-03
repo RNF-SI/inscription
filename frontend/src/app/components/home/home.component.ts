@@ -63,14 +63,16 @@ export class HomeComponent implements OnInit {
         this.applicationsLoading = false;
       });
 
-    if (this._authService.authenticated) {
-      this._authService.refreshMeFromApi().subscribe({
-        next: () => load(),
-        error: () => load(),
-      });
-    } else {
-      load();
-    }
+    this._authService.restoreSession().subscribe((ok) => {
+      if (ok) {
+        this._authService.refreshMeFromApi().subscribe({
+          next: () => load(),
+          error: () => load(),
+        });
+      } else {
+        load();
+      }
+    });
   }
 
   private mergeAccessStatus(): void {
