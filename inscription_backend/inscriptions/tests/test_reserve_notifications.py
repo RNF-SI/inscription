@@ -29,6 +29,44 @@ class ReserveEmailTemplateTests(TestCase):
         self.assertIn("RNN01", html)
         self.assertIn("/admin", html)
 
+    def test_member_removal_superadmin_email(self):
+        requester = _info(make_profile(first_name="Paul", last_name="Martin", email="paul@test.local"))
+        target = _info(make_profile(first_name="Alice", last_name="Durand", email="alice@test.local"))
+        target = UserInfo(
+            sub=target.sub,
+            email=target.email,
+            username=target.username,
+            first_name=target.first_name,
+            last_name=target.last_name,
+            organisme="Réserves Naturelles de France",
+        )
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        subject, html, _plain = tpl.reserve_member_removal_superadmin_email(
+            requester=requester,
+            reserve=reserve,
+            target=target,
+            reason="Ne fait plus partie de la réserve",
+        )
+        self.assertIn("retrait", subject.lower())
+        self.assertIn("RNN41", html)
+        self.assertIn("admin?tab=requests", html)
+        self.assertIn("Réserves Naturelles de France", html)
+
+    def test_member_removal_rejected_requester_email(self):
+        requester = _info(make_profile(first_name="Paul", last_name="Martin", email="paul@test.local"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        subject, html, _plain = tpl.reserve_member_removal_rejected_requester_email(
+            requester=requester,
+            reserve=reserve,
+            target_first_name="Alice",
+            target_last_name="Durand",
+            target_email="alice@test.local",
+            note="Informations insuffisantes",
+        )
+        self.assertIn("refusée", subject.lower())
+        self.assertIn("RNN41", html)
+        self.assertIn("Informations insuffisantes", html)
+
     def test_new_member_referent_email(self):
         member = _info(make_profile(first_name="Marie", last_name="Martin", email="marie@test.local"))
         reserve = make_reserve(area_code="RNN02", area_name="Réserve deux")
@@ -65,5 +103,43 @@ class ReserveNotificationServiceTests(TestCase):
             {"id": referent_sub, "email": "referent@test.local", "firstName": "Rémi"},
         ]
         reserve_notify.notify_referents_new_member(member, reserve)
-        self.assertTrue(Notification.objects.filter(user_sub=referent_sub).exists())
+        notif = Notification.objects.get(user_sub=referent_sub)
+        self.assertEqual(notif.admin_tab, "reserves")
         self.assertEqual(len(mail.outbox), 1)
+
+    @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
+    def test_notify_reserve_member_removal_request(self, list_super):
+        list_super.return_value = ["super-sub"]
+        requester = _info(make_profile(sub="ref-sub", email="ref@test.local", first_name="Rémi"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        with override_settings(SUPERADMIN_NOTIFY_EMAILS=["admin@test.local"]):
+            reserve_notify.notify_reserve_member_removal_request(
+                requester=requester,
+                reserve=reserve,
+                target_first_name="Alice",
+                target_last_name="Durand",
+                target_email="alice@test.local",
+                target_sub="target-sub",
+                reason="Ne fait plus partie de la réserve",
+            )
+        notif = Notification.objects.get(user_sub="super-sub")
+        self.assertIn("retrait", notif.title.lower())
+        self.assertEqual(notif.admin_tab, "requests")
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_notify_reserve_member_removal_decided_rejected_sends_mail(self):
+        requester = _info(make_profile(sub="ref-sub", email="ref@test.local", first_name="Rémi"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        reserve_notify.notify_reserve_member_removal_decided(
+            requester=requester,
+            reserve=reserve,
+            target_first_name="Alice",
+            target_last_name="Durand",
+            target_email="alice@test.local",
+            approve=False,
+            note="Motif de refus",
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("ref@test.local", mail.outbox[0].to)
+        notif = Notification.objects.get(user_sub="ref-sub")
+        self.assertIn("refusée", notif.body.lower())

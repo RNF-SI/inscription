@@ -15,6 +15,7 @@ class UserInfo:
     first_name: str
     last_name: str
     fonction: str = ""
+    organisme: str = ""
 
     @classmethod
     def from_claims(cls, claims: dict[str, Any]) -> UserInfo:
@@ -59,9 +60,17 @@ class UserInfo:
 
 def user_label(info: UserInfo) -> str:
     name = f"{info.first_name} {info.last_name}".strip()
+    org = (info.organisme or "").strip()
+    contact = (info.email or info.username or "").strip()
+    if org and contact:
+        contact_part = f"{contact} - {org}"
+    elif org:
+        contact_part = org
+    else:
+        contact_part = contact
     if name:
-        return f"{name} ({info.email or info.username})"
-    return info.email or info.username or info.sub
+        return f"{name} ({contact_part})" if contact_part else name
+    return contact_part or info.sub
 
 
 def fetch_user_info(sub: str) -> UserInfo | None:
@@ -70,7 +79,12 @@ def fetch_user_info(sub: str) -> UserInfo | None:
         return None
     try:
         kc = KeycloakAdminClient()
-        return UserInfo.from_keycloak_user(kc.get_user(sub))
+        info = UserInfo.from_keycloak_user(kc.get_user(sub))
+        if not info:
+            return None
+        from inscriptions.services.user_organisme import enrich_user_organisme
+
+        return enrich_user_organisme(info)
     except KeycloakAdminError:
         return None
 

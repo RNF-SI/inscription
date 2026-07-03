@@ -242,7 +242,7 @@ class SignupSerializer(serializers.Serializer):
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
-        fields = ("id", "title", "body", "read", "created_at")
+        fields = ("id", "title", "body", "read", "admin_tab", "created_at")
 
 
 class MeUpdateSerializer(serializers.Serializer):

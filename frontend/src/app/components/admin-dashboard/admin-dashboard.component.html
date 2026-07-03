@@ -70,8 +70,24 @@
           <td>{{ r.fonction || '-' }}</td>
           <td>{{ r.organisme || '-' }}</td>
           <td>
-            <button class="btn btn-sm btn-success me-1" *ngIf="r.status === 'pending_super'" (click)="approveReg(r.public_id)">Valider</button>
-            <button class="btn btn-sm btn-outline-danger" *ngIf="r.status === 'pending_super'" (click)="rejectReg(r.public_id)">Refuser</button>
+            <button
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
+              *ngIf="r.status === 'pending_super'"
+              (click)="approveReg(r.public_id)"
+              [disabled]="isRegistrationRowLoading(r.public_id)"
+            >
+              <mat-spinner *ngIf="isRegistrationActionLoading(r.public_id, true)" diameter="16"></mat-spinner>
+              <span>{{ isRegistrationActionLoading(r.public_id, true) ? 'Envoi…' : 'Valider' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
+              *ngIf="r.status === 'pending_super'"
+              (click)="rejectReg(r.public_id)"
+              [disabled]="isRegistrationRowLoading(r.public_id)"
+            >
+              <mat-spinner *ngIf="isRegistrationActionLoading(r.public_id, false)" diameter="16"></mat-spinner>
+              <span>{{ isRegistrationActionLoading(r.public_id, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
           </td>
         </tr>
       </tbody>
@@ -102,29 +118,19 @@
           <td class="align-middle text-nowrap">
             <div class="d-inline-flex align-items-center gap-2">
             <button
-              class="btn btn-sm btn-success me-1"
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
               (click)="decide(p.item_id, p.kind, true)"
               [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
             >
-              <span
-                *ngIf="isDecisionLoading(p.item_id, p.kind, true)"
-                class="spinner-border spinner-border-sm me-1"
-                role="status"
-                aria-hidden="true"
-              ></span>
+              <mat-spinner *ngIf="isDecisionLoading(p.item_id, p.kind, true)" diameter="16"></mat-spinner>
               <span>{{ isDecisionLoading(p.item_id, p.kind, true) ? 'Envoi…' : 'Accorder' }}</span>
             </button>
             <button
-              class="btn btn-sm btn-outline-danger"
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
               (click)="openRejectionModal(p.item_id, p.kind)"
               [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
             >
-              <span
-                *ngIf="isDecisionLoading(p.item_id, p.kind, false)"
-                class="spinner-border spinner-border-sm me-1"
-                role="status"
-                aria-hidden="true"
-              ></span>
+              <mat-spinner *ngIf="isDecisionLoading(p.item_id, p.kind, false)" diameter="16"></mat-spinner>
               <span>{{ isDecisionLoading(p.item_id, p.kind, false) ? 'Envoi…' : 'Refuser' }}</span>
             </button>
             </div>
@@ -162,22 +168,23 @@
           </td>
           <td class="text-nowrap">
             <button
-              class="btn btn-sm btn-success me-1"
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
               (click)="decideReserveReferent(rr.id, true)"
-              [disabled]="isReserveReferentLoading(rr.id, true) || isReserveReferentLoading(rr.id, false)"
+              [disabled]="isReserveReferentRowLoading(rr.id)"
             >
-              Accorder
+              <mat-spinner *ngIf="isReserveReferentLoading(rr.id, true)" diameter="16"></mat-spinner>
+              <span>{{ isReserveReferentLoading(rr.id, true) ? 'Envoi…' : 'Accorder' }}</span>
             </button>
             <button
-              class="btn btn-sm btn-outline-danger"
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
               (click)="decideReserveReferent(rr.id, false)"
               [disabled]="
-                isReserveReferentLoading(rr.id, true) ||
-                isReserveReferentLoading(rr.id, false) ||
+                isReserveReferentRowLoading(rr.id) ||
                 !(reserveReferentNoteById[rr.id] || '').trim()
               "
             >
-              Refuser
+              <mat-spinner *ngIf="isReserveReferentLoading(rr.id, false)" diameter="16"></mat-spinner>
+              <span>{{ isReserveReferentLoading(rr.id, false) ? 'Envoi…' : 'Refuser' }}</span>
             </button>
           </td>
         </tr>
@@ -215,22 +222,23 @@
           </td>
           <td class="text-nowrap">
             <button
-              class="btn btn-sm btn-success me-1"
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
               (click)="decideReserveRemoval(rr.id, true)"
-              [disabled]="isReserveRemovalLoading(rr.id, true) || isReserveRemovalLoading(rr.id, false)"
+              [disabled]="isReserveRemovalRowLoading(rr.id)"
             >
-              Accorder
+              <mat-spinner *ngIf="isReserveRemovalLoading(rr.id, true)" diameter="16"></mat-spinner>
+              <span>{{ isReserveRemovalLoading(rr.id, true) ? 'Envoi…' : 'Accorder' }}</span>
             </button>
             <button
-              class="btn btn-sm btn-outline-danger"
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
               (click)="decideReserveRemoval(rr.id, false)"
               [disabled]="
-                isReserveRemovalLoading(rr.id, true) ||
-                isReserveRemovalLoading(rr.id, false) ||
+                isReserveRemovalRowLoading(rr.id) ||
                 !(reserveRemovalNoteById[rr.id] || '').trim()
               "
             >
-              Refuser
+              <mat-spinner *ngIf="isReserveRemovalLoading(rr.id, false)" diameter="16"></mat-spinner>
+              <span>{{ isReserveRemovalLoading(rr.id, false) ? 'Envoi…' : 'Refuser' }}</span>
             </button>
           </td>
         </tr>
@@ -286,11 +294,12 @@
           </datalist>
           <button
             type="button"
-            class="btn btn-sm btn-primary"
+            class="btn btn-sm btn-primary btn-with-spinner"
             (click)="directAddReserveMember(row.reserve.area_code)"
             [disabled]="isDirectAddLoading(row.reserve.area_code) || !(reserveMemberAddEmailByCode[row.reserve.area_code] || '').trim()"
           >
-            {{ isDirectAddLoading(row.reserve.area_code) ? 'Ajout...' : 'Ajouter à la réserve' }}
+            <mat-spinner *ngIf="isDirectAddLoading(row.reserve.area_code)" diameter="16"></mat-spinner>
+            <span>{{ isDirectAddLoading(row.reserve.area_code) ? 'Ajout…' : 'Ajouter à la réserve' }}</span>
           </button>
         </div>
         <small class="text-muted d-block mb-2" *ngIf="row.can_direct_add">
@@ -305,20 +314,25 @@
               <button
                 *ngIf="row.can_direct_remove"
                 type="button"
-                class="btn btn-sm btn-danger"
+                class="btn btn-sm btn-danger btn-with-spinner"
                 (click)="directRemoveReserveMember(row.reserve.area_code, m)"
                 [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
               >
-                Retirer directement
+                <mat-spinner *ngIf="isReferentRemovalSaving(row.reserve.area_code, m.sub)" diameter="16"></mat-spinner>
+                <span>{{ isReferentRemovalSaving(row.reserve.area_code, m.sub) ? 'Retrait…' : 'Retirer directement' }}</span>
               </button>
               <button
                 *ngIf="row.can_request_removal && !m.pending_removal_request && canRequestRemovalForMember(m.sub)"
                 type="button"
-                class="btn btn-sm btn-outline-danger"
+                class="btn btn-sm btn-outline-danger btn-with-spinner"
                 (click)="openReferentRemovalModal(row.reserve.area_code, row.reserve.area_name, m)"
                 [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
               >
-                Demander retrait
+                <mat-spinner
+                  *ngIf="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+                  diameter="16"
+                ></mat-spinner>
+                <span>{{ isReferentRemovalSaving(row.reserve.area_code, m.sub) ? 'Envoi…' : 'Demander retrait' }}</span>
               </button>
               <span
                 *ngIf="row.can_request_removal && m.pending_removal_request && canRequestRemovalForMember(m.sub)"
@@ -409,11 +423,12 @@
         </table>
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary btn-with-spinner"
           (click)="saveUserApplicationAccess()"
           [disabled]="userAccessSaving"
         >
-          Enregistrer les modifications
+          <mat-spinner *ngIf="userAccessSaving" diameter="18"></mat-spinner>
+          <span>{{ userAccessSaving ? 'Enregistrement…' : 'Enregistrer les modifications' }}</span>
         </button>
       </div>
 
@@ -434,12 +449,12 @@
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <button
               type="button"
-              class="btn btn-sm btn-outline-secondary"
+              class="btn btn-sm btn-outline-secondary btn-with-spinner"
               [disabled]="catalogCountsRefreshing"
               (click)="refreshCatalogCounts()"
             >
-              <span *ngIf="catalogCountsRefreshing" class="spinner-border spinner-border-sm me-1" role="status"></span>
-              Actualiser les effectifs
+              <mat-spinner *ngIf="catalogCountsRefreshing" diameter="16"></mat-spinner>
+              <span>{{ catalogCountsRefreshing ? 'Actualisation…' : 'Actualiser les effectifs' }}</span>
             </button>
             <button type="button" class="btn btn-sm btn-primary" (click)="openCatalogModalForNew()">
               Nouvelle application
@@ -564,19 +579,21 @@
                 />
                 <button
                   type="button"
-                  class="btn btn-sm btn-outline-primary"
+                  class="btn btn-sm btn-outline-primary btn-with-spinner"
                   (click)="catalogImageInput.click()"
                   [disabled]="!canManageCatalogImage || catalogImageUploading || catalogSaving || catalogCropModalOpen"
                 >
-                  {{ catalogImageUploading ? 'Import…' : 'Importer une image' }}
+                  <mat-spinner *ngIf="catalogImageUploading" diameter="16"></mat-spinner>
+                  <span>{{ catalogImageUploading ? 'Import…' : 'Importer une image' }}</span>
                 </button>
                 <button
                   type="button"
-                  class="btn btn-sm btn-outline-danger"
+                  class="btn btn-sm btn-outline-danger btn-with-spinner"
                   (click)="removeCatalogImage()"
                   [disabled]="!canManageCatalogImage || !catalogForm.image || catalogImageUploading || catalogSaving || catalogCropModalOpen"
                 >
-                  Supprimer l'image
+                  <mat-spinner *ngIf="catalogImageUploading" diameter="16"></mat-spinner>
+                  <span>{{ catalogImageUploading ? 'Suppression…' : 'Supprimer l\'image' }}</span>
                 </button>
                 <small class="text-muted">
                   Format {{ applicationImageWidth }}×{{ applicationImageHeight }} px (recadrage automatique).
@@ -676,8 +693,9 @@
         <button type="button" class="btn btn-outline-secondary" (click)="closeCatalogModal()" [disabled]="catalogSaving">
           Annuler
         </button>
-        <button type="button" class="btn btn-primary" (click)="saveCatalogApplication()" [disabled]="catalogSaving || catalogImageUploading">
-          {{ catalogSaving ? 'Enregistrement…' : 'Enregistrer' }}
+        <button type="button" class="btn btn-primary btn-with-spinner" (click)="saveCatalogApplication()" [disabled]="catalogSaving || catalogImageUploading">
+          <mat-spinner *ngIf="catalogSaving" diameter="18"></mat-spinner>
+          <span>{{ catalogSaving ? 'Enregistrement…' : 'Enregistrer' }}</span>
         </button>
       </div>
     </div>
@@ -722,11 +740,12 @@
         </button>
         <button
           type="button"
-          class="btn btn-primary"
+          class="btn btn-primary btn-with-spinner"
           (click)="confirmCatalogImageCrop()"
           [disabled]="catalogImageUploading || !catalogCroppedFile"
         >
-          {{ catalogImageUploading ? 'Import…' : 'Valider et importer' }}
+          <mat-spinner *ngIf="catalogImageUploading" diameter="18"></mat-spinner>
+          <span>{{ catalogImageUploading ? 'Import…' : 'Valider et importer' }}</span>
         </button>
       </div>
     </div>
@@ -739,7 +758,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Motif du refus</h5>
-        <button type="button" class="btn-close" aria-label="Close" (click)="cancelRejectionModal()"></button>
+        <button type="button" class="btn-close" aria-label="Close" (click)="cancelRejectionModal()" [disabled]="rejectionModalSubmitting"></button>
       </div>
       <div class="modal-body">
         <p class="mb-2">Merci de saisir la justification qui sera transmise au demandeur.</p>
@@ -749,18 +768,20 @@
           [(ngModel)]="rejectionReason"
           name="rejectionReason"
           placeholder="Ex: La demande ne correspond pas aux critères d'accès."
+          [disabled]="rejectionModalSubmitting"
         ></textarea>
         <small class="text-danger" *ngIf="!rejectionReason.trim()">La justification est obligatoire.</small>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" (click)="cancelRejectionModal()">Annuler</button>
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelRejectionModal()" [disabled]="rejectionModalSubmitting">Annuler</button>
         <button
           type="button"
-          class="btn btn-danger"
+          class="btn btn-danger btn-with-spinner"
           (click)="confirmRejectionModal()"
-          [disabled]="!rejectionReason.trim()"
+          [disabled]="!rejectionReason.trim() || rejectionModalSubmitting"
         >
-          Confirmer le refus
+          <mat-spinner *ngIf="rejectionModalSubmitting" diameter="18"></mat-spinner>
+          <span>{{ rejectionModalSubmitting ? 'Envoi…' : 'Confirmer le refus' }}</span>
         </button>
       </div>
     </div>
@@ -773,7 +794,13 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Demande de retrait d’un membre</h5>
-        <button type="button" class="btn-close" aria-label="Close" (click)="cancelReferentRemovalModal()"></button>
+        <button
+          type="button"
+          class="btn-close"
+          aria-label="Close"
+          (click)="cancelReferentRemovalModal()"
+          [disabled]="isReferentRemovalModalSubmitting()"
+        ></button>
       </div>
       <div class="modal-body">
         <p class="mb-2">
@@ -789,18 +816,27 @@
           [(ngModel)]="referentRemovalReason"
           [ngModelOptions]="{standalone: true}"
           placeholder="Motif de la demande de retrait"
+          [disabled]="isReferentRemovalModalSubmitting()"
         ></textarea>
         <small class="text-danger" *ngIf="!referentRemovalReason.trim()">Le motif est obligatoire.</small>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" (click)="cancelReferentRemovalModal()">Annuler</button>
         <button
           type="button"
-          class="btn btn-danger"
-          (click)="confirmReferentRemovalModal()"
-          [disabled]="!referentRemovalReason.trim()"
+          class="btn btn-outline-secondary"
+          (click)="cancelReferentRemovalModal()"
+          [disabled]="isReferentRemovalModalSubmitting()"
         >
-          Envoyer la demande
+          Annuler
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger btn-with-spinner"
+          (click)="confirmReferentRemovalModal()"
+          [disabled]="!referentRemovalReason.trim() || isReferentRemovalModalSubmitting()"
+        >
+          <mat-spinner *ngIf="isReferentRemovalModalSubmitting()" diameter="18"></mat-spinner>
+          <span>{{ isReferentRemovalModalSubmitting() ? 'Envoi…' : 'Envoyer la demande' }}</span>
         </button>
       </div>
     </div>

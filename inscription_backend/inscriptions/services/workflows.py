@@ -14,7 +14,6 @@ from inscriptions.models import (
     AccessRequestItem,
     Application,
     AuditLog,
-    Notification,
     RegistrationRequest,
     ReserveReferentRequest,
     Reserve,
@@ -23,7 +22,9 @@ from inscriptions.roles import list_application_admin_subs, list_application_adm
 from inscriptions.services import mail as mail_svc
 from inscriptions.services import provisioning as prov
 from inscriptions.services import reserve_notifications as reserve_notify
-from inscriptions.user_identity import UserInfo, fetch_user_info
+from inscriptions.services import notifications as notify_svc
+from inscriptions.services.user_organisme import enrich_user_organisme
+from inscriptions.user_identity import UserInfo, fetch_user_info, user_label
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +33,18 @@ def _log(actor_sub: str, action: str, payload: dict) -> None:
     AuditLog.objects.create(actor_sub=actor_sub or "", action=action, payload=payload)
 
 
-def _notify_user_sub(user_sub: str, title: str, body: str) -> None:
-    sub = (user_sub or "").strip()
-    if not sub:
-        return
-    Notification.objects.create(user_sub=sub, title=title, body=body)
+def _notify_user_sub(user_sub: str, title: str, body: str, *, admin_tab: str = "") -> None:
+    notify_svc.notify_user(user_sub, title, body, admin_tab=admin_tab)
 
 
 def _notify_app_admins(application: Application, title: str, body: str) -> None:
     for sub in list_application_admin_subs(application):
-        _notify_user_sub(sub, title, body)
+        _notify_user_sub(sub, title, body, admin_tab=notify_svc.ADMIN_TAB_REQUESTS)
 
 
-def _notify_super_admins(title: str, body: str) -> None:
+def _notify_super_admins(title: str, body: str, *, admin_tab: str = notify_svc.ADMIN_TAB_REQUESTS) -> None:
     for sub in list_super_admin_subs():
-        _notify_user_sub(sub, title, body)
+        _notify_user_sub(sub, title, body, admin_tab=admin_tab)
 
 
 def _cleanup_completed_registration(registration: RegistrationRequest, actor_sub: str = "") -> None:
@@ -61,7 +59,18 @@ def _registration_user_info(registration: RegistrationRequest) -> UserInfo:
     if sub and settings.KEYCLOAK_SYNC_ENABLED and not sub.startswith("local-"):
         info = fetch_user_info(sub)
         if info:
+            if not info.organisme and registration.organisme:
+                return UserInfo(
+                    sub=info.sub,
+                    email=info.email or registration.email,
+                    username=info.username or registration.username,
+                    first_name=info.first_name or registration.first_name,
+                    last_name=info.last_name or registration.last_name,
+                    fonction=info.fonction or (registration.remarks or "").strip(),
+                    organisme=registration.organisme.nom_organisme,
+                )
             return info
+    org_name = registration.organisme.nom_organisme if registration.organisme else ""
     return UserInfo(
         sub=sub or f"local-{registration.public_id}",
         email=registration.email,
@@ -69,6 +78,7 @@ def _registration_user_info(registration: RegistrationRequest) -> UserInfo:
         first_name=registration.first_name,
         last_name=registration.last_name,
         fonction=(registration.remarks or "").strip(),
+        organisme=org_name,
     )
 
 
@@ -78,7 +88,7 @@ def on_registration_created(registration: RegistrationRequest) -> None:
     _notify_super_admins(
         title="Nouvelle demande d'inscription",
         body=(
-            f"{registration.first_name} {registration.last_name} ({registration.email}) "
+            f"{user_label(UserInfo(sub='', email=registration.email, username=registration.username, first_name=registration.first_name, last_name=registration.last_name, organisme=registration.organisme.nom_organisme if registration.organisme else ''))} "
             "a soumis une demande d'inscription."
         ),
     )
@@ -157,7 +167,6 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
         if created:
             reserve_notify.notify_referent_request_created(user_info, reserve)
 
-    applicant_name = f"{registration.first_name} {registration.last_name}".strip()
     for item in registration.items.select_related("application"):
         justification = (item.request_justification or "").strip()
         justification_text = justification if justification else "Aucune justification fournie."
@@ -165,15 +174,13 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
             item.application,
             title="Nouvelle demande d'accès",
             body=(
-                f"{applicant_name} ({registration.email}) "
-                f"demande l'accès à {item.application.nom}. "
+                f"{user_label(user_info)} demande l'accès à {item.application.nom}. "
                 f"Justification: {justification_text}"
             ),
         )
         mail_svc.send_app_access_request_admin_mail(
             admins=list_application_admins(item.application),
-            applicant_name=applicant_name,
-            applicant_email=registration.email,
+            applicant=user_info,
             application=item.application,
             justification=justification_text,
         )
@@ -266,6 +273,7 @@ def create_additional_access_request(user_sub: str, user_info: UserInfo, slugs: 
     created_count = 0
     created_apps: list[Application] = []
     sub = (user_sub or user_info.sub).strip()
+    user_info = enrich_user_organisme(user_info)
     for slug in slugs:
         app = Application.objects.filter(slug=slug).first()
         if not app:
@@ -290,21 +298,18 @@ def create_additional_access_request(user_sub: str, user_info: UserInfo, slugs: 
         )
         created_count += 1
         created_apps.append(app)
-        applicant_name = f"{user_info.first_name} {user_info.last_name}".strip()
         justification_text = justification or "Aucune justification fournie."
         _notify_app_admins(
             app,
             "Demande d'accès supplémentaire",
             (
-                f"{applicant_name} ({user_info.email}) "
-                f"demande l'accès à {app.nom}. "
+                f"{user_label(user_info)} demande l'accès à {app.nom}. "
                 f"Justification: {justification_text}"
             ),
         )
         mail_svc.send_app_access_request_admin_mail(
             admins=list_application_admins(app),
-            applicant_name=applicant_name,
-            applicant_email=user_info.email,
+            applicant=user_info,
             application=app,
             justification=justification_text,
         )

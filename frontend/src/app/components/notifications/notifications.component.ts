@@ -1,7 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { NotificationBadgeService } from 'src/app/home-rnf/services/notification-badge.service';
-import { ApiService } from 'src/app/services/api.service';
+import { AdminGuardService } from 'src/app/home-rnf/services/admin-guard.service';
+import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { ApiService, NotificationAdminTab, NotificationDto } from 'src/app/services/api.service';
 
 @Component({
   selector: 'app-notifications',
@@ -9,11 +11,16 @@ import { ApiService } from 'src/app/services/api.service';
   styleUrls: ['./notifications.component.scss']
 })
 export class NotificationsComponent implements OnInit {
-  notifications: { id: number; title: string; body: string; read: boolean; created_at: string }[] = [];
+  notifications: NotificationDto[] = [];
   loading = false;
   markingAll = false;
 
-  constructor(private api: ApiService, private notificationBadge: NotificationBadgeService) {}
+  constructor(
+    private api: ApiService,
+    private notificationBadge: NotificationBadgeService,
+    private auth: AuthService,
+    private adminGuard: AdminGuardService
+  ) {}
 
   ngOnInit(): void {
     this.loadNotifications();
@@ -48,6 +55,26 @@ export class NotificationsComponent implements OnInit {
 
   get unreadCount(): number {
     return this.notifications.filter((n) => !n.read).length;
+  }
+
+  canOpenAdminLink(notification: NotificationDto): boolean {
+    if (!notification.admin_tab) {
+      return false;
+    }
+    return this.adminGuard.canAccessAdmin(this.auth.getMeSnapshot());
+  }
+
+  adminTabLabel(tab: NotificationAdminTab | '' | undefined): string {
+    const labels: Record<NotificationAdminTab, string> = {
+      requests: 'Toutes les demandes',
+      reserves: 'Membres des réserves',
+      'user-access': 'Accès utilisateurs',
+      applications: 'Applications',
+    };
+    if (!tab || !labels[tab]) {
+      return 'Administration';
+    }
+    return labels[tab];
   }
 
   private loadNotifications(): void {

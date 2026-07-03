@@ -34,7 +34,6 @@ from inscriptions.roles import (
     is_app_admin,
     is_super_admin,
     normalize_group_paths,
-    notify_recipient_subs_for_removal_request,
 )
 from inscriptions.user_identity import UserInfo, fetch_user_info
 from inscriptions.serializers import (
@@ -53,6 +52,7 @@ from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
 from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import reserve_notifications as reserve_notify
+from inscriptions.services import notifications as notify_svc
 from inscriptions.services import workflows
 
 logger = logging.getLogger(__name__)
@@ -653,7 +653,7 @@ class MeReferentReserveRemovalRequestView(APIView):
         user = require_keycloak_user(request)
         if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = user.claims
+        claims = _claims_with_groups(user.claims, user.sub)
         referent_codes = set(_referent_reserve_codes_from_token(claims))
         if area_code not in referent_codes:
             return Response({"detail": "Vous n'êtes pas référent de cette réserve"}, status=403)
@@ -689,17 +689,15 @@ class MeReferentReserveRemovalRequestView(APIView):
         )
 
         requester_info = UserInfo.from_claims(_claims_with_groups(user.claims, user.sub))
-        requester_name = f"{requester_info.first_name} {requester_info.last_name}".strip() or requester_info.email
-        for sub in notify_recipient_subs_for_removal_request():
-            Notification.objects.create(
-                user_sub=sub,
-                title=f"Demande retrait membre : {reserve.area_code}",
-                body=(
-                    f"{requester_name} demande le retrait de "
-                    f"{req.target_first_name} {req.target_last_name} ({req.target_email}) "
-                    f"de la réserve {reserve.area_name}. Motif: {reason}"
-                ),
-            )
+        reserve_notify.notify_reserve_member_removal_request(
+            requester=requester_info,
+            reserve=reserve,
+            target_first_name=req.target_first_name,
+            target_last_name=req.target_last_name,
+            target_email=req.target_email,
+            target_sub=req.target_sub,
+            reason=reason,
+        )
         return Response({"id": req.id, "status": req.status}, status=201)
 
 
@@ -777,14 +775,17 @@ class AdminDecideReserveMemberRemovalRequestView(APIView):
         req.decision_note = note
         req.save(update_fields=["status", "decided_by_sub", "decided_at", "decision_note"])
 
-        Notification.objects.create(
-            user_sub=req.requester_sub,
-            title=f"Demande retrait membre : {req.reserve.area_code}",
-            body=(
-                "Votre demande a été acceptée."
-                if approve
-                else f"Votre demande a été refusée. Motif: {note}"
-            ),
+        requester = fetch_user_info(req.requester_sub)
+        if not requester:
+            requester = UserInfo(sub=req.requester_sub, email="", username="", first_name="", last_name="")
+        reserve_notify.notify_reserve_member_removal_decided(
+            requester=requester,
+            reserve=req.reserve,
+            target_first_name=req.target_first_name,
+            target_last_name=req.target_last_name,
+            target_email=req.target_email,
+            approve=approve,
+            note=note,
         )
         return Response({"ok": True})
 

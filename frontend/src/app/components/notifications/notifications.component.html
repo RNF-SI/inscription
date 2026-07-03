@@ -34,6 +34,14 @@
       </div>
       <div class="notification-meta">
         <small>{{ n.created_at | date:'dd/MM/yyyy HH:mm' }}</small>
+        <a
+          *ngIf="canOpenAdminLink(n)"
+          [routerLink]="['/admin']"
+          [queryParams]="{ tab: n.admin_tab }"
+          class="btn btn-sm btn-outline-primary mb-1"
+        >
+          Administration — {{ adminTabLabel(n.admin_tab) }}
+        </a>
         <button
           type="button"
           class="btn btn-link btn-sm"

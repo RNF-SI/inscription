@@ -35,6 +35,29 @@
   --mdc-circular-progress-active-indicator-color: #fff;
 }
 
+.btn-with-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn.btn-sm.btn-with-spinner mat-spinner {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.btn-primary.btn-with-spinner mat-spinner,
+.btn-success.btn-with-spinner mat-spinner,
+.btn-danger.btn-with-spinner mat-spinner {
+  --mdc-circular-progress-active-indicator-color: #fff;
+}
+
+.btn-outline-primary.btn-with-spinner mat-spinner,
+.btn-outline-secondary.btn-with-spinner mat-spinner,
+.btn-outline-danger.btn-with-spinner mat-spinner {
+  --mdc-circular-progress-active-indicator-color: currentColor;
+}
+
 .catalog-admin-chips {
   display: flex;
   flex-wrap: wrap;

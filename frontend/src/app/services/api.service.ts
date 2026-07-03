@@ -81,6 +81,17 @@ export interface MeResponse {
   unread_notifications: number;
 }
 
+export type NotificationAdminTab = 'requests' | 'reserves' | 'user-access' | 'applications';
+
+export interface NotificationDto {
+  id: number;
+  title: string;
+  body: string;
+  read: boolean;
+  admin_tab?: NotificationAdminTab | '';
+  created_at: string;
+}
+
 export interface ReserveOptionDto {
   area_code: string;
   area_name: string;
@@ -474,10 +485,8 @@ export class ApiService {
     });
   }
 
-  getNotifications(): Observable<{ id: number; title: string; body: string; read: boolean; created_at: string }[]> {
-    return this.http.get<
-      { id: number; title: string; body: string; read: boolean; created_at: string }[]
-    >(`${environment.apiUrl}/notifications/`);
+  getNotifications(): Observable<NotificationDto[]> {
+    return this.http.get<NotificationDto[]>(`${environment.apiUrl}/notifications/`);
   }
 
   markNotificationRead(id: number): Observable<unknown> {

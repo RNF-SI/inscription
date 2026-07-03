@@ -9,6 +9,7 @@ from inscriptions.tests.helpers import (
     make_app_admin,
     make_application,
     make_profile,
+    make_reserve,
 )
 
 
@@ -68,11 +69,18 @@ class MeApiTests(BaseApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_notifications_list(self):
-        Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Test", body="Corps")
+        Notification.objects.create(
+            user_sub=self.regular_user.keycloak_sub,
+            title="Test",
+            body="Corps",
+            admin_tab="requests",
+        )
         auth_client(self.client, self.regular_user)
         response = self.client.get("/api/notifications/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreaterEqual(len(response.json()), 1)
+        payload = response.json()
+        self.assertGreaterEqual(len(payload), 1)
+        self.assertEqual(payload[0]["admin_tab"], "requests")
 
     def test_mark_notification_read(self):
         notif = Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Test", body="Corps")
@@ -81,6 +89,42 @@ class MeApiTests(BaseApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         notif.refresh_from_db()
         self.assertTrue(notif.read)
+
+
+class ReferentRemovalRequestApiTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.referent = make_profile(sub="referent-sub", email="referent@test.local")
+        self.reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+
+    @patch("inscriptions.services.reserve_notifications.mail_svc.send_reserve_member_removal_superadmin_mail")
+    @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
+    def test_referent_removal_request_uses_keycloak_groups_fallback(self, list_super, send_mail):
+        list_super.return_value = ["super-sub"]
+        auth_client(self.client, self.referent, groups=[])
+        with self.settings(KEYCLOAK_SYNC_ENABLED=True):
+            with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+                kc = kc_cls.return_value
+                kc.get_user_groups.return_value = [
+                    {"path": f"/reserves/{self.reserve.area_code}/referent"},
+                    {"path": f"/reserves/{self.reserve.area_code}"},
+                ]
+                response = self.client.post(
+                    f"/api/me/referent/reserves/{self.reserve.area_code}/removal-requests/",
+                    {
+                        "target_sub": "target-sub",
+                        "target_email": "target@test.local",
+                        "target_first_name": "Cible",
+                        "target_last_name": "Test",
+                        "reason": "Ne fait plus partie de la réserve",
+                    },
+                    format="json",
+                )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            Notification.objects.filter(user_sub="super-sub", title__icontains="retrait").exists()
+        )
+        send_mail.assert_called_once()
 
 
 class AppAdminApiTests(BaseApiTestCase):

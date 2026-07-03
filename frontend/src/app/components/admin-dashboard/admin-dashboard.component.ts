@@ -1,4 +1,5 @@
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { ImageCroppedEvent, base64ToFile } from 'ngx-image-cropper';
@@ -21,6 +22,7 @@ import {
   APPLICATION_IMAGE_WIDTH,
 } from 'src/app/constants/application-image.constants';
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
+import { ToastrService } from 'ngx-toastr';
 
 @Component({
   selector: 'app-admin-dashboard',
@@ -63,6 +65,8 @@ export class AdminDashboardComponent implements OnInit {
   }[] = [];
   validationApplications: ApplicationDto[] = [];
   decisionLoadingKey: string | null = null;
+  registrationActionLoadingKey: string | null = null;
+  rejectionModalSubmitting = false;
   rejectionModalOpen = false;
   rejectionReason = '';
   rejectionTarget: { itemId: number; kind: string } | null = null;
@@ -143,7 +147,12 @@ export class AdminDashboardComponent implements OnInit {
   readonly applicationImageHeight = APPLICATION_IMAGE_HEIGHT;
   readonly applicationImageAspectRatio = APPLICATION_IMAGE_ASPECT_RATIO;
 
-  constructor(private api: ApiService, private auth: AuthService) {}
+  constructor(
+    private api: ApiService,
+    private auth: AuthService,
+    private route: ActivatedRoute,
+    private toastr: ToastrService
+  ) {}
 
   ngOnInit(): void {
     const me = this.auth.getMeSnapshot();
@@ -160,7 +169,17 @@ export class AdminDashboardComponent implements OnInit {
     if (!this.canShowApplicationsTab && this.activeTab === 'applications') {
       this.activeTab = this.canShowRequestsTab ? 'requests' : 'reserves';
     }
+
+    const tabParam = this.route.snapshot.queryParamMap.get('tab');
+    if (tabParam && this.isAdminTab(tabParam)) {
+      this.setActiveTab(tabParam);
+      return;
+    }
     this.loadTab(this.activeTab);
+  }
+
+  private isAdminTab(tab: string): tab is 'requests' | 'reserves' | 'user-access' | 'applications' {
+    return tab === 'requests' || tab === 'reserves' || tab === 'user-access' || tab === 'applications';
   }
 
   get canValidateApplications(): boolean {
@@ -192,11 +211,48 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   approveReg(id: string) {
-    this.api.superApprove(id).subscribe(() => this.loadRequestsTab(true));
+    const key = `${id}:approve`;
+    if (this.registrationActionLoadingKey) {
+      return;
+    }
+    this.registrationActionLoadingKey = key;
+    this.api.superApprove(id).subscribe({
+      next: () => this.loadRequestsTab(true),
+      error: () => {
+        this.registrationActionLoadingKey = null;
+      },
+      complete: () => {
+        this.registrationActionLoadingKey = null;
+      },
+    });
   }
 
   rejectReg(id: string) {
-    this.api.superReject(id).subscribe(() => this.loadRequestsTab(true));
+    const key = `${id}:reject`;
+    if (this.registrationActionLoadingKey) {
+      return;
+    }
+    this.registrationActionLoadingKey = key;
+    this.api.superReject(id).subscribe({
+      next: () => this.loadRequestsTab(true),
+      error: () => {
+        this.registrationActionLoadingKey = null;
+      },
+      complete: () => {
+        this.registrationActionLoadingKey = null;
+      },
+    });
+  }
+
+  isRegistrationActionLoading(publicId: string, approve: boolean): boolean {
+    return this.registrationActionLoadingKey === `${publicId}:${approve ? 'approve' : 'reject'}`;
+  }
+
+  isRegistrationRowLoading(publicId: string): boolean {
+    return (
+      this.isRegistrationActionLoading(publicId, true) ||
+      this.isRegistrationActionLoading(publicId, false)
+    );
   }
 
   decide(itemId: number, kind: string, approve: boolean) {
@@ -221,15 +277,21 @@ export class AdminDashboardComponent implements OnInit {
 
   confirmRejectionModal(): void {
     const reason = this.rejectionReason.trim();
-    if (!this.rejectionTarget || !reason) {
+    if (!this.rejectionTarget || !reason || this.rejectionModalSubmitting) {
       return;
     }
     const { itemId, kind } = this.rejectionTarget;
-    this.cancelRejectionModal();
-    this.submitDecision(itemId, kind, false, reason);
+    this.rejectionModalSubmitting = true;
+    this.submitDecision(itemId, kind, false, reason, () => this.cancelRejectionModal());
   }
 
-  private submitDecision(itemId: number, kind: string, approve: boolean, note: string): void {
+  private submitDecision(
+    itemId: number,
+    kind: string,
+    approve: boolean,
+    note: string,
+    onSuccess?: () => void
+  ): void {
     const key = `${kind}:${itemId}:${approve ? 'approve' : 'reject'}`;
     this.decisionLoadingKey = key;
     const obs =
@@ -237,9 +299,17 @@ export class AdminDashboardComponent implements OnInit {
         ? this.api.decideAdditionalItem(itemId, approve, note)
         : this.api.decideRegistrationItem(itemId, approve, note);
     obs.subscribe({
-      next: () => this.loadRequestsTab(true),
+      next: () => {
+        onSuccess?.();
+        this.loadRequestsTab(true);
+      },
       error: () => {
         this.decisionLoadingKey = null;
+        this.rejectionModalSubmitting = false;
+      },
+      complete: () => {
+        this.decisionLoadingKey = null;
+        this.rejectionModalSubmitting = false;
       },
     });
   }
@@ -277,11 +347,28 @@ export class AdminDashboardComponent implements OnInit {
       error: () => {
         this.reserveRemovalLoadingKey = null;
       },
+      complete: () => {
+        this.reserveRemovalLoadingKey = null;
+      },
     });
   }
 
   isReserveRemovalLoading(reqId: number, approve: boolean): boolean {
     return this.reserveRemovalLoadingKey === `${reqId}:${approve ? 'approve' : 'reject'}`;
+  }
+
+  isReserveRemovalRowLoading(reqId: number): boolean {
+    return (
+      this.isReserveRemovalLoading(reqId, true) ||
+      this.isReserveRemovalLoading(reqId, false)
+    );
+  }
+
+  isReserveReferentRowLoading(reqId: number): boolean {
+    return (
+      this.isReserveReferentLoading(reqId, true) ||
+      this.isReserveReferentLoading(reqId, false)
+    );
   }
 
   openReferentRemovalModal(
@@ -309,14 +396,14 @@ export class AdminDashboardComponent implements OnInit {
       return;
     }
     const { areaCode, member } = this.referentRemovalTarget;
-    this.cancelReferentRemovalModal();
-    this.requestReferentRemoval(areaCode, member, reason);
+    this.requestReferentRemoval(areaCode, member, reason, true);
   }
 
   requestReferentRemoval(
     areaCode: string,
     member: { sub: string; email: string; first_name: string; last_name: string },
-    reason: string
+    reason: string,
+    fromModal = false
   ): void {
     const key = `${areaCode}:${member.sub}`;
     if (!reason || this.referentRemovalSavingKey) {
@@ -331,9 +418,15 @@ export class AdminDashboardComponent implements OnInit {
       reason,
     }).subscribe({
       next: () => {
+        if (fromModal) {
+          this.cancelReferentRemovalModal();
+        }
+        this.toastr.success('La demande de retrait a été transmise aux administrateurs.', 'Demande envoyée');
         this.loadReservesTab(true);
       },
-      error: () => {
+      error: (err) => {
+        const msg = err?.error?.detail || 'Impossible d’envoyer la demande de retrait.';
+        this.toastr.error(msg, 'Demande de retrait');
         this.referentRemovalSavingKey = null;
       },
       complete: () => {
@@ -411,6 +504,16 @@ export class AdminDashboardComponent implements OnInit {
     return this.referentRemovalSavingKey === `${areaCode}:${sub}`;
   }
 
+  isReferentRemovalModalSubmitting(): boolean {
+    if (!this.referentRemovalTarget) {
+      return false;
+    }
+    return this.isReferentRemovalSaving(
+      this.referentRemovalTarget.areaCode,
+      this.referentRemovalTarget.member.sub
+    );
+  }
+
   decideReserveReferent(reqId: number, approve: boolean): void {
     const key = `${reqId}:${approve ? 'approve' : 'reject'}`;
     const note = approve ? '' : (this.reserveReferentNoteById[reqId] || '').trim();
@@ -421,6 +524,9 @@ export class AdminDashboardComponent implements OnInit {
     this.api.decideAdminReserveReferentRequest(reqId, approve, note).subscribe({
       next: () => this.loadRequestsTab(true),
       error: () => {
+        this.reserveReferentLoadingKey = null;
+      },
+      complete: () => {
         this.reserveReferentLoadingKey = null;
       },
     });

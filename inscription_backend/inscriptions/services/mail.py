@@ -75,8 +75,7 @@ def send_registration_rejected_user_mail(registration: RegistrationRequest, note
 def send_app_access_request_admin_mail(
     *,
     admins: list[dict],
-    applicant_name: str,
-    applicant_email: str,
+    applicant: UserInfo,
     application: Application,
     justification: str,
 ) -> None:
@@ -84,8 +83,7 @@ def send_app_access_request_admin_mail(
     if not recipients:
         return
     subject, html_body, text_body = tpl.app_access_request_admin_email(
-        applicant_name=applicant_name,
-        applicant_email=applicant_email,
+        applicant=applicant,
         application=application,
         justification=justification,
     )
@@ -121,6 +119,46 @@ def send_reserve_referent_request_superadmin_mail(*, applicant: UserInfo, reserv
     )
     if recipients:
         send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_reserve_member_removal_superadmin_mail(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target: UserInfo,
+    reason: str,
+) -> None:
+    recipients = list(settings.SUPERADMIN_NOTIFY_EMAILS or [])
+    subject, html_body, text_body = tpl.reserve_member_removal_superadmin_email(
+        requester=requester,
+        reserve=reserve,
+        target=target,
+        reason=reason,
+    )
+    if recipients:
+        send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_reserve_member_removal_rejected_requester_mail(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target_first_name: str,
+    target_last_name: str,
+    target_email: str,
+    note: str,
+) -> None:
+    if not (requester.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.reserve_member_removal_rejected_requester_email(
+        requester=requester,
+        reserve=reserve,
+        target_first_name=target_first_name,
+        target_last_name=target_last_name,
+        target_email=target_email,
+        note=note,
+    )
+    send_html_email([requester.email], subject, html_body, text_body)
 
 
 def send_reserve_referent_approved_user_mail(*, user: UserInfo, reserve: Reserve) -> None:

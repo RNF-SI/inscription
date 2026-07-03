@@ -11,7 +11,7 @@ from django.utils import timezone
 from inscriptions.models import AccessRequestItem, Application, RegistrationRequest, Reserve
 from inscriptions.user_identity import UserInfo, user_label
 
-LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "inscriptions" / "email" / "logo_rnf_blanc.png"
+LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "inscriptions" / "email" / "logo_rnf_blanc_email.png"
 LOGO_CID = "rnf_logo@reserves-naturelles.org"
 LOGO_HEIGHT_PX = 64
 
@@ -211,8 +211,7 @@ def render_email(
             <td style="background:{BRAND_PRIMARY};padding:28px 32px;text-align:center;">
               <img src="cid:{LOGO_CID}" alt="Réserves Naturelles de France" height="{LOGO_HEIGHT_PX}"
                    style="display:block;margin:0 auto 12px;border:0;height:{LOGO_HEIGHT_PX}px;width:auto;max-width:100%;" />
-              <div style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.3px;">Plateformes RNF</div>
-              <div style="color:{BRAND_ACCENT};font-size:14px;margin-top:6px;">Réserves Naturelles de France</div>
+              <div style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.3px;">Système d'informations de RNF</div>
             </td>
           </tr>
           <tr>
@@ -275,6 +274,21 @@ def registration_submitted_user_email(registration: RegistrationRequest) -> tupl
     return subject, html_doc, plain
 
 
+def _registration_user_label(registration: RegistrationRequest) -> str:
+    org = registration.organisme.nom_organisme if registration.organisme else ""
+    return user_label(
+        UserInfo(
+            sub=str(registration.public_id),
+            email=registration.email,
+            username=registration.username,
+            first_name=registration.first_name,
+            last_name=registration.last_name,
+            fonction=(registration.remarks or "").strip(),
+            organisme=org,
+        )
+    )
+
+
 def registration_submitted_admin_email(registration: RegistrationRequest) -> tuple[str, str, str]:
     subject = f"Nouvelle demande d'inscription — {registration.first_name} {registration.last_name}"
     preheader = "Une nouvelle demande d'inscription nécessite votre validation."
@@ -283,11 +297,7 @@ def registration_submitted_admin_email(registration: RegistrationRequest) -> tup
         title="Nouvelle demande d'inscription",
         preheader=preheader,
         blocks=[
-            paragraph(
-                f"{registration.first_name} {registration.last_name} "
-                f"({registration.organisme.nom_organisme if registration.organisme else '—'}) "
-                "vient de soumettre une demande d'inscription."
-            ),
+            paragraph(f"{_registration_user_label(registration)} vient de soumettre une demande d'inscription."),
             section_title("Informations du demandeur"),
             info_table(registration_info_rows(registration)),
             access_items_section(registration.items.select_related("application")),
@@ -352,20 +362,20 @@ def registration_rejected_user_email(registration: RegistrationRequest, note: st
 
 
 def app_access_request_admin_email(
-  *,
-  applicant_name: str,
-  applicant_email: str,
-  application: Application,
-  justification: str,
+    *,
+    applicant: UserInfo,
+    application: Application,
+    justification: str,
 ) -> tuple[str, str, str]:
+    applicant_label = user_label(applicant)
     subject = f"Demande d'accès — {application.nom}"
-    preheader = f"{applicant_name} demande l'accès à {application.nom}."
+    preheader = f"{applicant_label} demande l'accès à {application.nom}."
     admin_url = frontend_url("admin")
     html_doc, plain = render_email(
         title=f"Demande d'accès à {application.nom}",
         preheader=preheader,
         blocks=[
-            paragraph(f"{applicant_name} ({applicant_email}) demande l'accès à l'application {application.nom}."),
+            paragraph(f"{applicant_label} demande l'accès à l'application {application.nom}."),
             section_title("Justification"),
             paragraph(justification or "Aucune justification fournie."),
             button("Traiter la demande", admin_url),
@@ -444,6 +454,7 @@ def reserve_referent_request_superadmin_email(*, applicant: UserInfo, reserve: R
                     ("Nom", applicant.last_name),
                     ("E-mail", applicant.email),
                     ("Identifiant", applicant.username),
+                    ("Organisme", (applicant.organisme or "").strip() or "—"),
                     ("Fonction", (applicant.fonction or "").strip() or "—"),
                     ("Réserve", f"{reserve.area_name} ({reserve.area_code})"),
                 ]
@@ -490,6 +501,69 @@ def reserve_referent_rejected_user_email(*, user: UserInfo, reserve: Reserve, no
         blocks.extend([section_title("Motif"), paragraph(note.strip())])
     html_doc, plain = render_email(
         title="Demande de référent refusée",
+        preheader=preheader,
+        blocks=blocks,
+    )
+    return subject, html_doc, plain
+
+
+def reserve_member_removal_superadmin_email(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target: UserInfo,
+    reason: str,
+) -> tuple[str, str, str]:
+    target_label = user_label(target)
+    requester_label = user_label(requester)
+    subject = f"Demande de retrait membre — {reserve.area_name}"
+    preheader = f"{requester_label} demande le retrait de {target_label}."
+    admin_url = frontend_url("admin?tab=requests")
+    html_doc, plain = render_email(
+        title="Demande de retrait d'un membre",
+        preheader=preheader,
+        blocks=[
+            paragraph(
+                f"{requester_label} demande le retrait de {target_label} "
+                f"de la réserve {reserve.area_name} ({reserve.area_code})."
+            ),
+            info_table(
+                [
+                    ("Réserve", f"{reserve.area_name} ({reserve.area_code})"),
+                    ("Demandeur", requester_label),
+                    ("Membre ciblé", target_label),
+                    ("Motif", reason.strip() or "—"),
+                ]
+            ),
+            button("Traiter la demande", admin_url),
+        ],
+        secondary_note="Connectez-vous à l'espace d'administration, onglet « Toutes les demandes ».",
+    )
+    return subject, html_doc, plain
+
+
+def reserve_member_removal_rejected_requester_email(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target_first_name: str,
+    target_last_name: str,
+    target_email: str,
+    note: str,
+) -> tuple[str, str, str]:
+    target_label = f"{target_first_name} {target_last_name}".strip() or target_email or "ce membre"
+    subject = f"Demande de retrait refusée — {reserve.area_name}"
+    preheader = f"Votre demande de retrait pour {target_label} n'a pas été acceptée."
+    blocks = [
+        paragraph(
+            f"Bonjour {_user_first_name(requester)}, votre demande de retrait de {target_label} "
+            f"de la réserve {reserve.area_name} ({reserve.area_code}) n'a pas été acceptée."
+        ),
+    ]
+    if note.strip():
+        blocks.extend([section_title("Motif"), paragraph(note.strip())])
+    html_doc, plain = render_email(
+        title="Demande de retrait refusée",
         preheader=preheader,
         blocks=blocks,
     )
