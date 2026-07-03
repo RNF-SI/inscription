@@ -3,29 +3,29 @@ from __future__ import annotations
 import io
 import os
 import uuid
+from dataclasses import dataclass, field
 from typing import Any
+
 from django.core import mail
-from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
 from PIL import Image
 from rest_framework import status
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 
 from inscriptions.authentication import KeycloakUser
 from inscriptions.crypto_util import encrypt_text
 from inscriptions.models import (
     AccessRequestItem,
     Application,
-    ApplicationAdmin,
     Notification,
     Organisme,
     RegistrationRequest,
     Reserve,
     ReserveReferentRequest,
-    UserProfile,
-    UserReserveLink,
 )
 from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin, is_app_admin
+from inscriptions.roles import application_admin_group_paths, super_admin_group_paths
 from inscriptions.serializers import AdminApplicationWriteSerializer, SignupSerializer
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import workflows
@@ -35,12 +35,20 @@ from inscriptions.services.application_images import (
     remove_application_image,
     save_application_image,
 )
-from rest_framework.test import APIRequestFactory
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+@dataclass
+class TestUser:
+    keycloak_sub: str
+    email: str
+    username: str = ""
+    first_name: str = "Test"
+    last_name: str = "User"
+    groups: list[str] = field(default_factory=list)
+
+    @property
+    def sub(self) -> str:
+        return self.keycloak_sub
 
 
 def make_profile(
@@ -49,36 +57,38 @@ def make_profile(
     email: str = "user@test.local",
     is_super_admin: bool = False,
     **extra,
-) -> UserProfile:
+) -> TestUser:
     sub = sub or f"sub-{uuid.uuid4()}"
-    return UserProfile.objects.create(
+    groups: list[str] = list(extra.pop("groups", []) or [])
+    if is_super_admin:
+        groups.extend(sorted(super_admin_group_paths()))
+    user = TestUser(
         keycloak_sub=sub,
         email=email,
-        username=email.split("@")[0],
+        username=extra.pop("username", email.split("@")[0]),
         first_name=extra.pop("first_name", "Test"),
         last_name=extra.pop("last_name", "User"),
-        is_super_admin=is_super_admin,
-        **extra,
+        groups=sorted(set(groups)),
     )
+    return user
 
 
-def make_keycloak_user(profile: UserProfile, *, groups: list[str] | None = None, **claims: Any) -> KeycloakUser:
+def make_keycloak_user(profile: TestUser, *, groups: list[str] | None = None, **claims: Any) -> KeycloakUser:
     payload = {
         "sub": profile.keycloak_sub,
         "email": profile.email,
         "preferred_username": profile.username,
         "given_name": profile.first_name,
         "family_name": profile.last_name,
+        "groups": groups if groups is not None else profile.groups,
     }
-    if groups is not None:
-        payload["groups"] = groups
     payload.update(claims)
-    return KeycloakUser(payload, profile)
+    return KeycloakUser(payload)
 
 
 def auth_client(
     client: APIClient,
-    profile: UserProfile,
+    profile: TestUser,
     *,
     groups: list[str] | None = None,
     **claims: Any,
@@ -143,8 +153,12 @@ def make_registration(
     return registration
 
 
-def make_app_admin(profile: UserProfile, app: Application) -> ApplicationAdmin:
-    return ApplicationAdmin.objects.create(user=profile, application=app)
+def make_app_admin(profile: TestUser, app: Application) -> TestUser:
+    for path in application_admin_group_paths(app.slug):
+        if path not in profile.groups:
+            profile.groups.append(path)
+    profile.groups = sorted(set(profile.groups))
+    return profile
 
 
 def signup_payload(**overrides) -> dict:

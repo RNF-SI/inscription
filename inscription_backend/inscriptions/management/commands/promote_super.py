@@ -1,29 +1,31 @@
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
-from inscriptions.models import UserProfile
+from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
+from inscriptions.user_identity import resolve_user_sub
 
 
 class Command(BaseCommand):
-    help = "Passe un utilisateur en super-admin (par email ou keycloak_sub)."
+    help = "Ajoute un utilisateur Keycloak au groupe super-admin (/super-admin)."
 
     def add_arguments(self, parser):
-        parser.add_argument("--email", type=str, default="")
-        parser.add_argument("--sub", type=str, default="")
+        parser.add_argument("--email", type=str, help="E-mail de l'utilisateur")
+        parser.add_argument("--sub", type=str, help="Keycloak sub (id utilisateur)")
 
     def handle(self, *args, **options):
+        if not settings.KEYCLOAK_SYNC_ENABLED:
+            raise CommandError("KEYCLOAK_SYNC_ENABLED doit être activé pour cette commande.")
         email = (options.get("email") or "").strip()
         sub = (options.get("sub") or "").strip()
         if not email and not sub:
-            self.stderr.write(self.style.ERROR("Utiliser --email= ou --sub="))
-            return
-        prof = None
-        if email:
-            prof = UserProfile.objects.filter(email__iexact=email).first()
-        if not prof and sub:
-            prof = UserProfile.objects.filter(keycloak_sub=sub).first()
-        if not prof:
-            self.stderr.write(self.style.ERROR("Profil introuvable."))
-            return
-        prof.is_super_admin = True
-        prof.save(update_fields=["is_super_admin", "updated_at"])
-        self.stdout.write(self.style.SUCCESS(f"Super-admin accordé à {prof.email} ({prof.keycloak_sub})."))
+            raise CommandError("Indiquez --email ou --sub")
+        resolved = resolve_user_sub(keycloak_sub=sub, email=email)
+        if not resolved:
+            raise CommandError("Utilisateur introuvable dans Keycloak")
+        try:
+            kc = KeycloakAdminClient()
+            group_id = kc.ensure_super_admin_group()
+            kc.user_join_group(resolved, group_id)
+        except KeycloakAdminError as exc:
+            raise CommandError(str(exc)) from exc
+        self.stdout.write(self.style.SUCCESS(f"Super-admin Keycloak : {resolved}"))

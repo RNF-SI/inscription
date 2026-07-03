@@ -430,10 +430,34 @@
     <ng-container *ngIf="!isTabLoading('applications')">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <h4 class="mt-2 mb-0">Catalogue des applications</h4>
-        <button type="button" class="btn btn-sm btn-primary" (click)="openCatalogModalForNew()">
-          Nouvelle application
-        </button>
+        <div class="d-flex flex-column align-items-end gap-1">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+              [disabled]="catalogCountsRefreshing"
+              (click)="refreshCatalogCounts()"
+            >
+              <span *ngIf="catalogCountsRefreshing" class="spinner-border spinner-border-sm me-1" role="status"></span>
+              Actualiser les effectifs
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" (click)="openCatalogModalForNew()">
+              Nouvelle application
+            </button>
+          </div>
+          <span class="text-muted small">
+            Dernière actualisation :
+            <span [class.fst-italic]="catalogCountsUpdatedAtLabel === 'Jamais actualisé'">
+              {{ catalogCountsUpdatedAtLabel }}
+            </span>
+          </span>
+        </div>
       </div>
+      <p class="text-muted small mb-2" *ngIf="catalogCountsRefreshError">{{ catalogCountsRefreshError }}</p>
+      <p class="text-muted small mb-3">
+        Les effectifs utilisateurs et admins sont enregistrés localement. Cliquez sur « Actualiser les effectifs » pour
+        interroger Keycloak (opération pouvant prendre quelques secondes).
+      </p>
 
       <table class="table table-sm align-middle" *ngIf="catalogApplications.length">
         <thead>
@@ -464,7 +488,7 @@
             <td><code>{{ app.slug }}</code></td>
             <td>{{ app.managed_by_si ? 'Oui' : 'Non' }}</td>
             <td>{{ app.requires_access_request ? 'Oui' : 'Non' }}</td>
-            <td class="text-end">{{ app.managed_by_si && app.requires_access_request ? (app.admin_count ?? 0) : '—' }}</td>
+            <td class="text-end">{{ formatApplicationAdminCount(app) }}</td>
             <td class="text-end">{{ formatApplicationMemberCount(app) }}</td>
             <td class="text-end">
               <div class="d-inline-flex gap-1">

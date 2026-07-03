@@ -13,7 +13,8 @@ export interface ApplicationDto {
   requires_access_request: boolean;
   keycloak_client_id?: string;
   member_count?: number | null;
-  admin_count?: number;
+  admin_count?: number | null;
+  counts_updated_at?: string | null;
 }
 
 export interface ApplicationCatalogInput {
@@ -325,6 +326,19 @@ export class ApiService {
 
   getAdminApplicationCatalog(): Observable<ApplicationDto[]> {
     return this.http.get<ApplicationDto[]>(`${environment.apiUrl}/admin/catalog/applications/`);
+  }
+
+  refreshApplicationCatalogCounts(slug?: string): Observable<ApplicationDto | { applications: ApplicationDto[] }> {
+    if (slug) {
+      return this.http.post<ApplicationDto>(
+        `${environment.apiUrl}/admin/catalog/applications/${encodeURIComponent(slug)}/refresh-counts/`,
+        {}
+      );
+    }
+    return this.http.post<{ applications: ApplicationDto[] }>(
+      `${environment.apiUrl}/admin/catalog/applications/refresh-counts/`,
+      {}
+    );
   }
 
   createAdminApplication(payload: ApplicationCatalogInput): Observable<ApplicationDto> {

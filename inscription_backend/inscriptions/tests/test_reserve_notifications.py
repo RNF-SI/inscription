@@ -7,11 +7,22 @@ from inscriptions.models import Notification
 from inscriptions.services import email_templates as tpl
 from inscriptions.services import reserve_notifications as reserve_notify
 from inscriptions.tests.helpers import make_profile, make_reserve
+from inscriptions.user_identity import UserInfo
+
+
+def _info(profile) -> UserInfo:
+    return UserInfo(
+        sub=profile.keycloak_sub,
+        email=profile.email,
+        username=profile.username,
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+    )
 
 
 class ReserveEmailTemplateTests(TestCase):
     def test_referent_request_superadmin_email(self):
-        applicant = make_profile(first_name="Jean", last_name="Dupont", email="jean@test.local")
+        applicant = _info(make_profile(first_name="Jean", last_name="Dupont", email="jean@test.local"))
         reserve = make_reserve(area_code="RNN01", area_name="Réserve test")
         subject, html, _plain = tpl.reserve_referent_request_superadmin_email(applicant=applicant, reserve=reserve)
         self.assertIn("référent", subject.lower())
@@ -19,7 +30,7 @@ class ReserveEmailTemplateTests(TestCase):
         self.assertIn("/admin", html)
 
     def test_new_member_referent_email(self):
-        member = make_profile(first_name="Marie", last_name="Martin", email="marie@test.local")
+        member = _info(make_profile(first_name="Marie", last_name="Martin", email="marie@test.local"))
         reserve = make_reserve(area_code="RNN02", area_name="Réserve deux")
         subject, html, _plain = tpl.reserve_new_member_referent_email(
             reserve=reserve,
@@ -36,22 +47,23 @@ class ReserveNotificationServiceTests(TestCase):
     def setUp(self):
         mail.outbox = []
 
-    def test_notify_referent_request_created_notifies_super_admins(self):
-        super_admin = make_profile(sub="super-sub", email="super@test.local", is_super_admin=True)
-        applicant = make_profile(sub="user-sub", email="user@test.local", first_name="Alice")
+    @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
+    def test_notify_referent_request_created_notifies_super_admins(self, list_super):
+        list_super.return_value = ["super-sub"]
+        applicant = _info(make_profile(sub="user-sub", email="user@test.local", first_name="Alice"))
         reserve = make_reserve()
         reserve_notify.notify_referent_request_created(applicant, reserve)
-        self.assertTrue(Notification.objects.filter(user=super_admin, title__icontains="référent").exists())
+        self.assertTrue(Notification.objects.filter(user_sub="super-sub", title__icontains="référent").exists())
         self.assertEqual(len(mail.outbox), 1)
 
     @patch("inscriptions.services.reserve_notifications._referent_group_members")
-    @patch("inscriptions.services.reserve_notifications._referent_profiles")
-    def test_notify_referents_new_member(self, profiles_mock, members_mock):
-        referent = make_profile(sub="ref-sub", email="referent@test.local", first_name="Rémi")
-        member = make_profile(sub="member-sub", email="member@test.local", first_name="Bob")
+    def test_notify_referents_new_member(self, members_mock):
+        referent_sub = "ref-sub"
+        member = _info(make_profile(sub="member-sub", email="member@test.local", first_name="Bob"))
         reserve = make_reserve()
-        members_mock.return_value = [{"id": referent.keycloak_sub, "email": referent.email}]
-        profiles_mock.return_value = [referent]
+        members_mock.return_value = [
+            {"id": referent_sub, "email": "referent@test.local", "firstName": "Rémi"},
+        ]
         reserve_notify.notify_referents_new_member(member, reserve)
-        self.assertTrue(Notification.objects.filter(user=referent).exists())
+        self.assertTrue(Notification.objects.filter(user_sub=referent_sub).exists())
         self.assertEqual(len(mail.outbox), 1)

@@ -8,7 +8,8 @@ from typing import Iterable
 from django.conf import settings
 from django.utils import timezone
 
-from inscriptions.models import AccessRequestItem, Application, RegistrationRequest, Reserve, UserProfile
+from inscriptions.models import AccessRequestItem, Application, RegistrationRequest, Reserve
+from inscriptions.user_identity import UserInfo, user_label
 
 LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "inscriptions" / "email" / "logo_rnf_blanc.png"
 LOGO_CID = "rnf_logo@reserves-naturelles.org"
@@ -283,7 +284,8 @@ def registration_submitted_admin_email(registration: RegistrationRequest) -> tup
         preheader=preheader,
         blocks=[
             paragraph(
-                f"{registration.first_name} {registration.last_name} ({registration.organisme.nom_organisme}) "
+                f"{registration.first_name} {registration.last_name} "
+                f"({registration.organisme.nom_organisme if registration.organisme else '—'}) "
                 "vient de soumettre une demande d'inscription."
             ),
             section_title("Informations du demandeur"),
@@ -416,27 +418,24 @@ def app_access_rejected_user_email(
     return subject, html_doc, plain
 
 
-def _profile_first_name(profile: UserProfile) -> str:
-    return profile.first_name or profile.username or "utilisateur"
+def _user_first_name(user: UserInfo) -> str:
+    return user.first_name or user.username or "utilisateur"
 
 
-def _profile_label(profile: UserProfile) -> str:
-    full_name = f"{profile.first_name or ''} {profile.last_name or ''}".strip()
-    if full_name:
-        return f"{full_name} ({profile.email})"
-    return profile.email
+def _user_display_label(user: UserInfo) -> str:
+    return user_label(user)
 
 
-def reserve_referent_request_superadmin_email(*, applicant: UserProfile, reserve: Reserve) -> tuple[str, str, str]:
+def reserve_referent_request_superadmin_email(*, applicant: UserInfo, reserve: Reserve) -> tuple[str, str, str]:
     subject = f"Demande référent — {reserve.area_name}"
-    preheader = f"{_profile_label(applicant)} demande le statut référent."
+    preheader = f"{_user_display_label(applicant)} demande le statut référent."
     admin_url = frontend_url("admin")
     html_doc, plain = render_email(
         title="Demande de statut référent",
         preheader=preheader,
         blocks=[
             paragraph(
-                f"{_profile_label(applicant)} demande le statut référent pour la réserve "
+                f"{_user_display_label(applicant)} demande le statut référent pour la réserve "
                 f"{reserve.area_name} ({reserve.area_code})."
             ),
             info_table(
@@ -456,7 +455,7 @@ def reserve_referent_request_superadmin_email(*, applicant: UserProfile, reserve
     return subject, html_doc, plain
 
 
-def reserve_referent_approved_user_email(*, user: UserProfile, reserve: Reserve) -> tuple[str, str, str]:
+def reserve_referent_approved_user_email(*, user: UserInfo, reserve: Reserve) -> tuple[str, str, str]:
     subject = f"Statut référent accordé — {reserve.area_name}"
     preheader = f"Votre demande de statut référent pour {reserve.area_name} a été acceptée."
     platform_url = frontend_url("admin")
@@ -465,7 +464,7 @@ def reserve_referent_approved_user_email(*, user: UserProfile, reserve: Reserve)
         preheader=preheader,
         blocks=[
             paragraph(
-                f"Bonjour {_profile_first_name(user)}, votre demande de statut référent pour la réserve "
+                f"Bonjour {_user_first_name(user)}, votre demande de statut référent pour la réserve "
                 f"{reserve.area_name} ({reserve.area_code}) a été acceptée."
             ),
             paragraph(
@@ -478,12 +477,12 @@ def reserve_referent_approved_user_email(*, user: UserProfile, reserve: Reserve)
     return subject, html_doc, plain
 
 
-def reserve_referent_rejected_user_email(*, user: UserProfile, reserve: Reserve, note: str) -> tuple[str, str, str]:
+def reserve_referent_rejected_user_email(*, user: UserInfo, reserve: Reserve, note: str) -> tuple[str, str, str]:
     subject = f"Statut référent refusé — {reserve.area_name}"
     preheader = f"Votre demande de statut référent pour {reserve.area_name} n'a pas été acceptée."
     blocks = [
         paragraph(
-            f"Bonjour {_profile_first_name(user)}, votre demande de statut référent pour la réserve "
+            f"Bonjour {_user_first_name(user)}, votre demande de statut référent pour la réserve "
             f"{reserve.area_name} ({reserve.area_code}) n'a pas été acceptée."
         ),
     ]
@@ -500,18 +499,18 @@ def reserve_referent_rejected_user_email(*, user: UserProfile, reserve: Reserve,
 def reserve_new_member_referent_email(
     *,
     reserve: Reserve,
-    member: UserProfile,
+    member: UserInfo,
     referent_first_name: str = "référent",
 ) -> tuple[str, str, str]:
     subject = f"Nouveau membre — {reserve.area_name}"
-    preheader = f"{_profile_label(member)} a rejoint la réserve {reserve.area_name}."
+    preheader = f"{_user_display_label(member)} a rejoint la réserve {reserve.area_name}."
     admin_url = frontend_url("admin")
     html_doc, plain = render_email(
         title=f"Nouveau membre sur {reserve.area_name}",
         preheader=preheader,
         blocks=[
             paragraph(
-                f"Bonjour {referent_first_name}, {_profile_label(member)} vient de rejoindre la réserve "
+                f"Bonjour {referent_first_name}, {_user_display_label(member)} vient de rejoindre la réserve "
                 f"{reserve.area_name} ({reserve.area_code})."
             ),
             paragraph(

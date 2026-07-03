@@ -294,6 +294,13 @@ class KeycloakAdminClient:
         root = settings.KEYCLOAK_GROUP_APPLICATIONS
         return self.ensure_path_under_root(root, [slug])
 
+    def ensure_super_admin_group(self) -> str:
+        return self.ensure_root(settings.KEYCLOAK_GROUP_SUPER_ADMIN)
+
+    def ensure_application_admin_group(self, slug: str) -> str:
+        root = settings.KEYCLOAK_GROUP_APPLICATIONS
+        return self.ensure_path_under_root(root, [slug, "admin"])
+
     def user_join_group(self, user_id: str, group_id: str) -> None:
         h = {"Authorization": f"Bearer {self.get_access_token()}"}
         r = requests.put(f"{self._admin_base}/users/{user_id}/groups/{group_id}", headers=h, timeout=30)

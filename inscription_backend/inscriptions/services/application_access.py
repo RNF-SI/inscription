@@ -210,6 +210,32 @@ def count_application_group_members(kc: KeycloakAdminClient, app: Application) -
         return None
 
 
+def refresh_application_access_counts(
+    app: Application,
+    kc: KeycloakAdminClient | None = None,
+) -> Application:
+    """Interroge Keycloak et persiste member/admin counts + horodatage."""
+    from django.utils import timezone
+
+    from inscriptions.roles import count_application_admins
+
+    client = kc or KeycloakAdminClient()
+    member_count = count_application_group_members(client, app)
+    admin_count = count_application_admins(app, client) if app.managed_by_si and app.requires_access_request else None
+
+    app.keycloak_member_count = member_count
+    app.keycloak_admin_count = admin_count
+    app.keycloak_counts_updated_at = timezone.now()
+    app.save(
+        update_fields=[
+            "keycloak_member_count",
+            "keycloak_admin_count",
+            "keycloak_counts_updated_at",
+        ]
+    )
+    return app
+
+
 def build_user_application_access_rows(
     apps: list[Application],
     group_paths: set[str],
@@ -232,18 +258,16 @@ def build_user_application_access_rows(
 
 
 def pending_application_ids_for_user(keycloak_sub: str) -> set[int]:
-    from inscriptions.models import UserProfile
-
-    profile = UserProfile.objects.filter(keycloak_sub=keycloak_sub).first()
-    if not profile:
+    sub = (keycloak_sub or "").strip()
+    if not sub:
         return set()
     reg_ids = AccessRequestItem.objects.filter(
-        registration__created_profile=profile,
+        registration__keycloak_user_id=sub,
         origin=AccessRequestItem.ORIGIN_REGISTRATION,
         status=AccessRequestItem.STATUS_PENDING,
     ).values_list("application_id", flat=True)
     add_ids = AccessRequestItem.objects.filter(
-        user=profile,
+        user_sub=sub,
         registration__isnull=True,
         origin=AccessRequestItem.ORIGIN_ADDITIONAL,
         status=AccessRequestItem.STATUS_PENDING,

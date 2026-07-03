@@ -1,6 +1,7 @@
 import tempfile
 from unittest.mock import patch
 
+from django.utils import timezone
 from rest_framework import status
 
 from inscriptions.models import Application
@@ -28,23 +29,35 @@ class AdminCatalogApiTests(BaseApiTestCase):
         response = self.client.get("/api/admin/catalog/applications/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_list_applications(self):
+    def test_list_applications_returns_stored_counts(self):
+        self.managed_app.keycloak_member_count = 5
+        self.managed_app.keycloak_admin_count = 2
+        self.managed_app.keycloak_counts_updated_at = timezone.now()
+        self.managed_app.save()
+        auth_client(self.client, self.super_admin)
+        response = self.client.get("/api/admin/catalog/applications/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ancrage = next(row for row in response.json() if row["slug"] == self.managed_app.slug)
+        self.assertEqual(ancrage["member_count"], 5)
+        self.assertEqual(ancrage["admin_count"], 2)
+        self.assertIsNotNone(ancrage["counts_updated_at"])
+
+    def test_refresh_counts_persists_values(self):
         auth_client(self.client, self.super_admin)
         with self.settings(KEYCLOAK_SYNC_ENABLED=True):
-            with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
-                kc = kc_cls.return_value
-                kc.find_group_by_path.return_value = {"id": "group-ancrage"}
-                kc.count_group_members.return_value = 2
-                response = self.client.get("/api/admin/catalog/applications/")
+            with patch("inscriptions.services.application_access.count_application_group_members", return_value=7):
+                with patch("inscriptions.roles.count_application_admins", return_value=3):
+                    response = self.client.post(
+                        f"/api/admin/catalog/applications/{self.managed_app.slug}/refresh-counts/"
+                    )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        rows = response.json()
-        self.assertTrue(any(row["slug"] == self.managed_app.slug for row in rows))
-        ancrage = next(row for row in rows if row["slug"] == self.managed_app.slug)
-        self.assertEqual(ancrage["member_count"], 2)
-        socle = next(row for row in rows if row["slug"] == self.auto_app.slug)
-        self.assertIsNone(socle["member_count"])
-        naturadapt = next(row for row in rows if row["slug"] == self.out_of_si_app.slug)
-        self.assertIsNone(naturadapt["member_count"])
+        data = response.json()
+        self.assertEqual(data["member_count"], 7)
+        self.assertEqual(data["admin_count"], 3)
+        self.assertIsNotNone(data["counts_updated_at"])
+        self.managed_app.refresh_from_db()
+        self.assertEqual(self.managed_app.keycloak_member_count, 7)
+        self.assertEqual(self.managed_app.keycloak_admin_count, 3)
 
     def test_create_application(self):
         auth_client(self.client, self.super_admin)
@@ -243,7 +256,18 @@ class AdminCatalogAdminsApiTests(BaseApiTestCase):
         self.app_admin = make_profile(sub="app-admin-sub", email="appadmin@test.local")
         self.managed_app = make_application(slug="geonature-saisie", nom="GeoNature Saisie")
 
-    def test_sync_catalog_admins(self):
+    @patch("inscriptions.views.app_admins_svc.list_application_admins")
+    @patch("inscriptions.views.app_admins_svc.replace_application_admins")
+    def test_sync_catalog_admins(self, replace_admins, list_admins):
+        admin_row = {
+            "keycloak_sub": self.app_admin.keycloak_sub,
+            "email": self.app_admin.email,
+            "first_name": self.app_admin.first_name,
+            "last_name": self.app_admin.last_name,
+            "username": self.app_admin.username,
+        }
+        replace_admins.return_value = [admin_row]
+        list_admins.return_value = [admin_row]
         auth_client(self.client, self.super_admin)
         response = self.client.put(
             f"/api/admin/catalog/applications/{self.managed_app.slug}/admins/",
@@ -255,17 +279,22 @@ class AdminCatalogAdminsApiTests(BaseApiTestCase):
         list_response = self.client.get(f"/api/admin/catalog/applications/{self.managed_app.slug}/admins/")
         self.assertEqual(len(list_response.json()), 1)
 
-    @patch("inscriptions.services.application_admins.KeycloakAdminClient")
-    def test_assign_legacy_endpoint_accepts_keycloak_sub(self, kc_cls):
+    @patch("inscriptions.roles.fetch_user_info")
+    @patch("inscriptions.roles.KeycloakAdminClient")
+    def test_assign_legacy_endpoint_accepts_keycloak_sub(self, kc_cls, fetch_user_info):
+        from inscriptions.user_identity import UserInfo
+
+        fetch_user_info.return_value = UserInfo(
+            sub="kc-new-admin",
+            email="newadmin@test.local",
+            username="newadmin",
+            first_name="New",
+            last_name="Admin",
+        )
         auth_client(self.client, self.super_admin)
         kc = kc_cls.return_value
-        kc.get_user.return_value = {
-            "id": "kc-new-admin",
-            "email": "newadmin@test.local",
-            "username": "newadmin",
-            "firstName": "New",
-            "lastName": "Admin",
-        }
+        kc.ensure_application_admin_group.return_value = "group-id"
+        kc.list_group_members.return_value = []
         with self.settings(KEYCLOAK_SYNC_ENABLED=True):
             response = self.client.post(
                 f"/api/admin/applications/{self.managed_app.slug}/admins/",

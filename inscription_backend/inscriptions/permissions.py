@@ -3,7 +3,8 @@ from __future__ import annotations
 from rest_framework.permissions import BasePermission
 
 from inscriptions.authentication import KeycloakUser
-from inscriptions.models import Application, ApplicationAdmin
+from inscriptions.models import Application
+from inscriptions.roles import groups_for_request, is_app_admin, is_super_admin
 
 
 class IsKeycloakAuthenticated(BasePermission):
@@ -14,17 +15,9 @@ class IsKeycloakAuthenticated(BasePermission):
 class IsSuperAdmin(BasePermission):
     def has_permission(self, request, view):
         user = getattr(request, "user", None)
-        return (
-            isinstance(user, KeycloakUser)
-            and user.profile is not None
-            and user.profile.is_super_admin
-        )
-
-
-def is_app_admin(profile, application: Application) -> bool:
-    if profile.is_super_admin:
-        return True
-    return ApplicationAdmin.objects.filter(user=profile, application=application).exists()
+        if not isinstance(user, KeycloakUser):
+            return False
+        return is_super_admin(groups_for_request(request))
 
 
 class IsAppAdminForApplication(BasePermission):
@@ -32,7 +25,7 @@ class IsAppAdminForApplication(BasePermission):
 
     def has_permission(self, request, view):
         user = getattr(request, "user", None)
-        if not isinstance(user, KeycloakUser) or not user.profile:
+        if not isinstance(user, KeycloakUser):
             return False
         slug = view.kwargs.get("application_slug")
         if not slug:
@@ -40,4 +33,4 @@ class IsAppAdminForApplication(BasePermission):
         app = Application.objects.filter(slug=slug).first()
         if not app:
             return False
-        return is_app_admin(user.profile, app)
+        return is_app_admin(groups_for_request(request), app)

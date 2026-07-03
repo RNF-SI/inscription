@@ -99,6 +99,8 @@ export class AdminDashboardComponent implements OnInit {
   userAccessSaving = false;
   userAccessLoadError = '';
   catalogApplications: ApplicationDto[] = [];
+  catalogCountsRefreshing = false;
+  catalogCountsRefreshError = '';
   catalogEditingSlug = '';
   catalogForm: ApplicationDto = this.emptyCatalogForm();
   catalogSaving = false;
@@ -724,6 +726,67 @@ export class AdminDashboardComponent implements OnInit {
     return String(app.member_count);
   }
 
+  formatApplicationAdminCount(app: ApplicationDto): string {
+    if (!app.managed_by_si || !app.requires_access_request) {
+      return '—';
+    }
+    if (app.admin_count == null) {
+      return '—';
+    }
+    return String(app.admin_count);
+  }
+
+  formatCountsUpdatedAtLabel(isoDate: string): string {
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) {
+      return '—';
+    }
+    return date.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  get catalogCountsUpdatedAtLabel(): string {
+    const timestamps = this.catalogApplications
+      .map((app) => app.counts_updated_at)
+      .filter((value): value is string => !!value);
+    if (!timestamps.length) {
+      return 'Jamais actualisé';
+    }
+    const latest = timestamps.reduce((max, current) => (current > max ? current : max));
+    return this.formatCountsUpdatedAtLabel(latest);
+  }
+
+  refreshCatalogCounts(): void {
+    if (this.catalogCountsRefreshing) {
+      return;
+    }
+    this.catalogCountsRefreshing = true;
+    this.catalogCountsRefreshError = '';
+    this.api.refreshApplicationCatalogCounts().subscribe({
+      next: (payload) => {
+        const apps = 'applications' in payload ? payload.applications : [];
+        if (apps.length) {
+          const bySlug = new Map(apps.map((a) => [a.slug, a]));
+          this.catalogApplications = this.catalogApplications.map(
+            (app) => bySlug.get(app.slug) ?? app
+          );
+        }
+      },
+      error: (err) => {
+        this.catalogCountsRefreshError =
+          err?.error?.detail || 'Impossible d’actualiser les effectifs Keycloak.';
+      },
+      complete: () => {
+        this.catalogCountsRefreshing = false;
+      },
+    });
+  }
+
   canManageApplicationMembers(app: ApplicationDto): boolean {
     return !!app.managed_by_si && !!app.requires_access_request;
   }
@@ -1088,7 +1151,6 @@ export class AdminDashboardComponent implements OnInit {
     forkJoin(tasks).subscribe({
       next: () => {
         this.catalogMembersInitialSubs = this.catalogMembersDraft.map((m) => m.keycloak_sub);
-        this.bumpCatalogMemberCount(app.slug, toAdd.length - toRemove.length);
       },
       error: (err) => {
         const detail = err?.error?.detail;
@@ -1099,14 +1161,6 @@ export class AdminDashboardComponent implements OnInit {
         this.catalogMembersSaving = false;
       },
     });
-  }
-
-  private bumpCatalogMemberCount(slug: string, delta: number): void {
-    const app = this.catalogApplications.find((a) => a.slug === slug);
-    if (!app || app.member_count == null) {
-      return;
-    }
-    app.member_count = Math.max(0, app.member_count + delta);
   }
 
   get canManageCatalogImage(): boolean {

@@ -33,6 +33,14 @@ urlpatterns = [
     path("admin/keycloak-users-search/", views.AdminKeycloakUsersSearchView.as_view()),
     path("admin/catalog/applications/", views.AdminApplicationCatalogListCreateView.as_view()),
     path(
+        "admin/catalog/applications/refresh-counts/",
+        views.AdminApplicationCatalogRefreshCountsView.as_view(),
+    ),
+    path(
+        "admin/catalog/applications/<slug:application_slug>/refresh-counts/",
+        views.AdminApplicationCatalogRefreshCountsView.as_view(),
+    ),
+    path(
         "admin/catalog/applications/<slug:application_slug>/",
         views.AdminApplicationCatalogDetailView.as_view(),
     ),

@@ -14,24 +14,33 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from inscriptions.authentication import KeycloakUser, require_profile
+from inscriptions.authentication import KeycloakUser, get_current_sub, require_keycloak_user
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
 from inscriptions.models import (
     AccessRequestItem,
     Application,
-    ApplicationAdmin,
     Notification,
     Organisme,
     ReserveMemberRemovalRequest,
     ReserveReferentRequest,
     RegistrationRequest,
     Reserve,
-    UserProfile,
 )
-from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin, is_app_admin
+from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin
+from inscriptions.roles import (
+    admin_application_slugs,
+    effective_groups_from_claims,
+    groups_for_request,
+    is_app_admin,
+    is_super_admin,
+    normalize_group_paths,
+    notify_recipient_subs_for_removal_request,
+)
+from inscriptions.user_identity import UserInfo, fetch_user_info
 from inscriptions.serializers import (
     AdditionalAccessSerializer,
     AdminApplicationWriteSerializer,
+    ApplicationCatalogSerializer,
     ApplicationSerializer,
     MeUpdateSerializer,
     NotificationSerializer,
@@ -220,8 +229,15 @@ def _referent_reserve_codes_from_token(claims: dict[str, Any]) -> list[str]:
     return out
 
 
-def _is_admin_user(profile: UserProfile) -> bool:
-    return bool(profile.is_super_admin or ApplicationAdmin.objects.filter(user=profile).exists())
+def _request_groups(request) -> set[str]:
+    return normalize_group_paths(groups_for_request(request))
+
+
+def _is_admin_user(request) -> bool:
+    groups = _request_groups(request)
+    if is_super_admin(groups):
+        return True
+    return bool(admin_application_slugs(groups))
 
 
 class OrganismeListView(APIView):
@@ -353,8 +369,8 @@ class RefreshTokenView(APIView):
 
 class MeView(APIView):
     def patch(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
 
         ser = MeUpdateSerializer(data=request.data)
@@ -366,7 +382,7 @@ class MeView(APIView):
         try:
             kc = KeycloakAdminClient()
             kc.update_user_profile(
-                prof.keycloak_sub,
+                user.sub,
                 username=data.get("username"),
                 email=data.get("email"),
                 first_name=data.get("first_name"),
@@ -377,55 +393,40 @@ class MeView(APIView):
             logger.warning("Me patch keycloak failed: %s", exc)
             return Response({"detail": "Mise à jour Keycloak impossible."}, status=502)
 
-        # Sync local technique/fallback
-        if "username" in data:
-            prof.username = data["username"]
-        if "email" in data:
-            prof.email = data["email"]
-        if "first_name" in data:
-            prof.first_name = data["first_name"]
-        if "last_name" in data:
-            prof.last_name = data["last_name"]
-        if "fonction" in data:
-            prof.fonction = data["fonction"]
-        prof.save(update_fields=["username", "email", "first_name", "last_name", "fonction", "updated_at"])
-
-        # Retourne la vue /me à jour.
         return self.get(request)
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
-        claims = _claims_with_groups(claims, prof.keycloak_sub)
+        groups_list = groups_for_request(request)
+        groups = normalize_group_paths(groups_list)
+        claims = {**user.claims, "groups": groups_list} if groups_list else user.claims
         org_group_path = _first_organisme_group_path(claims)
         profile_data = {
-            "keycloak_sub": claims.get("sub") or prof.keycloak_sub,
-            "email": claims.get("email") or prof.email,
-            "username": claims.get("preferred_username") or claims.get("username") or prof.username,
-            "first_name": claims.get("given_name") or claims.get("first_name") or prof.first_name,
-            "last_name": claims.get("family_name") or claims.get("last_name") or prof.last_name,
-            # Les droits applicatifs restent gérés côté backend local.
-            "is_super_admin": prof.is_super_admin,
-            "legacy_id_role": prof.legacy_id_role,
-            # Priorité au claim Keycloak "function", fallback legacy "fonction".
+            "keycloak_sub": claims.get("sub") or user.sub,
+            "email": claims.get("email") or "",
+            "username": claims.get("preferred_username") or claims.get("username") or "",
+            "first_name": claims.get("given_name") or claims.get("first_name") or "",
+            "last_name": claims.get("family_name") or claims.get("last_name") or "",
+            "is_super_admin": is_super_admin(groups),
+            "legacy_id_role": None,
             "fonction": (claims.get("function") or claims.get("fonction") or "").strip(),
-            # Nom d'organisme resolu depuis le groupe Keycloak (attribut nom_organisme).
             "organisme": (
                 _organisme_name_from_group_path(org_group_path)
                 or (claims.get("organisme_name") or claims.get("organisme") or "").strip()
             ),
         }
         apps = Application.objects.all()
+        user_sub = user.sub
         pending_reg_items = AccessRequestItem.objects.filter(
-            registration__created_profile=prof,
+            registration__keycloak_user_id=user_sub,
             registration__status=RegistrationRequest.STATUS_PENDING_APPS,
             origin=AccessRequestItem.ORIGIN_REGISTRATION,
             status=AccessRequestItem.STATUS_PENDING,
         ).select_related("application")
         pending_additional = AccessRequestItem.objects.filter(
-            user=prof,
+            user_sub=user_sub,
             registration__isnull=True,
             origin=AccessRequestItem.ORIGIN_ADDITIONAL,
             status=AccessRequestItem.STATUS_PENDING,
@@ -453,7 +454,7 @@ class MeView(APIView):
         referent_codes = set(referent_codes_list)
         pending_referent_codes = set(
             ReserveReferentRequest.objects.filter(
-                user=prof,
+                user_sub=user_sub,
                 status=ReserveReferentRequest.STATUS_PENDING,
             ).values_list("reserve_id", flat=True)
         )
@@ -479,26 +480,26 @@ class MeView(APIView):
                     "referent_pending": (code in pending_referent_codes) and (not is_referent),
                 }
             )
-        is_app_admin = ApplicationAdmin.objects.filter(user=prof).exists()
+        is_app_admin_flag = bool(admin_application_slugs(groups))
         is_reserve_referent = bool(referent_codes)
         return Response(
             {
                 "profile": profile_data,
                 "applications": out,
                 "reserves": reserves,
-                "is_app_admin": is_app_admin,
+                "is_app_admin": is_app_admin_flag,
                 "is_reserve_referent": is_reserve_referent,
-                "unread_notifications": Notification.objects.filter(user=prof, read=False).count(),
+                "unread_notifications": Notification.objects.filter(user_sub=user_sub, read=False).count(),
             }
         )
 
 
 class MeReserveOptionsView(APIView):
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
+        claims = user.claims
         org_group_path = _first_organisme_group_path(claims)
         org_id = _organisme_id_from_group_path(org_group_path)
         if not org_id:
@@ -516,13 +517,13 @@ class MeReserveOptionsView(APIView):
 
 class MeReserveLinkDetailView(APIView):
     def post(self, request, area_code):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
             return Response({"detail": "Réserve introuvable"}, status=404)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
+        claims = user.claims
         org_group_path = _first_organisme_group_path(claims)
         org_id = _organisme_id_from_group_path(org_group_path)
         if not org_id:
@@ -533,16 +534,17 @@ class MeReserveLinkDetailView(APIView):
         try:
             kc = KeycloakAdminClient()
             gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_join_group(prof.keycloak_sub, gid)
+            kc.user_join_group(user.sub, gid)
         except KeycloakAdminError as exc:
             logger.warning("Ajout groupe reserve keycloak impossible: %s", exc)
             return Response({"detail": "Ajout de la réserve impossible côté Keycloak"}, status=502)
-        reserve_notify.notify_referents_new_member(prof, reserve)
+        member_info = UserInfo.from_claims(_claims_with_groups(user.claims, user.sub))
+        reserve_notify.notify_referents_new_member(member_info, reserve)
         return Response({"ok": True}, status=201)
 
     def delete(self, request, area_code):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
@@ -550,7 +552,7 @@ class MeReserveLinkDetailView(APIView):
         try:
             kc = KeycloakAdminClient()
             gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_leave_group(prof.keycloak_sub, gid)
+            kc.user_leave_group(user.sub, gid)
         except KeycloakAdminError as exc:
             logger.warning("Suppression groupe reserve keycloak impossible: %s", exc)
             return Response({"detail": "Suppression de la réserve impossible côté Keycloak"}, status=502)
@@ -559,15 +561,15 @@ class MeReserveLinkDetailView(APIView):
 
 class MeReserveReferentRequestView(APIView):
     def post(self, request, area_code):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
 
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
             return Response({"detail": "Réserve introuvable"}, status=404)
 
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
+        claims = _claims_with_groups(user.claims, user.sub)
         reserve_codes = set(_reserve_codes_from_token(claims))
         if area_code not in reserve_codes:
             return Response({"detail": "Vous devez être membre de la réserve"}, status=403)
@@ -577,27 +579,27 @@ class MeReserveReferentRequestView(APIView):
             return Response({"detail": "Vous êtes déjà référent de cette réserve"}, status=400)
 
         already_pending = ReserveReferentRequest.objects.filter(
-            user=prof,
+            user_sub=user.sub,
             reserve=reserve,
             status=ReserveReferentRequest.STATUS_PENDING,
         ).exists()
         if already_pending:
             return Response({"detail": "Une demande est déjà en attente pour cette réserve"}, status=400)
 
-        req = ReserveReferentRequest.objects.create(user=prof, reserve=reserve)
-        reserve_notify.notify_referent_request_created(prof, reserve)
+        req = ReserveReferentRequest.objects.create(user_sub=user.sub, reserve=reserve)
+        reserve_notify.notify_referent_request_created(UserInfo.from_claims(claims), reserve)
         return Response({"id": req.id, "status": req.status}, status=201)
 
 
 class MeReferentReservesMembersView(APIView):
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
-        claims = _claims_with_groups(claims, prof.keycloak_sub)
+        claims = _claims_with_groups(user.claims, user.sub)
+        groups = _token_groups(claims)
         referent_codes = _referent_reserve_codes_from_token(claims)
-        if prof.is_super_admin:
+        if is_super_admin(groups):
             codes = list(Reserve.objects.order_by("area_name").values_list("area_code", flat=True))
         else:
             codes = referent_codes
@@ -615,7 +617,7 @@ class MeReferentReservesMembersView(APIView):
             pending_targets: set[str] = set(
                 ReserveMemberRemovalRequest.objects.filter(
                     reserve_id=code,
-                    requester=prof,
+                    requester_sub=user.sub,
                     status=ReserveMemberRemovalRequest.STATUS_PENDING,
                 ).values_list("target_sub", flat=True)
             )
@@ -626,9 +628,9 @@ class MeReferentReservesMembersView(APIView):
                         "area_code": code,
                         "area_name": reserves[code].area_name if code in reserves else code,
                     },
-                    "can_request_removal": (not prof.is_super_admin) and (code in set(referent_codes)),
-                    "can_direct_remove": prof.is_super_admin,
-                    "can_direct_add": prof.is_super_admin,
+                    "can_request_removal": (not is_super_admin(groups)) and (code in set(referent_codes)),
+                    "can_direct_remove": is_super_admin(groups),
+                    "can_direct_add": is_super_admin(groups),
                     "members": [
                         {
                             "sub": m.get("id"),
@@ -648,10 +650,10 @@ class MeReferentReservesMembersView(APIView):
 
 class MeReferentReserveRemovalRequestView(APIView):
     def post(self, request, area_code):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
+        claims = user.claims
         referent_codes = set(_referent_reserve_codes_from_token(claims))
         if area_code not in referent_codes:
             return Response({"detail": "Vous n'êtes pas référent de cette réserve"}, status=403)
@@ -664,12 +666,12 @@ class MeReferentReserveRemovalRequestView(APIView):
         reason = (request.data.get("reason") or "").strip()
         if not target_sub or not reason:
             return Response({"detail": "target_sub et reason sont requis"}, status=400)
-        if target_sub == prof.keycloak_sub:
+        if target_sub == user.sub:
             return Response({"detail": "Vous ne pouvez pas demander votre propre retrait."}, status=400)
 
         existing = ReserveMemberRemovalRequest.objects.filter(
             reserve=reserve,
-            requester=prof,
+            requester_sub=user.sub,
             target_sub=target_sub,
             status=ReserveMemberRemovalRequest.STATUS_PENDING,
         ).exists()
@@ -678,7 +680,7 @@ class MeReferentReserveRemovalRequestView(APIView):
 
         req = ReserveMemberRemovalRequest.objects.create(
             reserve=reserve,
-            requester=prof,
+            requester_sub=user.sub,
             target_sub=target_sub,
             target_email=(request.data.get("target_email") or "").strip(),
             target_first_name=(request.data.get("target_first_name") or "").strip(),
@@ -686,15 +688,14 @@ class MeReferentReserveRemovalRequestView(APIView):
             reason=reason,
         )
 
-        admin_profiles = UserProfile.objects.filter(is_super_admin=True)
-        app_admin_profiles = UserProfile.objects.filter(admin_assignments__isnull=False).distinct()
-        recipients = {u.keycloak_sub: u for u in list(admin_profiles) + list(app_admin_profiles)}
-        for u in recipients.values():
+        requester_info = UserInfo.from_claims(_claims_with_groups(user.claims, user.sub))
+        requester_name = f"{requester_info.first_name} {requester_info.last_name}".strip() or requester_info.email
+        for sub in notify_recipient_subs_for_removal_request():
             Notification.objects.create(
-                user=u,
+                user_sub=sub,
                 title=f"Demande retrait membre : {reserve.area_code}",
                 body=(
-                    f"{prof.first_name} {prof.last_name} demande le retrait de "
+                    f"{requester_name} demande le retrait de "
                     f"{req.target_first_name} {req.target_last_name} ({req.target_email}) "
                     f"de la réserve {reserve.area_name}. Motif: {reason}"
                 ),
@@ -706,20 +707,24 @@ class AdminReserveMemberRemovalRequestsView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         qs = ReserveMemberRemovalRequest.objects.filter(
             status=ReserveMemberRemovalRequest.STATUS_PENDING
-        ).select_related("reserve", "requester")
+        ).select_related("reserve")
         out = []
         for r in qs:
+            requester = fetch_user_info(r.requester_sub)
+            requester_email = requester.email if requester else ""
+            requester_name = (
+                f"{requester.first_name} {requester.last_name}".strip() if requester else r.requester_sub
+            )
             out.append(
                 {
                     "id": r.id,
                     "reserve": {"area_code": r.reserve.area_code, "area_name": r.reserve.area_name},
-                    "requester_email": r.requester.email,
-                    "requester_name": f"{r.requester.first_name} {r.requester.last_name}".strip(),
+                    "requester_email": requester_email,
+                    "requester_name": requester_name,
                     "target_sub": r.target_sub,
                     "target_email": r.target_email,
                     "target_first_name": r.target_first_name,
@@ -735,8 +740,8 @@ class AdminDecideReserveMemberRemovalRequestView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def post(self, request, req_id, decision):
-        prof = require_profile(request)
-        if not prof:
+        actor = require_keycloak_user(request)
+        if not actor:
             return Response(status=401)
 
         req = get_object_or_404(ReserveMemberRemovalRequest, pk=req_id)
@@ -767,13 +772,13 @@ class AdminDecideReserveMemberRemovalRequestView(APIView):
             if approve
             else ReserveMemberRemovalRequest.STATUS_REJECTED
         )
-        req.decided_by = prof
+        req.decided_by_sub = actor.sub
         req.decided_at = timezone.now()
         req.decision_note = note
-        req.save(update_fields=["status", "decided_by", "decided_at", "decision_note"])
+        req.save(update_fields=["status", "decided_by_sub", "decided_at", "decision_note"])
 
         Notification.objects.create(
-            user=req.requester,
+            user_sub=req.requester_sub,
             title=f"Demande retrait membre : {req.reserve.area_code}",
             body=(
                 "Votre demande a été acceptée."
@@ -788,8 +793,7 @@ class AdminReserveMemberDirectRemoveView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def post(self, request, area_code, user_sub):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
@@ -815,8 +819,7 @@ class AdminReserveMemberDirectAddView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def post(self, request, area_code):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
@@ -825,19 +828,32 @@ class AdminReserveMemberDirectAddView(APIView):
         email = (request.data.get("email") or "").strip().lower()
         if not email:
             return Response({"detail": "email requis"}, status=400)
-        user = UserProfile.objects.filter(email__iexact=email).first()
-        if not user:
+        try:
+            kc = KeycloakAdminClient()
+            users = kc.search_users(email, max_count=20)
+        except KeycloakAdminError as exc:
+            logger.warning("Recherche utilisateur Keycloak impossible: %s", exc)
+            return Response({"detail": "Recherche utilisateur indisponible"}, status=502)
+        user_sub = ""
+        for u in users:
+            if (u.get("email") or "").strip().lower() == email:
+                user_sub = (u.get("id") or "").strip()
+                break
+        if not user_sub:
             return Response({"detail": "Utilisateur introuvable pour cet email"}, status=404)
 
         try:
             kc = KeycloakAdminClient()
             gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_join_group(user.keycloak_sub, gid)
+            kc.user_join_group(user_sub, gid)
         except KeycloakAdminError as exc:
             logger.warning("Ajout direct membre reserve impossible: %s", exc)
             return Response({"detail": "Échec de l'ajout côté Keycloak"}, status=502)
 
-        reserve_notify.notify_referents_new_member(user, reserve)
+        member_info = fetch_user_info(user_sub) or UserInfo(
+            sub=user_sub, email=email, username=email, first_name="", last_name=""
+        )
+        reserve_notify.notify_referents_new_member(member_info, reserve)
         return Response({"ok": True})
 
 
@@ -845,8 +861,7 @@ class AdminKeycloakUsersSearchView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         q = (request.query_params.get("q") or "").strip()
         if len(q) < 2:
@@ -885,23 +900,23 @@ class AdminReserveReferentRequestsView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         qs = ReserveReferentRequest.objects.filter(status=ReserveReferentRequest.STATUS_PENDING).select_related(
-            "user", "reserve"
+            "reserve"
         )
         out = []
         for r in qs:
+            user_info = fetch_user_info(r.user_sub)
             out.append(
                 {
                     "id": r.id,
                     "reserve": {"area_code": r.reserve.area_code, "area_name": r.reserve.area_name},
-                    "user_sub": r.user.keycloak_sub,
-                    "user_email": r.user.email,
-                    "user_first_name": r.user.first_name,
-                    "user_last_name": r.user.last_name,
-                    "user_fonction": r.user.fonction,
+                    "user_sub": r.user_sub,
+                    "user_email": user_info.email if user_info else "",
+                    "user_first_name": user_info.first_name if user_info else "",
+                    "user_last_name": user_info.last_name if user_info else "",
+                    "user_fonction": user_info.fonction if user_info else "",
                 }
             )
         return Response(out)
@@ -911,8 +926,7 @@ class AdminDecideReserveReferentRequestView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def post(self, request, req_id, decision):
-        prof = require_profile(request)
-        if not prof:
+        if not require_keycloak_user(request):
             return Response(status=401)
         req = get_object_or_404(ReserveReferentRequest, pk=req_id)
         if req.status != ReserveReferentRequest.STATUS_PENDING:
@@ -927,13 +941,16 @@ class AdminDecideReserveReferentRequestView(APIView):
             try:
                 kc = KeycloakAdminClient()
                 gid = kc.ensure_reserve_referent_group(req.reserve.area_code)
-                kc.user_join_group(req.user.keycloak_sub, gid)
+                kc.user_join_group(req.user_sub, gid)
             except KeycloakAdminError as exc:
                 logger.warning("Validation referent impossible côté Keycloak: %s", exc)
                 return Response({"detail": "Échec côté Keycloak"}, status=502)
 
+        user_info = fetch_user_info(req.user_sub) or UserInfo(
+            sub=req.user_sub, email="", username=req.user_sub, first_name="", last_name=""
+        )
         reserve_notify.notify_referent_request_decided(
-            req.user,
+            user_info,
             req.reserve,
             approve=approve,
             note=note,
@@ -944,19 +961,19 @@ class AdminDecideReserveReferentRequestView(APIView):
 
 class NotificationListView(APIView):
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
-        qs = Notification.objects.filter(user=prof)[:100]
+        qs = Notification.objects.filter(user_sub=user.sub)[:100]
         return Response(NotificationSerializer(qs, many=True).data)
 
 
 class NotificationMarkReadView(APIView):
     def patch(self, request, pk):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
-        n = get_object_or_404(Notification, pk=pk, user=prof)
+        n = get_object_or_404(Notification, pk=pk, user_sub=user.sub)
         n.read = True
         n.save(update_fields=["read"])
         return Response(NotificationSerializer(n).data)
@@ -964,12 +981,13 @@ class NotificationMarkReadView(APIView):
 
 class AdditionalAccessCreateView(APIView):
     def post(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
         ser = AdditionalAccessSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        claims = getattr(request.user, "claims", {}) if isinstance(request.user, KeycloakUser) else {}
+        claims = _claims_with_groups(user.claims, user.sub)
+        user_info = UserInfo.from_claims(claims)
         requested_slugs = ser.validated_data["application_slugs"]
         filtered_slugs = []
         for slug in requested_slugs:
@@ -983,7 +1001,8 @@ class AdditionalAccessCreateView(APIView):
             return Response({"detail": "Accès déjà actif pour les applications demandées."}, status=400)
         try:
             req = workflows.create_additional_access_request(
-                prof,
+                user.sub,
+                user_info,
                 filtered_slugs,
                 ser.validated_data.get("remarks", ""),
             )
@@ -1052,11 +1071,11 @@ class AdminSuperApproveView(APIView):
 
     def post(self, request, public_id):
         r = get_object_or_404(RegistrationRequest, public_id=public_id)
-        prof = require_profile(request)
-        if not prof:
+        actor = require_keycloak_user(request)
+        if not actor:
             return Response(status=401)
         try:
-            workflows.super_admin_approve(r, prof, getattr(request.user, "claims", {}).get("sub", ""))
+            workflows.super_admin_approve(r, actor.sub)
         except ValueError:
             return Response({"detail": "Statut invalide"}, status=400)
         except Exception:
@@ -1083,28 +1102,29 @@ class AdminPendingItemsView(APIView):
     permission_classes = [IsKeycloakAuthenticated]
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
-        admin_app_ids = list(ApplicationAdmin.objects.filter(user=prof).values_list("application_id", flat=True))
-        if prof.is_super_admin:
+        groups = _request_groups(request)
+        admin_slugs = admin_application_slugs(groups)
+        if is_super_admin(groups):
             reg_items = AccessRequestItem.objects.filter(
                 status=AccessRequestItem.STATUS_PENDING,
                 registration__status=RegistrationRequest.STATUS_PENDING_APPS,
                 origin=AccessRequestItem.ORIGIN_REGISTRATION,
             ).select_related("application", "registration")
         else:
-            if not admin_app_ids:
+            if not admin_slugs:
                 return Response([])
             reg_items = AccessRequestItem.objects.filter(
                 status=AccessRequestItem.STATUS_PENDING,
                 registration__status=RegistrationRequest.STATUS_PENDING_APPS,
-                application_id__in=admin_app_ids,
+                application__slug__in=admin_slugs,
                 origin=AccessRequestItem.ORIGIN_REGISTRATION,
             ).select_related("application", "registration")
         out = []
         for i in reg_items:
-            if not prof.is_super_admin and not is_app_admin(prof, i.application):
+            if not is_super_admin(groups) and not is_app_admin(groups, i.application):
                 continue
             out.append(
                 {
@@ -1122,19 +1142,20 @@ class AdminPendingItemsView(APIView):
             status=AccessRequestItem.STATUS_PENDING,
             origin=AccessRequestItem.ORIGIN_ADDITIONAL,
             registration__isnull=True,
-        ).select_related("application", "user")
+        ).select_related("application")
         for i in add_qs:
-            if not is_app_admin(prof, i.application):
+            if not is_app_admin(groups, i.application):
                 continue
+            applicant = fetch_user_info(i.user_sub) if i.user_sub else None
             out.append(
                 {
                     "kind": "additional",
                     "item_id": i.pk,
                     "application": ApplicationSerializer(i.application).data,
                     "request_public_id": str(i.request_public_id),
-                    "applicant_email": i.user.email if i.user else "",
-                    "applicant_first_name": i.user.first_name if i.user else "",
-                    "applicant_last_name": i.user.last_name if i.user else "",
+                    "applicant_email": applicant.email if applicant else "",
+                    "applicant_first_name": applicant.first_name if applicant else "",
+                    "applicant_last_name": applicant.last_name if applicant else "",
                     "request_justification": i.request_justification,
                 }
             )
@@ -1145,14 +1166,15 @@ class AdminMyValidationApplicationsView(APIView):
     permission_classes = [IsKeycloakAuthenticated]
 
     def get(self, request):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
-        if prof.is_super_admin:
+        groups = _request_groups(request)
+        if is_super_admin(groups):
             apps = Application.objects.filter(requires_access_request=True).order_by("nom")
             return Response(ApplicationSerializer(apps, many=True).data)
-        app_ids = ApplicationAdmin.objects.filter(user=prof).values_list("application_id", flat=True)
-        apps = Application.objects.filter(id__in=app_ids, requires_access_request=True).order_by("nom")
+        slugs = admin_application_slugs(groups)
+        apps = Application.objects.filter(slug__in=slugs, requires_access_request=True).order_by("nom")
         return Response(ApplicationSerializer(apps, many=True).data)
 
 
@@ -1160,16 +1182,16 @@ class AdminDecideRegistrationItemView(APIView):
     permission_classes = [IsKeycloakAuthenticated]
 
     def post(self, request, item_id, decision):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
         item = get_object_or_404(AccessRequestItem, pk=item_id)
-        if not is_app_admin(prof, item.application):
+        groups = _request_groups(request)
+        if not is_app_admin(groups, item.application):
             return Response(status=403)
         approve = decision == "approve"
-        sub = getattr(request.user, "claims", {}).get("sub", "")
         try:
-            workflows.app_admin_decide_item(item, approve, prof, sub, request.data.get("note", ""))
+            workflows.app_admin_decide_item(item, approve, user.sub, request.data.get("note", ""))
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
         return Response({"ok": True})
@@ -1179,18 +1201,18 @@ class AdminDecideAdditionalItemView(APIView):
     permission_classes = [IsKeycloakAuthenticated]
 
     def post(self, request, item_id, decision):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
         item = get_object_or_404(
             AccessRequestItem, pk=item_id, origin=AccessRequestItem.ORIGIN_ADDITIONAL, registration__isnull=True
         )
-        if not is_app_admin(prof, item.application):
+        groups = _request_groups(request)
+        if not is_app_admin(groups, item.application):
             return Response(status=403)
         approve = decision == "approve"
-        sub = getattr(request.user, "claims", {}).get("sub", "")
         try:
-            workflows.app_admin_decide_additional_item(item, approve, prof, sub, request.data.get("note", ""))
+            workflows.app_admin_decide_additional_item(item, approve, user.sub, request.data.get("note", ""))
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
         return Response({"ok": True})
@@ -1200,19 +1222,21 @@ class AdminRevokeAccessView(APIView):
     permission_classes = [IsKeycloakAuthenticated]
 
     def post(self, request, application_slug, user_sub):
-        prof = require_profile(request)
-        if not prof:
+        user = require_keycloak_user(request)
+        if not user:
             return Response(status=401)
         app = get_object_or_404(Application, slug=application_slug)
-        if not is_app_admin(prof, app):
+        groups = _request_groups(request)
+        if not is_app_admin(groups, app):
             return Response(status=403)
-        target = get_object_or_404(UserProfile, keycloak_sub=user_sub)
-        from inscriptions.keycloak_client import KeycloakAdminClient
+        target_sub = (user_sub or "").strip()
+        if not target_sub:
+            return Response({"detail": "Utilisateur invalide"}, status=400)
         from inscriptions.services import provisioning as prov
 
         kc = KeycloakAdminClient()
         try:
-            prov.revoke_application_access(kc, target.keycloak_sub, app)
+            prov.revoke_application_access(kc, target_sub, app)
         except Exception:
             logger.exception("revoke keycloak")
         return Response({"ok": True})
@@ -1224,28 +1248,54 @@ class AdminApplicationCatalogListCreateView(APIView):
     permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
 
     def get(self, request):
-        apps = list(Application.objects.all().order_by("nom"))
-        rows = ApplicationSerializer(apps, many=True).data
-        kc = None
-        if settings.KEYCLOAK_SYNC_ENABLED:
-            try:
-                kc = KeycloakAdminClient()
-            except Exception:
-                logger.exception("keycloak client init for catalog list")
-        for i, app in enumerate(apps):
-            if kc is not None:
-                rows[i]["member_count"] = app_access_svc.count_application_group_members(kc, app)
-            else:
-                rows[i]["member_count"] = None
-            rows[i]["admin_count"] = ApplicationAdmin.objects.filter(application=app).count()
-        return Response(rows)
+        apps = Application.objects.all().order_by("nom")
+        return Response(ApplicationCatalogSerializer(apps, many=True).data)
 
     def post(self, request):
         ser = AdminApplicationWriteSerializer(data=request.data)
         if not ser.is_valid():
             return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
         app = ser.save()
-        return Response(ApplicationSerializer(app).data, status=status.HTTP_201_CREATED)
+        return Response(ApplicationCatalogSerializer(app).data, status=status.HTTP_201_CREATED)
+
+
+class AdminApplicationCatalogRefreshCountsView(APIView):
+    """Super-admin : actualiser les effectifs Keycloak (utilisateurs + admins) et les persister."""
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def post(self, request, application_slug=None):
+        if not settings.KEYCLOAK_SYNC_ENABLED:
+            return Response(
+                {"detail": "Synchronisation Keycloak désactivée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            kc = KeycloakAdminClient()
+        except Exception:
+            logger.exception("keycloak client init for refresh counts")
+            return Response({"detail": "Keycloak indisponible."}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if application_slug:
+            apps = [get_object_or_404(Application, slug=application_slug)]
+        else:
+            apps = list(Application.objects.all().order_by("nom"))
+
+        refreshed: list[Application] = []
+        for app in apps:
+            try:
+                refreshed.append(app_access_svc.refresh_application_access_counts(app, kc))
+            except KeycloakAdminError as exc:
+                logger.warning("Refresh effectifs %s impossible: %s", app.slug, exc)
+                return Response(
+                    {"detail": f"Échec du comptage pour {app.slug}."},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+        data = ApplicationCatalogSerializer(refreshed, many=True).data
+        if application_slug:
+            return Response(data[0] if data else {})
+        return Response({"applications": data})
 
 
 class AdminApplicationCatalogDetailView(APIView):

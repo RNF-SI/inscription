@@ -50,7 +50,7 @@ class MeApiTests(BaseApiTestCase):
         reserve = make_reserve(area_code="RNN43", area_name="Réserve KC")
         auth_client(self.client, self.regular_user, groups=[])
         with self.settings(KEYCLOAK_SYNC_ENABLED=True):
-            with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
+            with patch("inscriptions.roles.KeycloakAdminClient") as kc_cls:
                 kc = kc_cls.return_value
                 kc.get_user_groups.return_value = [
                     {"path": f"/reserves/{reserve.area_code}/referent"},
@@ -68,14 +68,14 @@ class MeApiTests(BaseApiTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_notifications_list(self):
-        Notification.objects.create(user=self.regular_user, title="Test", body="Corps")
+        Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Test", body="Corps")
         auth_client(self.client, self.regular_user)
         response = self.client.get("/api/notifications/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.json()), 1)
 
     def test_mark_notification_read(self):
-        notif = Notification.objects.create(user=self.regular_user, title="Test", body="Corps")
+        notif = Notification.objects.create(user_sub=self.regular_user.keycloak_sub, title="Test", body="Corps")
         auth_client(self.client, self.regular_user)
         response = self.client.patch(f"/api/notifications/{notif.pk}/mark-read/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)

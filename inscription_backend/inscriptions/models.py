@@ -49,6 +49,9 @@ class Application(models.Model):
     managed_by_si = models.BooleanField(default=True)
     requires_access_request = models.BooleanField(default=True)
     keycloak_client_id = models.CharField(max_length=200, blank=True)
+    keycloak_member_count = models.IntegerField(null=True, blank=True)
+    keycloak_admin_count = models.IntegerField(null=True, blank=True)
+    keycloak_counts_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "inscription_application"
@@ -56,35 +59,6 @@ class Application(models.Model):
 
     def __str__(self):
         return self.nom
-
-
-class UserProfile(models.Model):
-    keycloak_sub = models.CharField(max_length=200, unique=True, db_index=True)
-    email = models.EmailField()
-    username = models.CharField(max_length=200, blank=True)
-    first_name = models.CharField(max_length=200, blank=True)
-    last_name = models.CharField(max_length=200, blank=True)
-    fonction = models.CharField(max_length=200, blank=True)
-    organisme = models.ForeignKey(Organisme, null=True, blank=True, on_delete=models.SET_NULL)
-    is_super_admin = models.BooleanField(default=False)
-    legacy_id_role = models.IntegerField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "inscription_user_profile"
-
-    def __str__(self):
-        return self.email
-
-
-class ApplicationAdmin(models.Model):
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="admin_assignments")
-    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="admins")
-
-    class Meta:
-        db_table = "inscription_application_admin"
-        unique_together = [["user", "application"]]
 
 
 class RegistrationRequest(models.Model):
@@ -115,10 +89,7 @@ class RegistrationRequest(models.Model):
     remarks = models.TextField(blank=True)
     champs_addi = models.JSONField(default=dict, blank=True)
     reserve_codes = models.JSONField(default=list, blank=True)
-    keycloak_user_id = models.CharField(max_length=64, blank=True)
-    created_profile = models.ForeignKey(
-        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="registration_origins"
-    )
+    keycloak_user_id = models.CharField(max_length=64, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -148,109 +119,18 @@ class AccessRequestItem(models.Model):
     registration = models.ForeignKey(
         RegistrationRequest, on_delete=models.CASCADE, related_name="items", null=True, blank=True
     )
-    user = models.ForeignKey(UserProfile, null=True, blank=True, on_delete=models.CASCADE, related_name="access_requests")
+    user_sub = models.CharField(max_length=200, blank=True, db_index=True)
     application = models.ForeignKey(Application, on_delete=models.CASCADE)
     origin = models.CharField(max_length=20, choices=ORIGIN_CHOICES, default=ORIGIN_REGISTRATION)
     request_public_id = models.UUIDField(default=uuid.uuid4, db_index=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     decided_at = models.DateTimeField(null=True, blank=True)
-    decided_by = models.ForeignKey(
-        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="item_decisions"
-    )
+    decided_by_sub = models.CharField(max_length=200, blank=True)
     request_justification = models.TextField(blank=True)
     decision_note = models.TextField(blank=True)
 
     class Meta:
         db_table = "inscription_access_request_item"
-
-
-class AdditionalAccessRequest(models.Model):
-    STATUS_PENDING_APPS = "pending_apps"
-    STATUS_COMPLETED = "completed"
-    STATUS_REJECTED = "rejected"
-
-    STATUS_CHOICES = [
-        (STATUS_PENDING_APPS, "En attente validateurs"),
-        (STATUS_COMPLETED, "Terminé"),
-        (STATUS_REJECTED, "Refusé"),
-    ]
-
-    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="additional_access_requests")
-    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING_APPS)
-    remarks = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "inscription_additional_access_request"
-
-
-class AdditionalAccessItem(models.Model):
-    STATUS_PENDING = "pending"
-    STATUS_APPROVED = "approved"
-    STATUS_REJECTED = "rejected"
-
-    STATUS_CHOICES = [
-        (STATUS_PENDING, "En attente"),
-        (STATUS_APPROVED, "Approuvé"),
-        (STATUS_REJECTED, "Refusé"),
-    ]
-
-    request = models.ForeignKey(AdditionalAccessRequest, on_delete=models.CASCADE, related_name="items")
-    application = models.ForeignKey(Application, on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
-    decided_at = models.DateTimeField(null=True, blank=True)
-    decided_by = models.ForeignKey(
-        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="additional_item_decisions"
-    )
-    decision_note = models.TextField(blank=True)
-
-    class Meta:
-        db_table = "inscription_additional_access_item"
-
-
-class UserApplicationAccess(models.Model):
-    STATUS_ACTIVE = "active"
-    STATUS_REVOKED = "revoked"
-    STATUS_PENDING = "pending"
-
-    STATUS_CHOICES = [
-        (STATUS_ACTIVE, "Actif"),
-        (STATUS_REVOKED, "Révoqué"),
-        (STATUS_PENDING, "En attente"),
-    ]
-
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="app_access")
-    application = models.ForeignKey(Application, on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
-    source_item = models.ForeignKey(
-        AccessRequestItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="granted_access"
-    )
-    source_additional_item = models.ForeignKey(
-        AdditionalAccessItem,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="granted_access",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "inscription_user_application_access"
-        unique_together = [["user", "application"]]
-
-
-class UserReserveLink(models.Model):
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="reserve_links")
-    reserve = models.ForeignKey(Reserve, on_delete=models.CASCADE)
-    referent = models.BooleanField(default=False)
-    referent_valid = models.BooleanField(default=False)
-
-    class Meta:
-        db_table = "inscription_user_reserve_link"
-        unique_together = [["user", "reserve"]]
 
 
 class ReserveReferentRequest(models.Model):
@@ -266,13 +146,11 @@ class ReserveReferentRequest(models.Model):
         (STATUS_REJECTED, "Refusé"),
     ]
 
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="referent_requests")
+    user_sub = models.CharField(max_length=200, db_index=True)
     reserve = models.ForeignKey(Reserve, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     decided_at = models.DateTimeField(null=True, blank=True)
-    decided_by = models.ForeignKey(
-        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="referent_decisions"
-    )
+    decided_by_sub = models.CharField(max_length=200, blank=True)
 
     class Meta:
         db_table = "inscription_reserve_referent_request"
@@ -290,7 +168,7 @@ class ReserveMemberRemovalRequest(models.Model):
     ]
 
     reserve = models.ForeignKey(Reserve, on_delete=models.CASCADE, related_name="member_removal_requests")
-    requester = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="member_removal_requests")
+    requester_sub = models.CharField(max_length=200, db_index=True)
     target_sub = models.CharField(max_length=200, db_index=True)
     target_email = models.EmailField(blank=True)
     target_first_name = models.CharField(max_length=200, blank=True)
@@ -298,9 +176,7 @@ class ReserveMemberRemovalRequest(models.Model):
     reason = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     decided_at = models.DateTimeField(null=True, blank=True)
-    decided_by = models.ForeignKey(
-        UserProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="member_removal_decisions"
-    )
+    decided_by_sub = models.CharField(max_length=200, blank=True)
     decision_note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -310,7 +186,7 @@ class ReserveMemberRemovalRequest(models.Model):
 
 
 class Notification(models.Model):
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="notifications")
+    user_sub = models.CharField(max_length=200, db_index=True)
     title = models.CharField(max_length=300)
     body = models.TextField(blank=True)
     read = models.BooleanField(default=False)

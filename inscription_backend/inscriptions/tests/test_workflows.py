@@ -8,8 +8,6 @@ from inscriptions.models import (
     Notification,
     RegistrationRequest,
     ReserveReferentRequest,
-    UserProfile,
-    UserReserveLink,
 )
 from inscriptions.services import workflows
 from inscriptions.tests.helpers import (
@@ -28,13 +26,12 @@ class WorkflowTests(BaseApiTestCase):
         reg = make_registration(app=app)
         actor = make_profile(is_super_admin=True)
 
-        workflows.super_admin_approve(reg, actor, actor.keycloak_sub)
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
 
         reg.refresh_from_db()
         self.assertEqual(reg.status, RegistrationRequest.STATUS_PENDING_APPS)
-        self.assertIsNotNone(reg.created_profile)
         self.assertTrue(reg.keycloak_user_id.startswith("local-"))
-        self.assertTrue(Notification.objects.filter(user=reg.created_profile).exists())
+        self.assertTrue(Notification.objects.filter(user_sub=reg.keycloak_user_id).exists())
         self.assertGreaterEqual(len(mail.outbox), 1)
 
     def test_super_admin_approve_without_items_deletes_registration(self):
@@ -43,7 +40,7 @@ class WorkflowTests(BaseApiTestCase):
         actor = make_profile(is_super_admin=True)
         public_id = str(reg.public_id)
 
-        workflows.super_admin_approve(reg, actor, actor.keycloak_sub)
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
 
         self.assertFalse(RegistrationRequest.objects.filter(public_id=public_id).exists())
 
@@ -57,13 +54,13 @@ class WorkflowTests(BaseApiTestCase):
         app = make_application(slug="waterwise")
         reg = make_registration(app=app)
         actor = make_profile(is_super_admin=True)
-        workflows.super_admin_approve(reg, actor, actor.keycloak_sub)
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
         reg.refresh_from_db()
         item = reg.items.get()
         public_id = str(reg.public_id)
 
         with patch("inscriptions.services.workflows.prov.provision_application_access") as provision:
-            workflows.app_admin_decide_item(item, True, actor, actor.keycloak_sub)
+            workflows.app_admin_decide_item(item, True, actor.keycloak_sub)
             provision.assert_called_once()
 
         self.assertFalse(RegistrationRequest.objects.filter(public_id=public_id).exists())
@@ -72,13 +69,13 @@ class WorkflowTests(BaseApiTestCase):
         app = make_application()
         reg = make_registration(app=app)
         actor = make_profile(is_super_admin=True)
-        workflows.super_admin_approve(reg, actor, actor.keycloak_sub)
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
         item = reg.items.get()
 
         with self.assertRaises(ValueError):
-            workflows.app_admin_decide_item(item, False, actor, actor.keycloak_sub, note="")
+            workflows.app_admin_decide_item(item, False, actor.keycloak_sub, note="")
 
-    def test_super_admin_approve_creates_reserve_links_and_referent_requests(self):
+    def test_super_admin_approve_creates_referent_requests(self):
         reserve = make_reserve(area_code="RNN99")
         app = make_application()
         reg = make_registration(
@@ -88,19 +85,35 @@ class WorkflowTests(BaseApiTestCase):
         )
         actor = make_profile(is_super_admin=True)
 
-        workflows.super_admin_approve(reg, actor, actor.keycloak_sub)
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
 
-        profile = UserProfile.objects.get(email=reg.email)
-        self.assertTrue(UserReserveLink.objects.filter(user=profile, reserve=reserve).exists())
-        self.assertTrue(ReserveReferentRequest.objects.filter(user=profile, reserve=reserve).exists())
+        reg.refresh_from_db()
+        self.assertTrue(
+            ReserveReferentRequest.objects.filter(user_sub=reg.keycloak_user_id, reserve=reserve).exists()
+        )
 
     def test_create_additional_access_request(self):
         app = make_application(slug="waterwise")
         profile = make_profile()
-        request_id = workflows.create_additional_access_request(profile, [app.slug], "Besoin")
+        from inscriptions.user_identity import UserInfo
+
+        user_info = UserInfo(
+            sub=profile.keycloak_sub,
+            email=profile.email,
+            username=profile.username,
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+        )
+        request_id = workflows.create_additional_access_request(
+            profile.keycloak_sub, user_info, [app.slug], "Besoin"
+        )
         self.assertIsNotNone(request_id)
         self.assertTrue(
-            profile.access_requests.filter(application=app, status=AccessRequestItem.STATUS_PENDING).exists()
+            AccessRequestItem.objects.filter(
+                user_sub=profile.keycloak_sub,
+                application=app,
+                status=AccessRequestItem.STATUS_PENDING,
+            ).exists()
         )
 
 
@@ -112,19 +125,29 @@ class ReserveReferentRequestApiTests(BaseApiTestCase):
         self.reserve = make_reserve()
 
     def test_decide_approve_deletes_request(self):
-        req = ReserveReferentRequest.objects.create(user=self.user, reserve=self.reserve)
+        req = ReserveReferentRequest.objects.create(user_sub=self.user.keycloak_sub, reserve=self.reserve)
         auth_client(self.client, self.super_admin)
+        from inscriptions.user_identity import UserInfo
+
+        user_info = UserInfo(
+            sub=self.user.keycloak_sub,
+            email=self.user.email,
+            username=self.user.username,
+            first_name=self.user.first_name,
+            last_name=self.user.last_name,
+        )
         with patch("inscriptions.views.KeycloakAdminClient") as kc_cls:
             kc = kc_cls.return_value
             kc.ensure_reserve_referent_group.return_value = "group-id"
-            response = self.client.post(f"/api/admin/reserve-referent-requests/{req.id}/approve/")
+            with patch("inscriptions.views.fetch_user_info", return_value=user_info):
+                response = self.client.post(f"/api/admin/reserve-referent-requests/{req.id}/approve/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(ReserveReferentRequest.objects.filter(pk=req.id).exists())
-        self.assertTrue(Notification.objects.filter(user=self.user).exists())
+        self.assertTrue(Notification.objects.filter(user_sub=self.user.keycloak_sub).exists())
         self.assertGreaterEqual(len(mail.outbox), 1)
 
     def test_decide_reject_deletes_request(self):
-        req = ReserveReferentRequest.objects.create(user=self.user, reserve=self.reserve)
+        req = ReserveReferentRequest.objects.create(user_sub=self.user.keycloak_sub, reserve=self.reserve)
         auth_client(self.client, self.super_admin)
         response = self.client.post(
             f"/api/admin/reserve-referent-requests/{req.id}/reject/",

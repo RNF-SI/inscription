@@ -10,7 +10,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
-from inscriptions.models import UserProfile
+from inscriptions.models import Application
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import provisioning as prov
 
@@ -200,15 +200,6 @@ class Command(BaseCommand):
                     access_grants += app_count
                 else:
                     user_id = self._create_seed_user(kc, username, email, first_name, last_name)
-                    UserProfile.objects.update_or_create(
-                        keycloak_sub=user_id,
-                        defaults={
-                            "email": email,
-                            "username": username,
-                            "first_name": first_name,
-                            "last_name": last_name,
-                        },
-                    )
 
                     app_count = rng.randint(min_apps, max_apps) if max_apps else 0
                     chosen_apps = rng.sample(apps, app_count) if app_count else []
@@ -313,7 +304,5 @@ class Command(BaseCommand):
             r = kc._delete(f"/users/{user_id}")
             if r.status_code not in (200, 204, 404):
                 raise KeycloakAdminError(f"delete_user:{r.status_code}")
-            with transaction.atomic():
-                UserProfile.objects.filter(keycloak_sub=user_id).delete()
             removed += 1
         return removed

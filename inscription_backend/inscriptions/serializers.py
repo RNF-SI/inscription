@@ -12,9 +12,6 @@ from inscriptions.models import (
     Organisme,
     RegistrationRequest,
     Reserve,
-    UserApplicationAccess,
-    UserProfile,
-    UserReserveLink,
 )
 
 
@@ -54,6 +51,28 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "managed_by_si",
             "requires_access_request",
             "keycloak_client_id",
+        )
+
+
+class ApplicationCatalogSerializer(serializers.ModelSerializer):
+    member_count = serializers.IntegerField(source="keycloak_member_count", read_only=True, allow_null=True)
+    admin_count = serializers.IntegerField(source="keycloak_admin_count", read_only=True, allow_null=True)
+    counts_updated_at = serializers.DateTimeField(source="keycloak_counts_updated_at", read_only=True, allow_null=True)
+
+    class Meta:
+        model = Application
+        fields = (
+            "slug",
+            "nom",
+            "url",
+            "image",
+            "description",
+            "managed_by_si",
+            "requires_access_request",
+            "keycloak_client_id",
+            "member_count",
+            "admin_count",
+            "counts_updated_at",
         )
 
 
@@ -224,29 +243,6 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ("id", "title", "body", "read", "created_at")
-
-
-class UserApplicationAccessSerializer(serializers.ModelSerializer):
-    application = ApplicationSerializer()
-
-    class Meta:
-        model = UserApplicationAccess
-        fields = ("application", "status", "updated_at")
-
-
-class MeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserProfile
-        fields = (
-            "keycloak_sub",
-            "email",
-            "username",
-            "first_name",
-            "last_name",
-            "fonction",
-            "is_super_admin",
-            "legacy_id_role",
-        )
 
 
 class MeUpdateSerializer(serializers.Serializer):

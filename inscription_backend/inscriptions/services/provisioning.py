@@ -7,7 +7,7 @@ from django.conf import settings
 from django.utils.text import slugify
 
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
-from inscriptions.models import Application, Organisme, RegistrationRequest, UserProfile
+from inscriptions.models import Application, Organisme, RegistrationRequest
 
 logger = logging.getLogger(__name__)
 

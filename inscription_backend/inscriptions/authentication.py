@@ -9,22 +9,22 @@ from jwt import PyJWKClient
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.request import Request
 
-from inscriptions.models import UserProfile
-
 logger = logging.getLogger(__name__)
 
 
 class KeycloakUser:
     is_authenticated = True
 
-    def __init__(self, claims: dict[str, Any], profile: UserProfile | None) -> None:
+    def __init__(self, claims: dict[str, Any]) -> None:
         self.claims = claims
-        self.profile = profile
-        self.pk = profile.pk if profile else None
+        self.sub = (claims.get("sub") or "").strip()
 
     @property
-    def id(self):
-        return self.pk
+    def groups(self) -> list[str]:
+        raw = self.claims.get("groups") or []
+        if not isinstance(raw, list):
+            return []
+        return [g.strip() for g in raw if isinstance(g, str) and g.strip()]
 
 
 class KeycloakJWTAuthentication(BaseAuthentication):
@@ -42,20 +42,9 @@ class KeycloakJWTAuthentication(BaseAuthentication):
         except Exception as exc:
             logger.info("JWT invalide: %s", exc)
             return None
-        sub = claims.get("sub")
-        if not sub:
+        if not claims.get("sub"):
             return None
-        email = claims.get("email") or ""
-        profile = UserProfile.objects.filter(keycloak_sub=sub).first()
-        if not profile:
-            profile = UserProfile.objects.create(
-                keycloak_sub=sub,
-                email=email or f"{sub}@keycloak.local",
-                username=claims.get("preferred_username") or "",
-                first_name=claims.get("given_name") or "",
-                last_name=claims.get("family_name") or "",
-            )
-        return KeycloakUser(claims, profile), None
+        return KeycloakUser(claims), None
 
     def _decode(self, token: str) -> dict[str, Any]:
         issuer = f"{settings.KEYCLOAK_BASE_URL}/realms/{settings.KEYCLOAK_REALM}"
@@ -85,12 +74,12 @@ class KeycloakJWTAuthentication(BaseAuthentication):
 def get_current_sub(request: Request) -> str | None:
     user = getattr(request, "user", None)
     if isinstance(user, KeycloakUser):
-        return user.claims.get("sub")
+        return user.sub or None
     return None
 
 
-def require_profile(request: Request) -> UserProfile | None:
+def require_keycloak_user(request: Request) -> KeycloakUser | None:
     user = getattr(request, "user", None)
-    if isinstance(user, KeycloakUser) and user.profile:
-        return user.profile
+    if isinstance(user, KeycloakUser) and user.sub:
+        return user
     return None

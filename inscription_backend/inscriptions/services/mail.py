@@ -6,8 +6,9 @@ from email.mime.image import MIMEImage
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 
-from inscriptions.models import Application, RegistrationRequest, Reserve, UserProfile
+from inscriptions.models import Application, RegistrationRequest, Reserve
 from inscriptions.services import email_templates as tpl
+from inscriptions.user_identity import UserInfo
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +74,13 @@ def send_registration_rejected_user_mail(registration: RegistrationRequest, note
 
 def send_app_access_request_admin_mail(
     *,
-    admins: list[UserProfile],
+    admins: list[dict],
     applicant_name: str,
     applicant_email: str,
     application: Application,
     justification: str,
 ) -> None:
-    recipients = sorted({admin.email for admin in admins if (admin.email or "").strip()})
+    recipients = sorted({(admin.get("email") or "").strip() for admin in admins if (admin.get("email") or "").strip()})
     if not recipients:
         return
     subject, html_body, text_body = tpl.app_access_request_admin_email(
@@ -91,24 +92,28 @@ def send_app_access_request_admin_mail(
     send_html_email(recipients, subject, html_body, text_body)
 
 
-def send_app_access_granted_user_mail(*, profile: UserProfile, application: Application) -> None:
+def send_app_access_granted_user_mail(*, user: UserInfo, application: Application) -> None:
+    if not (user.email or "").strip():
+        return
     subject, html_body, text_body = tpl.app_access_granted_user_email(
-        first_name=profile.first_name or profile.username or "utilisateur",
+        first_name=user.first_name or user.username or "utilisateur",
         application=application,
     )
-    send_html_email([profile.email], subject, html_body, text_body)
+    send_html_email([user.email], subject, html_body, text_body)
 
 
-def send_app_access_rejected_user_mail(*, profile: UserProfile, application: Application, note: str) -> None:
+def send_app_access_rejected_user_mail(*, user: UserInfo, application: Application, note: str) -> None:
+    if not (user.email or "").strip():
+        return
     subject, html_body, text_body = tpl.app_access_rejected_user_email(
-        first_name=profile.first_name or profile.username or "utilisateur",
+        first_name=user.first_name or user.username or "utilisateur",
         application=application,
         note=note,
     )
-    send_html_email([profile.email], subject, html_body, text_body)
+    send_html_email([user.email], subject, html_body, text_body)
 
 
-def send_reserve_referent_request_superadmin_mail(*, applicant: UserProfile, reserve: Reserve) -> None:
+def send_reserve_referent_request_superadmin_mail(*, applicant: UserInfo, reserve: Reserve) -> None:
     recipients = list(settings.SUPERADMIN_NOTIFY_EMAILS or [])
     subject, html_body, text_body = tpl.reserve_referent_request_superadmin_email(
         applicant=applicant,
@@ -118,14 +123,14 @@ def send_reserve_referent_request_superadmin_mail(*, applicant: UserProfile, res
         send_html_email(recipients, subject, html_body, text_body)
 
 
-def send_reserve_referent_approved_user_mail(*, user: UserProfile, reserve: Reserve) -> None:
+def send_reserve_referent_approved_user_mail(*, user: UserInfo, reserve: Reserve) -> None:
     if not (user.email or "").strip():
         return
     subject, html_body, text_body = tpl.reserve_referent_approved_user_email(user=user, reserve=reserve)
     send_html_email([user.email], subject, html_body, text_body)
 
 
-def send_reserve_referent_rejected_user_mail(*, user: UserProfile, reserve: Reserve, note: str) -> None:
+def send_reserve_referent_rejected_user_mail(*, user: UserInfo, reserve: Reserve, note: str) -> None:
     if not (user.email or "").strip():
         return
     subject, html_body, text_body = tpl.reserve_referent_rejected_user_email(user=user, reserve=reserve, note=note)
@@ -135,14 +140,15 @@ def send_reserve_referent_rejected_user_mail(*, user: UserProfile, reserve: Rese
 def send_reserve_new_member_referent_mail(
     *,
     reserve: Reserve,
-    member: UserProfile,
+    member: UserInfo,
     recipient_emails: list[str],
+    recipient_first_names: dict[str, str] | None = None,
 ) -> None:
     if not recipient_emails:
         return
+    names = recipient_first_names or {}
     for email in recipient_emails:
-        profile = UserProfile.objects.filter(email__iexact=email).first()
-        first_name = profile.first_name if profile and profile.first_name else "référent"
+        first_name = names.get(email.lower(), "référent")
         subject, html_body, text_body = tpl.reserve_new_member_referent_email(
             reserve=reserve,
             member=member,
