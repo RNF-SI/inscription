@@ -180,6 +180,50 @@ def _organisme_id_from_group_path(group_path: str) -> int | None:
     return None
 
 
+def _claims_for_request(request) -> dict[str, Any]:
+    user = require_keycloak_user(request)
+    if not user:
+        return {}
+    groups_list = groups_for_request(request)
+    if groups_list:
+        return {**user.claims, "groups": groups_list}
+    return user.claims
+
+
+def _organisme_for_request(request) -> Organisme | None:
+    """Résout l'organisme de l'utilisateur (groupes JWT ou Keycloak + repli base locale)."""
+    claims = _claims_for_request(request)
+    if not claims:
+        return None
+
+    org_group_path = _first_organisme_group_path(claims)
+    org_id = _organisme_id_from_group_path(org_group_path)
+    if org_id:
+        org = Organisme.objects.filter(pk=org_id).first()
+        if org:
+            return org
+
+    if org_group_path:
+        root = (getattr(settings, "KEYCLOAK_GROUP_ORGANISMES", "organismes") or "organismes").strip("/")
+        prefix = f"/{root}/"
+        path = org_group_path if org_group_path.startswith("/") else f"/{org_group_path.strip('/')}"
+        if path.startswith(prefix):
+            slug = path[len(prefix) :].strip("/").split("/", 1)[0].strip()
+            if slug:
+                org = Organisme.objects.filter(keycloak_slug=slug).first()
+                if org:
+                    return org
+
+    org_name = (
+        _organisme_name_from_group_path(org_group_path)
+        or (claims.get("organisme_name") or claims.get("organisme") or "").strip()
+    )
+    if org_name:
+        return Organisme.objects.filter(nom_organisme__iexact=org_name).first()
+
+    return None
+
+
 def _reserve_codes_from_token(claims: dict[str, Any]) -> list[str]:
     root = (getattr(settings, "KEYCLOAK_GROUP_RESERVES", "reserves") or "reserves").strip("/")
     groups = sorted(_token_groups(claims))
@@ -499,12 +543,7 @@ class MeReserveOptionsView(APIView):
         user = require_keycloak_user(request)
         if not user:
             return Response({"detail": "Non authentifié"}, status=401)
-        claims = user.claims
-        org_group_path = _first_organisme_group_path(claims)
-        org_id = _organisme_id_from_group_path(org_group_path)
-        if not org_id:
-            return Response([])
-        org = Organisme.objects.filter(pk=org_id).first()
+        org = _organisme_for_request(request)
         if not org:
             return Response([])
         links = org.reserve_links.select_related("reserve").all()
@@ -523,12 +562,10 @@ class MeReserveLinkDetailView(APIView):
         reserve = Reserve.objects.filter(area_code=area_code).first()
         if not reserve:
             return Response({"detail": "Réserve introuvable"}, status=404)
-        claims = user.claims
-        org_group_path = _first_organisme_group_path(claims)
-        org_id = _organisme_id_from_group_path(org_group_path)
-        if not org_id:
+        org = _organisme_for_request(request)
+        if not org:
             return Response({"detail": "Organisme introuvable dans le token"}, status=400)
-        allowed = Organisme.objects.filter(pk=org_id, reserve_links__reserve=reserve).exists()
+        allowed = org.reserve_links.filter(reserve=reserve).exists()
         if not allowed:
             return Response({"detail": "Réserve non liée à votre organisme"}, status=403)
         try:

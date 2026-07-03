@@ -72,8 +72,9 @@
         </div>
         <div class="form-group row mt-3">
             <div class="col-sm-9 col-xl-7 offset-sm-3 d-flex gap-2">
-                <button type="button" class="btn btn-primary" (click)="save()" [disabled]="saving">
-                    {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+                <button type="button" class="btn btn-primary btn-with-spinner" (click)="save()" [disabled]="saving">
+                    <mat-spinner *ngIf="saving" diameter="18"></mat-spinner>
+                    <span>{{ saving ? 'Enregistrement…' : 'Enregistrer' }}</span>
                 </button>
                 <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="saving">
                     Annuler
@@ -98,19 +99,21 @@
                     <button
                         *ngIf="!r.referent && !r.referent_pending"
                         type="button"
-                        class="btn btn-sm btn-outline-secondary"
+                        class="btn btn-sm btn-outline-secondary btn-with-spinner"
                         (click)="requestReferent(r.area_code)"
-                        [disabled]="!!referentSavingCode"
+                        [disabled]="addingReserve || !!referentSavingCode || !!removingReserveCode"
                     >
-                        {{ referentSavingCode === r.area_code ? 'Envoi...' : 'Demander statut référent' }}
+                        <mat-spinner *ngIf="referentSavingCode === r.area_code" diameter="16"></mat-spinner>
+                        <span>{{ referentSavingCode === r.area_code ? 'Envoi…' : 'Demander statut référent' }}</span>
                     </button>
                     <button
                         type="button"
-                        class="btn btn-sm btn-outline-danger"
+                        class="btn btn-sm btn-outline-danger btn-with-spinner"
                         (click)="removeReserve(r.area_code)"
-                        [disabled]="reserveSaving"
+                        [disabled]="addingReserve || !!referentSavingCode || !!removingReserveCode"
                     >
-                        Retirer
+                        <mat-spinner *ngIf="removingReserveCode === r.area_code" diameter="16"></mat-spinner>
+                        <span>{{ removingReserveCode === r.area_code ? 'Retrait…' : 'Retirer' }}</span>
                     </button>
                 </div>
             </div>
@@ -130,14 +133,20 @@
                 </select>
                 <button
                     type="button"
-                    class="btn btn-primary"
+                    class="btn btn-primary btn-with-spinner"
                     (click)="addReserve()"
-                    [disabled]="reserveSaving || !selectedReserveToAdd"
+                    [disabled]="addingReserve || !!removingReserveCode || !!referentSavingCode || !selectedReserveToAdd"
                 >
-                    {{ reserveSaving ? 'Ajout...' : 'Ajouter' }}
+                    <mat-spinner *ngIf="addingReserve" diameter="18"></mat-spinner>
+                    <span>{{ addingReserve ? 'Ajout…' : 'Ajouter' }}</span>
                 </button>
             </div>
-            <small class="text-muted" *ngIf="!availableReserveOptions.length">Aucune autre réserve disponible pour votre organisme.</small>
+            <small class="text-muted" *ngIf="!availableReserveOptions.length && !reserveOptions.length">
+                Aucune réserve n'est associée à votre organisme pour le moment.
+            </small>
+            <small class="text-muted" *ngIf="!availableReserveOptions.length && reserveOptions.length">
+                Toutes les réserves de votre organisme sont déjà associées à votre compte.
+            </small>
         </div>
     </div>
 

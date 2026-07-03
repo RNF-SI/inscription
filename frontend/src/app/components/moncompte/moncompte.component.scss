@@ -117,6 +117,26 @@ input.form-control-plaintext {
     align-items: center;
   }
 
+  .btn-with-spinner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .btn.btn-sm.btn-with-spinner mat-spinner {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .btn-primary.btn-with-spinner mat-spinner {
+    --mdc-circular-progress-active-indicator-color: #fff;
+  }
+
+  .btn-outline-secondary.btn-with-spinner mat-spinner,
+  .btn-outline-danger.btn-with-spinner mat-spinner {
+    --mdc-circular-progress-active-indicator-color: currentColor;
+  }
+
   @media (max-width: 768px) {
     .reserve-card {
       flex-direction: column;

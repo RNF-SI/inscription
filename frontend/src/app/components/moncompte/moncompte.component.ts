@@ -15,7 +15,8 @@ export class MoncompteComponent implements OnInit {
   isEditing = false;
   reserveOptions: ReserveOptionDto[] = [];
   selectedReserveToAdd = '';
-  reserveSaving = false;
+  addingReserve = false;
+  removingReserveCode: string | null = null;
   referentSavingCode: string | null = null;
 
   constructor(private fb: UntypedFormBuilder, private api: ApiService, private auth: AuthService) {}
@@ -34,9 +35,9 @@ export class MoncompteComponent implements OnInit {
         this.me = me;
         localStorage.setItem('me_snapshot', JSON.stringify(me));
         this.patchFormFromMe(me);
+        this.loadReserveOptions();
       },
     });
-    this.loadReserveOptions();
   }
 
   edit(): void {
@@ -118,42 +119,39 @@ export class MoncompteComponent implements OnInit {
 
   addReserve(): void {
     const code = (this.selectedReserveToAdd || '').trim();
-    if (!code || this.reserveSaving) {
+    if (!code || this.addingReserve || this.removingReserveCode || this.referentSavingCode) {
       return;
     }
-    this.reserveSaving = true;
+    this.addingReserve = true;
     this.api.addMyReserve(code).subscribe({
       next: () => this.refreshAfterReserveChange(),
       error: () => {
-        this.reserveSaving = false;
+        this.addingReserve = false;
       },
     });
   }
 
   removeReserve(areaCode: string): void {
-    if (!areaCode || this.reserveSaving) {
+    if (!areaCode || this.removingReserveCode || this.addingReserve || this.referentSavingCode) {
       return;
     }
-    this.reserveSaving = true;
+    this.removingReserveCode = areaCode;
     this.api.removeMyReserve(areaCode).subscribe({
       next: () => this.refreshAfterReserveChange(),
       error: () => {
-        this.reserveSaving = false;
+        this.removingReserveCode = null;
       },
     });
   }
 
   requestReferent(areaCode: string): void {
-    if (!areaCode || this.referentSavingCode) {
+    if (!areaCode || this.referentSavingCode || this.addingReserve || this.removingReserveCode) {
       return;
     }
     this.referentSavingCode = areaCode;
     this.api.requestMyReserveReferent(areaCode).subscribe({
       next: () => this.refreshAfterReserveChange(),
       error: () => {
-        this.referentSavingCode = null;
-      },
-      complete: () => {
         this.referentSavingCode = null;
       },
     });
@@ -182,15 +180,21 @@ export class MoncompteComponent implements OnInit {
             this.loadReserveOptions();
           },
           complete: () => {
-            this.reserveSaving = false;
+            this.addingReserve = false;
+            this.removingReserveCode = null;
+            this.referentSavingCode = null;
           },
           error: () => {
-            this.reserveSaving = false;
+            this.addingReserve = false;
+            this.removingReserveCode = null;
+            this.referentSavingCode = null;
           },
         });
       },
       error: () => {
-        this.reserveSaving = false;
+        this.addingReserve = false;
+        this.removingReserveCode = null;
+        this.referentSavingCode = null;
       },
     });
   }

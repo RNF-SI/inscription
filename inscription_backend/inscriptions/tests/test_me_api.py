@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from rest_framework import status
 
-from inscriptions.models import Notification
+from inscriptions.models import Notification, Organisme, OrganismeReserveLink
 from inscriptions.tests.helpers import (
     BaseApiTestCase,
     auth_client,
@@ -113,6 +113,30 @@ class MeApiTests(BaseApiTestCase):
         self.assertFalse(Notification.objects.filter(pk=read_notif.pk).exists())
         self.assertTrue(Notification.objects.filter(pk=unread_notif.pk).exists())
         self.assertTrue(Notification.objects.filter(pk=other_read.pk).exists())
+
+    def test_me_reserve_options_from_organisme_group(self):
+        org = Organisme.objects.create(id_organisme=42, nom_organisme="Parc Test", keycloak_slug="parc-test")
+        reserve = make_reserve(area_code="RNN01", area_name="Réserve 01")
+        OrganismeReserveLink.objects.create(organisme=org, reserve=reserve)
+        user = make_profile(sub="user-reserve-sub", email="reserve@test.local", groups=["organismes/parc-test"])
+        auth_client(self.client, user)
+        response = self.client.get("/api/me/reserve-options/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["area_code"], "RNN01")
+
+    def test_me_reserve_options_fallback_by_organisme_name(self):
+        org = Organisme.objects.create(id_organisme=43, nom_organisme="Office Test", keycloak_slug="office-test")
+        reserve = make_reserve(area_code="RNN02", area_name="Réserve 02")
+        OrganismeReserveLink.objects.create(organisme=org, reserve=reserve)
+        user = make_profile(sub="user-reserve-sub-2", email="reserve2@test.local", groups=[])
+        auth_client(self.client, user, organisme_name="Office Test")
+        response = self.client.get("/api/me/reserve-options/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["area_code"], "RNN02")
 
 
 class ReferentRemovalRequestApiTests(BaseApiTestCase):
