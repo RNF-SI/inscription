@@ -15,8 +15,89 @@
         <br *ngIf="user"><br>
         Certaines plateformes ne sont pas accessibles via votre compte du SI de RNF, et sont gérées indépendamment (ou ne nécessitent pas de connexion).
     </div>
-    <mat-grid-list cols="3" rowHeight="450px">
-        <mat-grid-tile *ngFor="let app of applications">
+    <div class="d-flex justify-content-center py-4" *ngIf="applicationsLoading">
+        <app-loading-spinner></app-loading-spinner>
+    </div>
+    <div class="application-filters mb-3" *ngIf="!applicationsLoading && applications.length">
+        <div class="application-filters-row" *ngIf="user">
+            <span class="application-filters-label">Accès</span>
+            <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Filtrer par accès">
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="accessFilter === 'all'"
+                    [class.btn-outline-secondary]="accessFilter !== 'all'"
+                    (click)="setAccessFilter('all')"
+                >
+                    Toutes
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="accessFilter === 'with_access'"
+                    [class.btn-outline-secondary]="accessFilter !== 'with_access'"
+                    (click)="setAccessFilter('with_access')"
+                >
+                    Avec accès
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="accessFilter === 'without_access'"
+                    [class.btn-outline-secondary]="accessFilter !== 'without_access'"
+                    (click)="setAccessFilter('without_access')"
+                >
+                    Sans accès
+                </button>
+            </div>
+        </div>
+        <div class="application-filters-row">
+            <span class="application-filters-label">Gestion</span>
+            <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Filtrer par gestion">
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="managementFilter === 'all'"
+                    [class.btn-outline-secondary]="managementFilter !== 'all'"
+                    (click)="setManagementFilter('all')"
+                >
+                    Toutes
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="managementFilter === 'si'"
+                    [class.btn-outline-secondary]="managementFilter !== 'si'"
+                    (click)="setManagementFilter('si')"
+                >
+                    Gérées par le SI RNF
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    [class.btn-secondary]="managementFilter === 'independent'"
+                    [class.btn-outline-secondary]="managementFilter !== 'independent'"
+                    (click)="setManagementFilter('independent')"
+                >
+                    Gérées indépendamment
+                </button>
+            </div>
+        </div>
+        <p class="application-filters-summary mb-0" *ngIf="hasActiveApplicationFilters()">
+            {{ filteredApplications.length }} application(s) affichée(s)
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" (click)="resetApplicationFilters()">
+                Réinitialiser
+            </button>
+        </p>
+    </div>
+    <p class="text-muted mb-3" *ngIf="!applicationsLoading && applications.length && !filteredApplications.length">
+        Aucune application ne correspond aux filtres sélectionnés.
+        <button type="button" class="btn btn-link btn-sm p-0 align-baseline" (click)="resetApplicationFilters()">
+            Réinitialiser les filtres
+        </button>
+    </p>
+    <mat-grid-list cols="3" rowHeight="450px" *ngIf="!applicationsLoading && filteredApplications.length">
+        <mat-grid-tile *ngFor="let app of filteredApplications">
             <mat-card class="card">
                 <mat-card-header>
                     

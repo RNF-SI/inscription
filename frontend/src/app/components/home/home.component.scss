@@ -155,6 +155,33 @@
   box-shadow: 0 0 0 0.2rem rgba(11, 136, 93, 0.15);
 }
 
+.application-filters {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.application-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.application-filters-label {
+  font-weight: 600;
+  text-align: right;
+}
+
+.application-filters-summary {
+  font-size: 0.875rem;
+  color: #6c757d;
+  text-align: right;
+}
+
   .panel-footer {
     padding-top: 1px;
     background-color: #0B885D;

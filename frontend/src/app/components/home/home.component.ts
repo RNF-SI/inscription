@@ -8,6 +8,11 @@ import { ToastrService } from 'ngx-toastr';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
 
+export type HomeAccessFilter = 'all' | 'with_access' | 'without_access';
+export type HomeManagementFilter = 'all' | 'si' | 'independent';
+
+export type HomeApplication = ApplicationDto & { access_status?: string };
+
 @Component({
   selector: 'app-home',
   templateUrl: './home.component.html',
@@ -33,9 +38,12 @@ export class HomeComponent implements OnInit {
 
   readonly applicationImageUrl = applicationImageUrl;
 
-  applications: (ApplicationDto & { access_status?: string })[] = [];
+  applications: HomeApplication[] = [];
+  applicationsLoading = true;
+  accessFilter: HomeAccessFilter = 'all';
+  managementFilter: HomeManagementFilter = 'all';
   loadingRequestBySlug: { [slug: string]: boolean } = {};
-  selectedRequestApp: (ApplicationDto & { access_status?: string }) | null = null;
+  selectedRequestApp: HomeApplication | null = null;
   requestJustification = '';
   private accessRequestModalRef: NgbModalRef | null = null;
 
@@ -51,6 +59,8 @@ export class HomeComponent implements OnInit {
         error: () => {
           this.applications = [];
         },
+      }).add(() => {
+        this.applicationsLoading = false;
       });
 
     if (this._authService.authenticated) {
@@ -66,6 +76,10 @@ export class HomeComponent implements OnInit {
   private mergeAccessStatus(): void {
     const me = this._authService.getMeSnapshot();
     if (!me?.applications?.length) {
+      this.applications = this.applications.map((app) => ({
+        ...app,
+        access_status: app.access_status || 'none',
+      }));
       return;
     }
     const map = new Map<string, string>();
@@ -78,7 +92,51 @@ export class HomeComponent implements OnInit {
     }));
   }
 
-  statusIcon(app: ApplicationDto & { access_status?: string }) {
+  get filteredApplications(): HomeApplication[] {
+    return this.applications.filter((app) => this.matchesApplicationFilters(app));
+  }
+
+  hasActiveApplicationFilters(): boolean {
+    return this.accessFilter !== 'all' || this.managementFilter !== 'all';
+  }
+
+  setAccessFilter(filter: HomeAccessFilter): void {
+    this.accessFilter = filter;
+  }
+
+  setManagementFilter(filter: HomeManagementFilter): void {
+    this.managementFilter = filter;
+  }
+
+  resetApplicationFilters(): void {
+    this.accessFilter = 'all';
+    this.managementFilter = 'all';
+  }
+
+  hasApplicationAccess(app: HomeApplication): boolean {
+    return (app.access_status || 'none') === 'active';
+  }
+
+  private matchesApplicationFilters(app: HomeApplication): boolean {
+    if (this.managementFilter === 'si' && !app.managed_by_si) {
+      return false;
+    }
+    if (this.managementFilter === 'independent' && app.managed_by_si) {
+      return false;
+    }
+    if (this.user && this.accessFilter !== 'all') {
+      const hasAccess = this.hasApplicationAccess(app);
+      if (this.accessFilter === 'with_access' && !hasAccess) {
+        return false;
+      }
+      if (this.accessFilter === 'without_access' && hasAccess) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  statusIcon(app: HomeApplication) {
     const s = app.access_status || 'none';
     if (s === 'active') {
       return this.faCheck;
@@ -89,7 +147,7 @@ export class HomeComponent implements OnInit {
     return null;
   }
 
-  statusLabel(app: ApplicationDto & { access_status?: string }): string {
+  statusLabel(app: HomeApplication): string {
     const s = app.access_status || 'none';
     if (s === 'active') {
       return 'Accès accordé';
@@ -103,7 +161,7 @@ export class HomeComponent implements OnInit {
     return 'Pas d’accès';
   }
 
-  statusClass(app: ApplicationDto & { access_status?: string }): string {
+  statusClass(app: HomeApplication): string {
     const s = app.access_status || 'none';
     if (s === 'active') {
       return 'status-active';
@@ -117,7 +175,7 @@ export class HomeComponent implements OnInit {
     return 'status-none';
   }
 
-  canRequestAccess(app: ApplicationDto & { access_status?: string }): boolean {
+  canRequestAccess(app: HomeApplication): boolean {
     if (!this.user) {
       return false;
     }
@@ -131,7 +189,7 @@ export class HomeComponent implements OnInit {
     return s === 'none' || s === 'revoked';
   }
 
-  requestAccess(app: ApplicationDto & { access_status?: string }) {
+  requestAccess(app: HomeApplication) {
     if (!this.canRequestAccess(app)) {
       return;
     }

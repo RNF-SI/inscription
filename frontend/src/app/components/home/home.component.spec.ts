@@ -52,11 +52,57 @@ describe('HomeComponent', () => {
   });
 
   it('loads applications on init', () => {
+    expect(component.applicationsLoading).toBeFalse();
     expect(component.applications.length).toBe(1);
     expect(component.applications[0].slug).toBe('ancrage');
   });
 
   it('builds application image url via helper', () => {
     expect(component.applicationImageUrl('ancrage.png')).toContain('ancrage.png');
+  });
+
+  it('filters applications by management and access', () => {
+    spyOnProperty(component, 'user', 'get').and.returnValue({} as never);
+    component.applications = [
+      {
+        slug: 'si-active',
+        nom: 'SI active',
+        url: '',
+        image: '',
+        description: '',
+        managed_by_si: true,
+        requires_access_request: true,
+        access_status: 'active',
+      },
+      {
+        slug: 'si-none',
+        nom: 'SI none',
+        url: '',
+        image: '',
+        description: '',
+        managed_by_si: true,
+        requires_access_request: true,
+        access_status: 'none',
+      },
+      {
+        slug: 'indep',
+        nom: 'Indep',
+        url: '',
+        image: '',
+        description: '',
+        managed_by_si: false,
+        requires_access_request: false,
+        access_status: 'none',
+      },
+    ];
+
+    component.setManagementFilter('si');
+    expect(component.filteredApplications.map((app) => app.slug)).toEqual(['si-active', 'si-none']);
+
+    component.setAccessFilter('with_access');
+    expect(component.filteredApplications.map((app) => app.slug)).toEqual(['si-active']);
+
+    component.resetApplicationFilters();
+    expect(component.filteredApplications.length).toBe(3);
   });
 });
