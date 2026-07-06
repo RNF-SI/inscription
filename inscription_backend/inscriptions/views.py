@@ -190,6 +190,14 @@ def _claims_for_request(request) -> dict[str, Any]:
     return user.claims
 
 
+def _profile_fonction_for_user(user_sub: str, claims: dict[str, Any]) -> str:
+    fonction = (claims.get("function") or claims.get("fonction") or "").strip()
+    if fonction or not settings.KEYCLOAK_SYNC_ENABLED:
+        return fonction
+    info = fetch_user_info(user_sub)
+    return (info.fonction if info else "").strip()
+
+
 def _organisme_for_request(request) -> Organisme | None:
     """Résout l'organisme de l'utilisateur (groupes JWT ou Keycloak + repli base locale)."""
     claims = _claims_for_request(request)
@@ -425,14 +433,15 @@ class MeView(APIView):
 
         try:
             kc = KeycloakAdminClient()
-            kc.update_user_profile(
-                user.sub,
-                username=data.get("username"),
-                email=data.get("email"),
-                first_name=data.get("first_name"),
-                last_name=data.get("last_name"),
-                function_value=data.get("fonction"),
-            )
+            update_kwargs = {
+                "username": data.get("username"),
+                "email": data.get("email"),
+                "first_name": data.get("first_name"),
+                "last_name": data.get("last_name"),
+            }
+            if "fonction" in data:
+                update_kwargs["function_value"] = data.get("fonction")
+            kc.update_user_profile(user.sub, **update_kwargs)
         except KeycloakAdminError as exc:
             logger.warning("Me patch keycloak failed: %s", exc)
             return Response({"detail": "Mise à jour Keycloak impossible."}, status=502)
@@ -455,7 +464,7 @@ class MeView(APIView):
             "last_name": claims.get("family_name") or claims.get("last_name") or "",
             "is_super_admin": is_super_admin(groups),
             "legacy_id_role": None,
-            "fonction": (claims.get("function") or claims.get("fonction") or "").strip(),
+            "fonction": _profile_fonction_for_user(user.sub, claims),
             "organisme": (
                 _organisme_name_from_group_path(org_group_path)
                 or (claims.get("organisme_name") or claims.get("organisme") or "").strip()

@@ -92,6 +92,20 @@ class WorkflowTests(BaseApiTestCase):
             ReserveReferentRequest.objects.filter(user_sub=reg.keycloak_user_id, reserve=reserve).exists()
         )
 
+    @patch("inscriptions.services.workflows.settings.KEYCLOAK_SYNC_ENABLED", True)
+    @patch("inscriptions.services.workflows.prov.provision_user_groups_after_super_approval")
+    @patch("inscriptions.services.workflows.KeycloakAdminClient")
+    def test_super_admin_approve_stores_fonction_in_keycloak(self, kc_cls, _provision):
+        kc = kc_cls.return_value
+        kc.create_user.return_value = "kc-user-id"
+        reg = make_registration(remarks="Conservateur")
+        actor = make_profile(is_super_admin=True)
+
+        workflows.super_admin_approve(reg, actor.keycloak_sub)
+
+        kc.create_user.assert_called_once()
+        self.assertEqual(kc.create_user.call_args.kwargs.get("function_value"), "Conservateur")
+
     def test_create_additional_access_request(self):
         app = make_application(slug="waterwise")
         profile = make_profile()

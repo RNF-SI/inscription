@@ -64,9 +64,28 @@ class MeApiTests(BaseApiTestCase):
 
     def test_me_patch_accepts_fonction(self):
         auth_client(self.client, self.regular_user)
-        with patch("inscriptions.views.KeycloakAdminClient.update_user_profile"):
+        with patch("inscriptions.views.KeycloakAdminClient.update_user_profile") as update_profile:
             response = self.client.patch("/api/me/", {"fonction": "Référent"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        update_profile.assert_called_once()
+        self.assertEqual(update_profile.call_args.kwargs.get("function_value"), "Référent")
+
+    def test_me_returns_fonction_from_keycloak_when_missing_in_token(self):
+        auth_client(self.client, self.regular_user)
+        with patch("inscriptions.views.fetch_user_info") as fetch_info:
+            from inscriptions.user_identity import UserInfo
+
+            fetch_info.return_value = UserInfo(
+                sub=self.regular_user.keycloak_sub,
+                email=self.regular_user.email,
+                username=self.regular_user.username,
+                first_name="Test",
+                last_name="User",
+                fonction="Éducateur",
+            )
+            response = self.client.get("/api/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["profile"]["fonction"], "Éducateur")
 
     def test_notifications_list(self):
         Notification.objects.create(

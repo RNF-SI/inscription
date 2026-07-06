@@ -112,6 +112,7 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
                 password=plain_password,
                 temporary_password=False,
                 require_verify_email=True,
+                function_value=(registration.remarks or "").strip(),
             )
             try:
                 kc.send_verify_email(keycloak_user_id, client_id=settings.KEYCLOAK_APP_CLIENT_ID)
