@@ -328,10 +328,13 @@ class KeycloakAdminClient:
         email: str,
         first_name: str,
         last_name: str,
-        password: str,
-        temporary_password: bool = True,
+        password: str | None = None,
+        temporary_password: bool = False,
         require_verify_email: bool = False,
         function_value: str | None = None,
+        email_verified: bool = False,
+        extra_attributes: dict[str, list[str]] | None = None,
+        imported_password_credential: dict | None = None,
     ) -> str:
         body = {
             "username": username,
@@ -339,13 +342,21 @@ class KeycloakAdminClient:
             "firstName": first_name,
             "lastName": last_name,
             "enabled": True,
-            "emailVerified": False,
-            "credentials": [{"type": "password", "value": password, "temporary": temporary_password}],
+            "emailVerified": email_verified,
         }
+        if imported_password_credential:
+            body["credentials"] = [imported_password_credential]
+        elif password:
+            body["credentials"] = [{"type": "password", "value": password, "temporary": temporary_password}]
+        else:
+            raise KeycloakAdminError("password_or_import_required")
         if require_verify_email:
             body["requiredActions"] = ["VERIFY_EMAIL"]
+        attrs: dict[str, list[str]] = dict(extra_attributes or {})
         if function_value is not None:
-            body["attributes"] = {"function": [str(function_value).strip()]}
+            attrs["function"] = [str(function_value).strip()]
+        if attrs:
+            body["attributes"] = attrs
         r = self._post("/users", json=body)
         if r.status_code not in (200, 201):
             logger.error("create_user %s: %s", r.status_code, r.text[:500])

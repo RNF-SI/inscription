@@ -21,6 +21,8 @@ Les routes HTTP sont sous le préfixe /api/ (voir config/urls.py).
 Commandes utiles
 ----------------
   python manage.py migrate_legacy          # si LEGACY_DATABASE_URL (PostgreSQL legacy)
+  python manage.py migrate_legacy_users_to_keycloak --dry-run --limit 20
+  python manage.py migrate_legacy_users_to_keycloak --clear --limit 20   # importe les mots de passe legacy
   python manage.py import_application_images  # vignettes catalogue → media/application-images/
   python manage.py promote_super --email=vous@exemple.org
   pip install -r requirements-dev.txt && pytest   # tests unitaires (voir inscriptions/tests/README.md)
