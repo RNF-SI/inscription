@@ -9,7 +9,7 @@ export const AppConfig = {
     "ID_APPLICATION_GEONATURE": 6,
     "API_ENDPOINT": "http://127.0.0.1:5070",
     "appName": "Plateformes RNF",
-    "appTitle": "Plateformes de réserves naturelles de France",
+    "appTitle": "Plateformes de RNF",
     "appSubTitle": "Tous les outils pour vous accompagner dans vos projets",
     "creditHeaderImage": "RNN Baie de St-Brieuc - © P. PIERRE",
     "features": {

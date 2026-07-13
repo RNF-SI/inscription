@@ -1,0 +1,120 @@
+@use '@angular/material' as mat;
+
+// Import du core Material
+@include mat.core();
+
+// === Définition des variables CSS personnalisées ===
+
+:root {
+  // Palette PRIMARY
+  --custom-primary-50: #e0f4ed;
+  --custom-primary-100: #b3e2d1;
+  --custom-primary-200: #80cfb3;
+  --custom-primary-300: #4dbd96;
+  --custom-primary-400: #26af81;
+  --custom-primary-500: #00885b;
+  --custom-primary-600: #007c52;
+  --custom-primary-700: #006f48;
+  --custom-primary-800: #00623e;
+  --custom-primary-900: #004a2e;
+  --custom-primary-A100: #a3ffe1;
+  --custom-primary-A200: #70ffd0;
+  --custom-primary-A400: #3dffbf;
+  --custom-primary-A700: #24ffb2;
+
+  // Palette ACCENT
+  --custom-accent-50: #f8fbe5;
+  --custom-accent-100: #eef5bd;
+  --custom-accent-200: #e2ee94;
+  --custom-accent-300: #d7e86c;
+  --custom-accent-400: #cfdf56;
+  --custom-accent-500: #c8d469;
+  --custom-accent-600: #b4c259;
+  --custom-accent-700: #9eae4b;
+  --custom-accent-800: #889a3d;
+  --custom-accent-900: #66762a;
+  --custom-accent-A100: #f9ffd1;
+  --custom-accent-A200: #f0ffa3;
+  --custom-accent-A400: #e6ff75;
+  --custom-accent-A700: #dbff4d;
+}
+
+// === Définition du thème Material Design 3 ===
+
+$custom-primary: mat.m2-define-palette((
+  50:  #e0f4ed,
+  100: #b3e2d1,
+  200: #80cfb3,
+  300: #4dbd96,
+  400: #26af81,
+  500: #00885b,
+  600: #007c52,
+  700: #006f48,
+  800: #00623e,
+  900: #004a2e,
+  A100: #a3ffe1,
+  A200: #70ffd0,
+  A400: #3dffbf,
+  A700: #24ffb2,
+  contrast: (
+    50:  rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: white,
+    400: white,
+    500: white,
+    600: white,
+    700: white,
+    800: white,
+    900: white,
+    A100: rgba(0, 0, 0, 0.87),
+    A200: rgba(0, 0, 0, 0.87),
+    A400: rgba(0, 0, 0, 0.87),
+    A700: rgba(0, 0, 0, 0.87),
+  )
+));
+
+$custom-accent: mat.m2-define-palette((
+  50:  #f8fbe5,
+  100: #eef5bd,
+  200: #e2ee94,
+  300: #d7e86c,
+  400: #cfdf56,
+  500: #c8d469,
+  600: #b4c259,
+  700: #9eae4b,
+  800: #889a3d,
+  900: #66762a,
+  A100: #f9ffd1,
+  A200: #f0ffa3,
+  A400: #e6ff75,
+  A700: #dbff4d,
+  contrast: (
+    50:  rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: rgba(0, 0, 0, 0.87),
+    400: rgba(0, 0, 0, 0.87),
+    500: rgba(0, 0, 0, 0.87),
+    600: rgba(0, 0, 0, 0.87),
+    700: rgba(0, 0, 0, 0.87),
+    800: white,
+    900: white,
+    A100: rgba(0, 0, 0, 0.87),
+    A200: rgba(0, 0, 0, 0.87),
+    A400: rgba(0, 0, 0, 0.87),
+    A700: rgba(0, 0, 0, 0.87),
+  )
+));
+
+$custom-theme: mat.m2-define-light-theme((
+  color: (
+    primary: $custom-primary,
+    accent: $custom-accent,
+  )
+));
+
+
+// === Application du thème à tous les composants Angular Material ===
+
+@include mat.all-component-themes($custom-theme);
