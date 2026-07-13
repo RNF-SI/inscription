@@ -580,7 +580,7 @@
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-primary btn-with-spinner"
-                  (click)="catalogImageInput.click()"
+                  (click)="openCatalogImagePicker()"
                   [disabled]="!canManageCatalogImage || catalogImageUploading || catalogSaving || catalogCropModalOpen"
                 >
                   <mat-spinner *ngIf="catalogImageUploading" diameter="16"></mat-spinner>
@@ -727,7 +727,9 @@
             [maintainAspectRatio]="true"
             [aspectRatio]="applicationImageAspectRatio"
             [resizeToWidth]="applicationImageWidth"
+            output="blob"
             format="png"
+            [autoCrop]="true"
             (imageCropped)="onCatalogImageCropped($event)"
             (loadImageFailed)="onCatalogCropImageFailed()"
           ></image-cropper>

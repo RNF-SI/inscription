@@ -1,12 +1,13 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, ChangeDetectorRef } from '@angular/core';
 import { forkJoin, Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { finalize, takeUntil } from 'rxjs/operators';
 import { NotificationBadgeService } from 'src/app/home-rnf/services/notification-badge.service';
 import { AdminGuardService } from 'src/app/home-rnf/services/admin-guard.service';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
 import { ApiService, NotificationAdminTab, NotificationDto } from 'src/app/services/api.service';
 
 @Component({
+  standalone: false,
   selector: 'app-notifications',
   templateUrl: './notifications.component.html',
   styleUrls: ['./notifications.component.scss']
@@ -24,7 +25,8 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     private api: ApiService,
     private notificationBadge: NotificationBadgeService,
     private auth: AuthService,
-    private adminGuard: AdminGuardService
+    private adminGuard: AdminGuardService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -120,19 +122,22 @@ export class NotificationsComponent implements OnInit, OnDestroy {
 
   private loadNotifications(): void {
     this.loading = true;
-    this.api.getNotifications().subscribe({
-      next: (n) => {
-        this.notifications = n;
-        this.previousUnreadCount = this.unreadCount;
-        this.notificationBadge.setUnreadCount(this.unreadCount);
-      },
-      error: () => {
-        this.notifications = [];
-        this.notificationBadge.setUnreadCount(0);
-      },
-      complete: () => {
+    this.api
+      .getNotifications()
+      .pipe(finalize(() => {
         this.loading = false;
-      },
-    });
+        this.cdr.markForCheck();
+      }))
+      .subscribe({
+        next: (n) => {
+          this.notifications = n;
+          this.previousUnreadCount = this.unreadCount;
+          this.notificationBadge.setUnreadCount(this.unreadCount);
+        },
+        error: () => {
+          this.notifications = [];
+          this.notificationBadge.setUnreadCount(0);
+        },
+      });
   }
 }

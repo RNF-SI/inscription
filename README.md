@@ -6,7 +6,7 @@ Plateforme d'inscription au SI de RNF, reliée à Keycloak.
 
 | Composant | Rôle | Emplacement |
 |-----------|------|-------------|
-| **Frontend** | SPA Angular 15 | `frontend/` → servi en statique (ex. `https://plateformes.reserves-naturelles.org`) |
+| **Frontend** | SPA Angular 22 | `frontend/` → servi en statique (ex. `https://plateformes.reserves-naturelles.org`) |
 | **Backend** | API Django REST sous `/api` | `inscription_backend/` → WSGI (ex. Gunicorn) |
 | **Keycloak** | Authentification, groupes, rôles | Realm dédié (ex. `rnf` sur `https://auth.reserves-naturelles.org`) |
 | **PostgreSQL** | Données métier (inscriptions, catalogue, notifications) | `DATABASE_URL` |
@@ -19,7 +19,7 @@ Le frontend récupère la config Keycloak via `GET /api/auth/keycloak-config/` (
 ## Prérequis
 
 - Python 3.11+ et un environnement virtuel
-- Node.js 18+ et npm (Angular CLI 15)
+- **Node.js 22.22+** (voir `frontend/.nvmrc`) et npm — requis pour Angular 22
 - PostgreSQL (production)
 - Instance Keycloak accessible depuis le backend
 - Reverse proxy (nginx ou équivalent) pour :
@@ -167,6 +167,7 @@ Le reverse proxy doit router :
 
 ```bash
 cd frontend
+nvm use          # Node 22 (fichier .nvmrc)
 npm ci
 ```
 
@@ -271,6 +272,7 @@ python manage.py runserver
 
 # Frontend (autre terminal)
 cd frontend
+nvm use          # Node 22
 npm install
 npm start   # http://localhost:4200
 ```

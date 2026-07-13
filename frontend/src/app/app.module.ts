@@ -1,4 +1,4 @@
-import { NgModule } from '@angular/core';
+import { NgModule, provideZoneChangeDetection } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 
 import { AppRoutingModule } from './app-routing.module';
@@ -41,7 +41,7 @@ import { AdminDashboardComponent } from './components/admin-dashboard/admin-dash
 import { NotificationsComponent } from './components/notifications/notifications.component';
 import { NotificationBadgeService } from './home-rnf/services/notification-badge.service';
 import { InscriptionNotificationBadgeService } from './services/inscription-notification-badge.service';
-import { ImageCropperModule } from 'ngx-image-cropper';
+import { ImageCropperComponent } from 'ngx-image-cropper';
 
 @NgModule({
   declarations: [
@@ -81,9 +81,10 @@ import { ImageCropperModule } from 'ngx-image-cropper';
     FontAwesomeModule,
     HomeRnfModule,
     NgMultiSelectDropDownModule.forRoot(),
-    ImageCropperModule,
+    ImageCropperComponent,
   ],
   providers: [
+    provideZoneChangeDetection(),
     { provide: HTTP_INTERCEPTORS, useClass: MyCustomInterceptor, multi: true },
     { provide: NotificationBadgeService, useClass: InscriptionNotificationBadgeService }
   ],

@@ -1,4 +1,4 @@
-import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { faArrowUpRightFromSquare, faBan, faCheck, faClock, faKey, faUserPlus } from '@fortawesome/free-solid-svg-icons';
 import { User } from '../../home-rnf/models/user.model';
 import { AuthService } from '../../home-rnf/services/auth-service.service';
@@ -7,6 +7,8 @@ import { ApiService, ApplicationDto, MeApplicationRow } from 'src/app/services/a
 import { ToastrService } from 'ngx-toastr';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
+import { catchError, finalize } from 'rxjs/operators';
+import { of } from 'rxjs';
 
 export type HomeAccessFilter = 'all' | 'with_access' | 'without_access';
 export type HomeManagementFilter = 'all' | 'si' | 'independent';
@@ -14,6 +16,7 @@ export type HomeManagementFilter = 'all' | 'si' | 'independent';
 export type HomeApplication = ApplicationDto & { access_status?: string };
 
 @Component({
+  standalone: false,
   selector: 'app-home',
   templateUrl: './home.component.html',
   styleUrls: ['./home.component.scss'],
@@ -25,7 +28,8 @@ export class HomeComponent implements OnInit {
     private _authService: AuthService,
     private api: ApiService,
     private toastr: ToastrService,
-    private modalService: NgbModal
+    private modalService: NgbModal,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   protected organismes: Organisme[];
@@ -50,29 +54,40 @@ export class HomeComponent implements OnInit {
   ngOnInit(): void {
     this.logDecodedTokensForDebug();
 
-    const load = () =>
-      this.api.getApplications().subscribe({
-        next: (apps) => {
+    const stopLoading = () => {
+      this.applicationsLoading = false;
+      this.cdr.detectChanges();
+    };
+
+    const loadApplications = () => {
+      this.api
+        .getApplications()
+        .pipe(
+          finalize(() => stopLoading()),
+          catchError(() => {
+            this.applications = [];
+            return of([] as ApplicationDto[]);
+          }),
+        )
+        .subscribe((apps) => {
           this.applications = apps;
           this.mergeAccessStatus();
-        },
-        error: () => {
-          this.applications = [];
-        },
-      }).add(() => {
-        this.applicationsLoading = false;
-      });
-
-    this._authService.restoreSession().subscribe((ok) => {
-      if (ok) {
-        this._authService.refreshMeFromApi().subscribe({
-          next: () => load(),
-          error: () => load(),
         });
-      } else {
-        load();
-      }
-    });
+    };
+
+    this._authService
+      .restoreSession()
+      .pipe(catchError(() => of(false)))
+      .subscribe((ok) => {
+        if (!ok) {
+          loadApplications();
+          return;
+        }
+        this._authService
+          .refreshMeFromApi()
+          .pipe(catchError(() => of(null)))
+          .subscribe(() => loadApplications());
+      });
   }
 
   private mergeAccessStatus(): void {

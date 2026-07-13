@@ -1,9 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
 import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
 import { ApiService, MeResponse, ReserveOptionDto } from 'src/app/services/api.service';
+import { catchError, finalize } from 'rxjs/operators';
+import { of } from 'rxjs';
 
 @Component({
+  standalone: false,
   selector: 'app-moncompte',
   templateUrl: './moncompte.component.html',
   styleUrls: ['./moncompte.component.scss'],
@@ -19,7 +22,12 @@ export class MoncompteComponent implements OnInit {
   removingReserveCode: string | null = null;
   referentSavingCode: string | null = null;
 
-  constructor(private fb: UntypedFormBuilder, private api: ApiService, private auth: AuthService) {}
+  constructor(
+    private fb: UntypedFormBuilder,
+    private api: ApiService,
+    private auth: AuthService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
     this.form = this.fb.group({
@@ -30,14 +38,40 @@ export class MoncompteComponent implements OnInit {
       organisme: [{ value: '', disabled: true }],
       email: [''],
     });
-    this.api.getMe().subscribe({
-      next: (me) => {
-        this.me = me;
-        localStorage.setItem('me_snapshot', JSON.stringify(me));
-        this.patchFormFromMe(me);
-        this.loadReserveOptions();
-      },
-    });
+
+    const cached = this.auth.getMeSnapshot();
+    if (cached) {
+      this.applyMe(cached);
+    }
+
+    this.auth
+      .restoreSession()
+      .pipe(catchError(() => of(false)))
+      .subscribe(() => {
+        this.loadMe();
+      });
+  }
+
+  private applyMe(me: MeResponse): void {
+    this.me = me;
+    localStorage.setItem('me_snapshot', JSON.stringify(me));
+    this.patchFormFromMe(me);
+    this.cdr.detectChanges();
+  }
+
+  private loadMe(): void {
+    this.api
+      .getMe()
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => this.cdr.detectChanges()),
+      )
+      .subscribe((me) => {
+        if (me) {
+          this.applyMe(me);
+          this.loadReserveOptions();
+        }
+      });
   }
 
   edit(): void {
@@ -72,16 +106,16 @@ export class MoncompteComponent implements OnInit {
           next: () => {
             this.api.getMe().subscribe({
               next: (me) => {
-                this.me = me;
-                localStorage.setItem('me_snapshot', JSON.stringify(me));
-                this.patchFormFromMe(me);
+                this.applyMe(me);
                 this.isEditing = false;
               },
               complete: () => {
                 this.saving = false;
+                this.cdr.detectChanges();
               },
               error: () => {
                 this.saving = false;
+                this.cdr.detectChanges();
               },
             });
           },
@@ -161,9 +195,11 @@ export class MoncompteComponent implements OnInit {
     this.api.getMyReserveOptions().subscribe({
       next: (opts) => {
         this.reserveOptions = opts || [];
+        this.cdr.detectChanges();
       },
       error: () => {
         this.reserveOptions = [];
+        this.cdr.detectChanges();
       },
     });
   }
@@ -173,9 +209,7 @@ export class MoncompteComponent implements OnInit {
       next: () => {
         this.api.getMe().subscribe({
           next: (me) => {
-            this.me = me;
-            localStorage.setItem('me_snapshot', JSON.stringify(me));
-            this.patchFormFromMe(me);
+            this.applyMe(me);
             this.selectedReserveToAdd = '';
             this.loadReserveOptions();
           },
@@ -183,11 +217,13 @@ export class MoncompteComponent implements OnInit {
             this.addingReserve = false;
             this.removingReserveCode = null;
             this.referentSavingCode = null;
+            this.cdr.detectChanges();
           },
           error: () => {
             this.addingReserve = false;
             this.removingReserveCode = null;
             this.referentSavingCode = null;
+            this.cdr.detectChanges();
           },
         });
       },

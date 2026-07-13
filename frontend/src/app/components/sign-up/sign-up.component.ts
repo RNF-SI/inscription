@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormControl, UntypedFormGroup, Validators } from '@angular/forms';
 import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
@@ -18,6 +18,7 @@ type SignupApplication = {
 };
 
 @Component({
+  standalone: false,
   selector: 'app-sign-up',
   templateUrl: './sign-up.component.html',
   styleUrls: ['./sign-up.component.scss']
@@ -52,7 +53,8 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     private fb: UntypedFormBuilder,
     private _registerService: RegisterService,
     private router: Router,
-    private _toasterService: ToastrService
+    private _toasterService: ToastrService,
+    private cdr: ChangeDetectorRef,
   ) {
   }
 
@@ -89,12 +91,14 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           .subscribe(() => {
             this.filterOrgs();
           });
+        this.cdr.markForCheck();
       }
     );
     this._registerService.getApplications().subscribe((apps) => {
       const list: SignupApplication[] = apps || [];
       this.requestableApplications = list.filter((a) => a.requires_access_request);
       this.openApplications = list.filter((a) => a.managed_by_si && !a.requires_access_request);
+      this.cdr.markForCheck();
     });
   }
 

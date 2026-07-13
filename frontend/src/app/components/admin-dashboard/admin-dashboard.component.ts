@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
@@ -25,6 +25,7 @@ import { applicationImageUrl } from 'src/app/utils/application-image.util';
 import { ToastrService } from 'ngx-toastr';
 
 @Component({
+  standalone: false,
   selector: 'app-admin-dashboard',
   templateUrl: './admin-dashboard.component.html',
   styleUrls: ['./admin-dashboard.component.scss'],
@@ -151,7 +152,8 @@ export class AdminDashboardComponent implements OnInit {
     private api: ApiService,
     private auth: AuthService,
     private route: ActivatedRoute,
-    private toastr: ToastrService
+    private toastr: ToastrService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -582,8 +584,13 @@ export class AdminDashboardComponent implements OnInit {
     return this.tabLoading[tab];
   }
 
+  private setTabLoading(tab: 'requests' | 'reserves' | 'user-access' | 'applications', loading: boolean): void {
+    this.tabLoading[tab] = loading;
+    this.cdr.detectChanges();
+  }
+
   private loadTab(tab: 'requests' | 'reserves' | 'user-access' | 'applications', force = false): void {
-    if (this.tabLoading[tab] || (!force && this.tabLoaded[tab])) {
+    if (!force && (this.tabLoading[tab] || this.tabLoaded[tab])) {
       return;
     }
     if (tab === 'requests') {
@@ -604,10 +611,13 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   private loadRequestsTab(force = false): void {
-    if (this.tabLoading.requests || (!force && this.tabLoaded.requests)) {
+    if (!force && (this.tabLoading.requests || this.tabLoaded.requests)) {
       return;
     }
-    this.tabLoading.requests = true;
+    if (force) {
+      this.tabLoaded.requests = false;
+    }
+    this.setTabLoading('requests', true);
     forkJoin({
       regs: this.api.getAdminRegistrations().pipe(catchError(() => of([]))),
       pend: this.api.getPendingItems().pipe(catchError(() => of([]))),
@@ -617,7 +627,7 @@ export class AdminDashboardComponent implements OnInit {
     })
       .pipe(
         finalize(() => {
-          this.tabLoading.requests = false;
+          this.setTabLoading('requests', false);
         })
       )
       .subscribe(({ regs, pend, validationApps, reserveRemoval, reserveReferentRequests }) => {
@@ -627,20 +637,24 @@ export class AdminDashboardComponent implements OnInit {
         this.reserveRemovalRequests = reserveRemoval;
         this.reserveReferentRequests = reserveReferentRequests;
         this.tabLoaded.requests = true;
+        this.cdr.detectChanges();
       });
   }
 
   private loadReservesTab(force = false): void {
-    if (this.tabLoading.reserves || (!force && this.tabLoaded.reserves)) {
+    if (!force && (this.tabLoading.reserves || this.tabLoaded.reserves)) {
       return;
     }
-    this.tabLoading.reserves = true;
+    if (force) {
+      this.tabLoaded.reserves = false;
+    }
+    this.setTabLoading('reserves', true);
     this.api
       .getReferentReserveMembers()
       .pipe(
         catchError(() => of([])),
         finalize(() => {
-          this.tabLoading.reserves = false;
+          this.setTabLoading('reserves', false);
         })
       )
       .subscribe((referentReserves) => {
@@ -652,6 +666,7 @@ export class AdminDashboardComponent implements OnInit {
           this.selectedReferentReserveCode = this.referentReserves[0].reserve.area_code;
         }
         this.tabLoaded.reserves = true;
+        this.cdr.detectChanges();
       });
   }
 
@@ -726,12 +741,11 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   private loadUserAccessTab(force = false): void {
-    if (this.tabLoading['user-access'] || (!force && this.tabLoaded['user-access'] && !this.selectedUserAccessSub)) {
+    if (!force && (this.tabLoading['user-access'] || (this.tabLoaded['user-access'] && !this.selectedUserAccessSub))) {
       return;
     }
-    this.tabLoading['user-access'] = true;
     if (!this.selectedUserAccessSub) {
-      this.tabLoading['user-access'] = false;
+      this.setTabLoading('user-access', false);
       this.tabLoaded['user-access'] = true;
       return;
     }
@@ -742,20 +756,25 @@ export class AdminDashboardComponent implements OnInit {
     if (!this.selectedUserAccessSub) {
       return;
     }
-    this.tabLoading['user-access'] = true;
+    if (force) {
+      this.tabLoaded['user-access'] = false;
+    }
+    this.setTabLoading('user-access', true);
     this.userAccessLoadError = '';
     this.api.getUserApplicationAccess(this.selectedUserAccessSub).subscribe({
       next: (data) => {
         this.userAccessData = data;
         this.userAccessDraft = {};
         this.tabLoaded['user-access'] = true;
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.userAccessData = null;
         this.userAccessLoadError = err?.error?.detail || 'Chargement impossible.';
+        this.cdr.detectChanges();
       },
       complete: () => {
-        this.tabLoading['user-access'] = false;
+        this.setTabLoading('user-access', false);
       },
     });
   }
@@ -1038,6 +1057,7 @@ export class AdminDashboardComponent implements OnInit {
       return;
     }
     this.catalogMembersDataLoading = true;
+    this.cdr.detectChanges();
     this.catalogMembersError = '';
     this.api.getApplicationDualMembers(app.slug).subscribe({
       next: (data) => {
@@ -1045,15 +1065,18 @@ export class AdminDashboardComponent implements OnInit {
         this.catalogAvailableDraft = [...(data.available || [])];
         this.catalogMembersInitialSubs = this.catalogMembersDraft.map((m) => m.keycloak_sub);
         this.refreshCatalogMemberViews();
+        this.cdr.detectChanges();
       },
       error: () => {
         this.catalogMembersError = 'Impossible de charger les utilisateurs.';
         this.catalogMembersDraft = [];
         this.catalogAvailableDraft = [];
         this.refreshCatalogMemberViews();
+        this.cdr.detectChanges();
       },
       complete: () => {
         this.catalogMembersDataLoading = false;
+        this.cdr.detectChanges();
       },
     });
   }
@@ -1289,15 +1312,35 @@ export class AdminDashboardComponent implements OnInit {
     this.catalogCropImageFile = file;
     this.catalogCroppedFile = null;
     this.catalogCropModalOpen = true;
+    this.cdr.detectChanges();
   }
 
   onCatalogImageCropped(event: ImageCroppedEvent): void {
-    if (!event.base64 || !this.catalogEditingSlug) {
+    if (!this.catalogEditingSlug) {
       this.catalogCroppedFile = null;
       return;
     }
-    const blob = base64ToFile(event.base64);
-    this.catalogCroppedFile = new File([blob], `${this.catalogEditingSlug}.png`, { type: 'image/png' });
+    if (event.blob) {
+      this.catalogCroppedFile = new File([event.blob], `${this.catalogEditingSlug}.png`, {
+        type: event.blob.type || 'image/png',
+      });
+      this.cdr.detectChanges();
+      return;
+    }
+    if (event.base64) {
+      const blob = base64ToFile(event.base64);
+      this.catalogCroppedFile = new File([blob], `${this.catalogEditingSlug}.png`, { type: 'image/png' });
+      this.cdr.detectChanges();
+      return;
+    }
+    this.catalogCroppedFile = null;
+  }
+
+  openCatalogImagePicker(): void {
+    if (!this.canManageCatalogImage || this.catalogImageUploading || this.catalogSaving || this.catalogCropModalOpen) {
+      return;
+    }
+    this.catalogImageInput?.nativeElement?.click();
   }
 
   cancelCatalogImageCrop(): void {
@@ -1306,6 +1349,7 @@ export class AdminDashboardComponent implements OnInit {
     this.catalogCroppedFile = null;
     this.catalogCropLoadError = '';
     this.resetCatalogImageInput();
+    this.cdr.detectChanges();
   }
 
   onCatalogCropImageFailed(): void {
@@ -1331,7 +1375,7 @@ export class AdminDashboardComponent implements OnInit {
       next: (saved) => {
         this.catalogForm.image = saved.image || '';
         this.catalogImageCacheBust = Date.now();
-        this.reloadApplicationsCatalog();
+        this.upsertCatalogApplication(saved);
         this.cancelCatalogImageCrop();
       },
       error: (err) => {
@@ -1339,6 +1383,7 @@ export class AdminDashboardComponent implements OnInit {
       },
       complete: () => {
         this.catalogImageUploading = false;
+        this.cdr.detectChanges();
       },
     });
   }
@@ -1353,13 +1398,14 @@ export class AdminDashboardComponent implements OnInit {
       next: (saved) => {
         this.catalogForm.image = saved.image || '';
         this.catalogImageCacheBust = Date.now();
-        this.reloadApplicationsCatalog();
+        this.upsertCatalogApplication(saved);
       },
       error: (err) => {
         this.catalogFormError = err?.error?.detail || 'Suppression impossible.';
       },
       complete: () => {
         this.catalogImageUploading = false;
+        this.cdr.detectChanges();
       },
     });
   }
@@ -1378,11 +1424,17 @@ export class AdminDashboardComponent implements OnInit {
       keycloak_client_id: (this.catalogForm.keycloak_client_id || '').trim(),
     };
     if (!payload.nom) {
-      this.catalogFormError = 'Le nom est requis.';
+      const msg = 'Le nom est requis.';
+      this.catalogFormError = msg;
+      this.toastr.error(msg, 'Enregistrement');
+      this.cdr.detectChanges();
       return;
     }
     if (!this.catalogEditingSlug && !payload.slug) {
-      this.catalogFormError = 'Le slug est requis pour une nouvelle application.';
+      const msg = 'Le slug est requis pour une nouvelle application.';
+      this.catalogFormError = msg;
+      this.toastr.error(msg, 'Enregistrement');
+      this.cdr.detectChanges();
       return;
     }
 
@@ -1418,49 +1470,66 @@ export class AdminDashboardComponent implements OnInit {
         }
         const subs = this.catalogAdminDraft.map((admin) => admin.keycloak_sub);
         return this.api.syncCatalogApplicationAdmins(saved.slug, subs).pipe(map(() => saved));
+      }),
+      finalize(() => {
+        this.catalogSaving = false;
+        this.cdr.detectChanges();
       })
     ).subscribe({
-      next: () => {
+      next: (saved) => {
+        this.upsertCatalogApplication(saved);
+        this.closeCatalogModal();
+        this.toastr.success('Application enregistrée avec succès.', 'Enregistrement');
         this.reloadApplicationsCatalog();
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        const errors = err?.error;
-        if (errors && typeof errors === 'object') {
-          const firstKey = Object.keys(errors)[0];
-          const firstVal = firstKey ? errors[firstKey] : null;
-          if (Array.isArray(firstVal) && firstVal.length) {
-            this.catalogFormError = String(firstVal[0]);
-            return;
-          }
-          if (typeof firstVal === 'string') {
-            this.catalogFormError = firstVal;
-            return;
-          }
-        }
-        this.catalogFormError = err?.error?.detail || 'Enregistrement impossible.';
-      },
-      complete: () => {
-        this.catalogSaving = false;
+        const msg = this.catalogSaveErrorMessage(err);
+        this.catalogFormError = msg;
+        this.toastr.error(msg, 'Enregistrement');
       },
     });
   }
 
+  private catalogSaveErrorMessage(err: { error?: unknown }): string {
+    const errors = err?.error;
+    if (errors && typeof errors === 'object') {
+      const firstKey = Object.keys(errors)[0];
+      const firstVal = firstKey ? (errors as Record<string, unknown>)[firstKey] : null;
+      if (Array.isArray(firstVal) && firstVal.length) {
+        return String(firstVal[0]);
+      }
+      if (typeof firstVal === 'string') {
+        return firstVal;
+      }
+      const detail = (errors as { detail?: unknown }).detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail;
+      }
+    }
+    return 'Enregistrement impossible.';
+  }
+
   private loadApplicationsTab(force = false): void {
-    if (this.tabLoading.applications || (!force && this.tabLoaded.applications)) {
+    if (!force && (this.tabLoading.applications || this.tabLoaded.applications)) {
       return;
     }
-    this.tabLoading.applications = true;
+    if (force) {
+      this.tabLoaded.applications = false;
+    }
+    this.setTabLoading('applications', true);
     this.api
       .getAdminApplicationCatalog()
       .pipe(
         catchError(() => of([])),
         finalize(() => {
-          this.tabLoading.applications = false;
+          this.setTabLoading('applications', false);
         })
       )
       .subscribe((apps) => {
         this.catalogApplications = apps || [];
         this.tabLoaded.applications = true;
+        this.cdr.detectChanges();
       });
   }
 
@@ -1469,7 +1538,29 @@ export class AdminDashboardComponent implements OnInit {
       next: (apps) => {
         this.catalogApplications = apps || [];
         this.tabLoaded.applications = true;
+        this.cdr.detectChanges();
       },
     });
+  }
+
+  private upsertCatalogApplication(saved: ApplicationDto): void {
+    const idx = this.catalogApplications.findIndex((app) => app.slug === saved.slug);
+    if (idx < 0) {
+      this.catalogApplications = [...this.catalogApplications, saved];
+      return;
+    }
+    const existing = this.catalogApplications[idx];
+    const updated: ApplicationDto = {
+      ...existing,
+      ...saved,
+      member_count: saved.member_count ?? existing.member_count,
+      admin_count: saved.admin_count ?? existing.admin_count,
+      counts_updated_at: saved.counts_updated_at ?? existing.counts_updated_at,
+    };
+    this.catalogApplications = [
+      ...this.catalogApplications.slice(0, idx),
+      updated,
+      ...this.catalogApplications.slice(idx + 1),
+    ];
   }
 }

@@ -5,6 +5,7 @@ import { ToastrService } from 'ngx-toastr';
 import { RegisterService } from 'src/app/services/register.service';
 
 @Component({
+  standalone: false,
   selector: 'app-reset-password',
   templateUrl: './reset-password.component.html',
   styleUrls: ['./reset-password.component.scss']
