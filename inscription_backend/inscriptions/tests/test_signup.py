@@ -29,6 +29,18 @@ class SignupApiTests(BaseApiTestCase):
         response = self.client.post("/api/register/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_register_rejects_short_identifiant(self):
+        payload = signup_payload(identifiant="ab")
+        response = self.client.post("/api/register/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("identifiant", response.json())
+
+    def test_register_rejects_identifiant_with_spaces(self):
+        payload = signup_payload(identifiant="jean dupont")
+        response = self.client.post("/api/register/", payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("espaces", response.json()["identifiant"][0].lower())
+
     def test_register_rejects_password_mismatch(self):
         payload = signup_payload(password_confirmation="otherpass1")
         response = self.client.post("/api/register/", payload, format="json")

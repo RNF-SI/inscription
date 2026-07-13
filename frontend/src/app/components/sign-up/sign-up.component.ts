@@ -1,5 +1,5 @@
 import { AfterViewInit, ChangeDetectorRef, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
-import { UntypedFormBuilder, UntypedFormControl, UntypedFormGroup, Validators } from '@angular/forms';
+import { AbstractControl, UntypedFormBuilder, UntypedFormControl, UntypedFormGroup, ValidationErrors, Validators } from '@angular/forms';
 import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
 
@@ -82,9 +82,9 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     this.createForm();
-    this._registerService.getOrganismes().subscribe(
-      res => {
-        this.organismes = res
+    this._registerService.getOrganismes().subscribe({
+      next: (res) => {
+        this.organismes = res || [];
         this.filteredOrgs.next(this.organismes.slice());
         this.orgFilterCtrl.valueChanges
           .pipe(takeUntil(this._onDestroy))
@@ -92,8 +92,13 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
             this.filterOrgs();
           });
         this.cdr.markForCheck();
-      }
-    );
+      },
+      error: () => {
+        this.organismes = [];
+        this.filteredOrgs.next([]);
+        this.cdr.markForCheck();
+      },
+    });
     this._registerService.getApplications().subscribe((apps) => {
       const list: SignupApplication[] = apps || [];
       this.requestableApplications = list.filter((a) => a.requires_access_request);
@@ -151,7 +156,13 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     this.form = this.fb.group({
       nom_role: ['', Validators.required],
       prenom_role: ['', Validators.required],
-      identifiant: ['', [Validators.required, Validators.pattern(/^[A-Za-z0-9._-]+$/)]],
+      identifiant: ['', [
+        Validators.required,
+        this.noWhitespaceValidator,
+        Validators.minLength(3),
+        Validators.maxLength(255),
+        Validators.pattern(/^[A-Za-z0-9._-]+$/),
+      ]],
       email: [
         '',
         [Validators.email, Validators.required],
@@ -265,6 +276,29 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           this.disableSubmit = false;
         });
     }
+  }
+
+  private noWhitespaceValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value;
+    if (value != null && String(value).length > 0 && /\s/.test(String(value))) {
+      return { whitespace: true };
+    }
+    return null;
+  }
+
+  onIdentifiantPaste(event: ClipboardEvent): void {
+    const raw = event.clipboardData?.getData('text') || '';
+    if (!/\s/.test(raw)) {
+      return;
+    }
+    event.preventDefault();
+    const text = raw.replace(/\s+/g, '');
+    const input = event.target as HTMLInputElement;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const next = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
+    this.form.get('identifiant')?.setValue(next);
+    this.form.get('identifiant')?.markAsDirty();
   }
 
   ConfirmedValidator(controlName: string, matchingControlName: string) {

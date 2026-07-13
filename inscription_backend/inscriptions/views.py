@@ -1143,6 +1143,8 @@ class AdminSuperApproveView(APIView):
             workflows.super_admin_approve(r, actor.sub)
         except ValueError:
             return Response({"detail": "Statut invalide"}, status=400)
+        except KeycloakAdminError as exc:
+            return Response({"detail": exc.detail}, status=400)
         except Exception:
             logger.exception("super_admin_approve")
             return Response({"detail": "Erreur serveur"}, status=500)

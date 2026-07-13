@@ -29,6 +29,27 @@ export class MyCustomInterceptor implements HttpInterceptor {
     return { status: 401 };
   }
 
+  /** Endpoints accessibles sans session (AllowAny côté API). */
+  private isPublicApiRequest(url: string): boolean {
+    const path = url.split('?')[0];
+    if (path.includes('/auth/keycloak-config')) {
+      return true;
+    }
+    if (path.endsWith('/register') || path.endsWith('/register/')) {
+      return true;
+    }
+    if (path.endsWith('/organismes') || path.endsWith('/organismes/')) {
+      return true;
+    }
+    if (/\/organisme\/\d+\/?$/.test(path)) {
+      return true;
+    }
+    if ((path.endsWith('/applications') || path.endsWith('/applications/')) && !path.includes('/admin/')) {
+      return true;
+    }
+    return false;
+  }
+
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     const isAuthEndpoint =
       request.url.includes('/auth/token/') ||
@@ -47,7 +68,7 @@ export class MyCustomInterceptor implements HttpInterceptor {
       return r;
     };
 
-    if (isAuthEndpoint) {
+    if (isAuthEndpoint || this.isPublicApiRequest(request.url)) {
       return this.runInZone(next.handle(addBearer(request)));
     }
 

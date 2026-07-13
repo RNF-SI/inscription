@@ -11,7 +11,10 @@ logger = logging.getLogger("inscriptions.keycloak")
 
 
 class KeycloakAdminError(Exception):
-    pass
+    def __init__(self, code: str, detail: str | None = None) -> None:
+        self.code = code
+        self.detail = detail or code
+        super().__init__(self.detail)
 
 
 class KeycloakAdminClient:
@@ -322,6 +325,23 @@ class KeycloakAdminClient:
         if r.status_code not in (200, 204):
             raise KeycloakAdminError(f"user_leave_group:{r.status_code}:{r.text[:200]}")
 
+    def _create_user_error_detail(self, response: requests.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            return "Impossible de créer le compte Keycloak."
+        if not isinstance(payload, dict):
+            return "Impossible de créer le compte Keycloak."
+        field = payload.get("field")
+        error_message = payload.get("errorMessage")
+        if field == "username" and error_message == "error-invalid-length":
+            return "L'identifiant doit contenir entre 3 et 255 caractères (contrainte Keycloak)."
+        if field == "username":
+            return "Identifiant refusé par Keycloak."
+        if field == "email":
+            return "Adresse e-mail refusée par Keycloak (déjà utilisée ou invalide)."
+        return "Impossible de créer le compte Keycloak."
+
     def create_user(
         self,
         username: str,
@@ -359,8 +379,9 @@ class KeycloakAdminClient:
             body["attributes"] = attrs
         r = self._post("/users", json=body)
         if r.status_code not in (200, 201):
+            detail = self._create_user_error_detail(r)
             logger.error("create_user %s: %s", r.status_code, r.text[:500])
-            raise KeycloakAdminError("create_user_failed")
+            raise KeycloakAdminError("create_user_failed", detail)
         loc = r.headers.get("Location", "")
         uid = loc.rstrip("/").split("/")[-1] if loc else ""
         if not uid:

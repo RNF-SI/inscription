@@ -164,10 +164,28 @@ class SignupSerializer(serializers.Serializer):
         return super().run_validation(data)
 
     def validate(self, attrs):
-        identifiant = (attrs.get("identifiant") or "").strip()
+        raw_identifiant = attrs.get("identifiant") or ""
+        if re.search(r"\s", raw_identifiant):
+            raise serializers.ValidationError(
+                {"identifiant": "L'identifiant ne doit pas contenir d'espaces."}
+            )
+        identifiant = raw_identifiant.strip()
+        if len(identifiant) < 3:
+            raise serializers.ValidationError(
+                {"identifiant": "L'identifiant doit contenir au moins 3 caractères."}
+            )
+        if len(identifiant) > 255:
+            raise serializers.ValidationError(
+                {"identifiant": "L'identifiant ne peut pas dépasser 255 caractères."}
+            )
         if not re.fullmatch(r"[A-Za-z0-9._-]+", identifiant):
             raise serializers.ValidationError(
-                {"identifiant": "Le login ne doit contenir que des lettres, chiffres, points (.), tirets (-) ou underscores (_)."}
+                {
+                    "identifiant": (
+                        "L'identifiant ne doit contenir que des lettres, chiffres, points (.), "
+                        "tirets (-) ou underscores (_), sans espaces."
+                    )
+                }
             )
         attrs["identifiant"] = identifiant
         if attrs["password"] != attrs["password_confirmation"]:

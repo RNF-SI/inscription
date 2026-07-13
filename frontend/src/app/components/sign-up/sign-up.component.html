@@ -79,7 +79,9 @@
                                 <div class="col-md-9 col-lg-7">
                                     <input type="text" class="form-control" id="identifiant" placeholder="Identifiant"
                                         formControlName="identifiant" matTooltipPosition="above"
-                                        matTooltip="Cet identifiant vous sera demandé pour vous authentifier sur les différentes plateformes." />
+                                        matTooltip="Cet identifiant vous sera demandé pour vous authentifier sur les différentes plateformes."
+                                        (keydown.space)="$event.preventDefault()"
+                                        (paste)="onIdentifiantPaste($event)" />
                                     <small *ngIf="
                         form.get('identifiant')!.hasError('required') &&
                         form.get('identifiant')!.touched
@@ -87,10 +89,22 @@
                                         Ce champ est nécessaire
                                     </small>
                                     <small *ngIf="
+                        form.get('identifiant')!.hasError('minlength') &&
+                        form.get('identifiant')!.touched
+                      ">
+                                        L'identifiant doit contenir au moins 3 caractères
+                                    </small>
+                                    <small *ngIf="
+                        form.get('identifiant')!.hasError('whitespace') &&
+                        form.get('identifiant')!.touched
+                      ">
+                                        L'identifiant ne doit pas contenir d'espaces
+                                    </small>
+                                    <small *ngIf="
                         form.get('identifiant')!.hasError('pattern') &&
                         form.get('identifiant')!.touched
                       ">
-                                        Le login ne doit contenir que des lettres, chiffres, points (.), tirets (-) ou underscores (_)
+                                        Lettres, chiffres, points (.), tirets (-) ou underscores (_) uniquement, sans espaces
                                     </small>
                                 </div>
                             </div>

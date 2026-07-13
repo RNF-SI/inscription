@@ -36,7 +36,8 @@ describe('HomeComponent', () => {
           provide: AuthService,
           useValue: {
             getMeSnapshot: () => null,
-            getUser: () => of(null),
+            restoreSession: () => of(false),
+            refreshMeFromApi: () => of(null),
           },
         },
         { provide: ToastrService, useValue: { success: () => undefined, error: () => undefined } },
