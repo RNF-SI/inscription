@@ -241,6 +241,9 @@ def render_email(
     plain_parts = [title, preheader]
     for block in blocks:
         text = re.sub(r"<[^>]+>", " ", block)
+        # Les blocs sont du HTML échappé : sans unescape, la version texte affiche
+        # « n&#x27;arrive » au lieu de « n'arrive » (omniprésent en français).
+        text = html.unescape(text)
         text = re.sub(r"\s+", " ", text).strip()
         if text:
             plain_parts.append(text)
@@ -595,3 +598,35 @@ def reserve_new_member_referent_email(
         ],
     )
     return subject, html_doc, plain
+
+
+def contact_message_email(
+    *,
+    app_name: str,
+    sender_name: str,
+    sender_email: str,
+    subject: str,
+    message: str,
+    context_rows: list[tuple[str, str]] | None = None,
+) -> tuple[str, str, str]:
+    """Message du formulaire de contact, à destination d'une boîte support (Zammad)."""
+    mail_subject = f"[{app_name}] {subject}" if app_name else subject
+    rows = [
+        ("Application", app_name or "—"),
+        ("Expéditeur", f"{sender_name} <{sender_email}>" if sender_name else sender_email),
+        ("Répondre à", sender_email),
+    ]
+    rows.extend(context_rows or [])
+    # Le message est saisi librement : une ligne vide sépare les paragraphes.
+    body_blocks = [paragraph(line) for line in message.splitlines() if line.strip()] or [paragraph(message)]
+    html_doc, plain = render_email(
+        title=subject or "Message de contact",
+        preheader=f"Message envoyé depuis {app_name}" if app_name else "Message de contact",
+        blocks=[
+            info_table(rows),
+            section_title("Message"),
+            *body_blocks,
+        ],
+        secondary_note="Répondre directement à ce message contacte son expéditeur.",
+    )
+    return mail_subject, html_doc, plain

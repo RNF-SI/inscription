@@ -97,6 +97,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "inscriptions.permissions.IsKeycloakAuthenticated",
     ],
+    # Seule la route de contact est limitée (scope "contact"), via ScopedRateThrottle.
+    "DEFAULT_THROTTLE_RATES": {
+        "contact": env("CONTACT_THROTTLE_RATE", default="10/hour"),
+    },
 }
 
 KEYCLOAK_BASE_URL = env("KEYCLOAK_BASE_URL", default="http://localhost:8080").rstrip("/")
@@ -128,6 +132,14 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@localhost")
 SUPERADMIN_NOTIFY_EMAILS = env.list("SUPERADMIN_NOTIFY_EMAILS", default=[])
+
+# Formulaire de contact mutualisé (toutes les apps home-rnf).
+# Liste blanche des destinataires acceptés : le client indique l'adresse voulue
+# (boîtes Zammad), mais une adresse hors de cette liste est refusée — sans quoi
+# la route serait un relais SMTP ouvert vers n'importe quelle adresse.
+CONTACT_ALLOWED_RECIPIENTS = [
+    email.strip().lower() for email in env.list("CONTACT_ALLOWED_RECIPIENTS", default=[]) if email.strip()
+]
 
 LEGACY_DATABASE_URL = env("LEGACY_DATABASE_URL", default="").strip()
 

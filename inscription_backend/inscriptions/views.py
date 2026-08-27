@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from inscriptions.authentication import KeycloakUser, get_current_sub, require_keycloak_user
@@ -41,6 +42,7 @@ from inscriptions.serializers import (
     AdminApplicationWriteSerializer,
     ApplicationCatalogSerializer,
     ApplicationSerializer,
+    ContactMessageSerializer,
     MeUpdateSerializer,
     NotificationSerializer,
     OrganismeDetailSerializer,
@@ -50,6 +52,7 @@ from inscriptions.serializers import (
 )
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
+from inscriptions.services import contact as contact_svc
 from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import reserve_notifications as reserve_notify
 from inscriptions.services import notifications as notify_svc
@@ -439,6 +442,44 @@ class RefreshTokenView(APIView):
             logger.info("refresh token failed: %s", r.text[:500])
             return Response({"detail": "refresh_token invalide ou expiré"}, status=401)
         return Response(r.json())
+
+
+class ContactMessageView(APIView):
+    """Formulaire de contact mutualisé entre les applications RNF.
+
+    Publique (le lien « Contacter le support » est visible sans session) mais
+    limitée en débit et restreinte aux destinataires de CONTACT_ALLOWED_RECIPIENTS.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "contact"
+
+    def post(self, request):
+        if not contact_svc.is_enabled():
+            return Response({"detail": "Le formulaire de contact n'est pas configuré."}, status=503)
+        ser = ContactMessageSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        try:
+            recipient = contact_svc.send_contact_message(
+                app_name=data.get("app_name", ""),
+                sender_email=data["email"],
+                sender_name=data.get("name", ""),
+                subject=data["subject"],
+                message=data["message"],
+                recipient=data.get("recipient", ""),
+            )
+        except contact_svc.ContactError as exc:
+            status_code = {
+                "contact_disabled": 503,
+                "recipient_not_allowed": 400,
+                "mail_send_failed": 502,
+            }.get(exc.code, 400)
+            return Response({"detail": exc.detail}, status=status_code)
+        logger.info("Message de contact transmis à %s (app=%s)", recipient, data.get("app_name", ""))
+        return Response({"detail": "Votre message a bien été transmis au support."})
 
 
 class MeView(APIView):

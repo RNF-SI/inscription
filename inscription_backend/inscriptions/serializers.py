@@ -285,3 +285,34 @@ class MeUpdateSerializer(serializers.Serializer):
 class AdditionalAccessSerializer(serializers.Serializer):
     application_slugs = serializers.ListField(child=serializers.SlugField(), min_length=1)
     remarks = serializers.CharField(required=False, allow_blank=True)
+
+
+class ContactMessageSerializer(serializers.Serializer):
+    """Formulaire de contact mutualisé (voir services/contact.py)."""
+
+    email = serializers.EmailField()
+    subject = serializers.CharField(max_length=200)
+    message = serializers.CharField(max_length=5000)
+    name = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+    app_name = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    # Le client indique la boîte support visée ; la liste blanche du .env tranche.
+    recipient = serializers.EmailField(required=False, allow_blank=True, default="")
+    # Piège à robots : champ masqué côté formulaire, doit rester vide.
+    website = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_subject(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Le sujet est obligatoire.")
+        return value
+
+    def validate_message(self, value: str) -> str:
+        value = value.strip()
+        if len(value) < 10:
+            raise serializers.ValidationError("Le message doit contenir au moins 10 caractères.")
+        return value
+
+    def validate_website(self, value: str) -> str:
+        if (value or "").strip():
+            raise serializers.ValidationError("Requête refusée.")
+        return ""

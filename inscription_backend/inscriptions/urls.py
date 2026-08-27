@@ -9,6 +9,7 @@ urlpatterns = [
     path("reserves/", views.ReserveListView.as_view()),
     path("applications/", views.ApplicationListView.as_view()),
     path("register/", views.RegisterView.as_view()),
+    path("contact/", views.ContactMessageView.as_view()),
     path("auth/keycloak-config/", views.KeycloakPublicConfigView.as_view()),
     path("auth/token/", views.TokenExchangeView.as_view()),
     path("auth/refresh/", views.RefreshTokenView.as_view()),

@@ -30,7 +30,12 @@ def send_html_email(
     text_body: str,
     *,
     attach_logo: bool = True,
+    reply_to: str = "",
+    raise_on_error: bool = False,
 ) -> None:
+    """Envoi best-effort par défaut (une notification perdue ne doit pas casser un
+    workflow). `raise_on_error` sert aux appels synchrones où l'utilisateur attend
+    une confirmation, comme le formulaire de contact."""
     cleaned = [email.strip() for email in recipients if (email or "").strip()]
     if not cleaned:
         return
@@ -39,6 +44,7 @@ def send_html_email(
         body=text_body,
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=cleaned,
+        reply_to=[reply_to.strip()] if (reply_to or "").strip() else None,
     )
     message.attach_alternative(html_body, "text/html")
     if attach_logo:
@@ -47,6 +53,8 @@ def send_html_email(
         message.send(fail_silently=False)
     except Exception:
         logger.exception("Échec d'envoi e-mail à %s", ", ".join(cleaned))
+        if raise_on_error:
+            raise
 
 
 def notify_superadmins_registration(registration: RegistrationRequest) -> None:

@@ -1,5 +1,5 @@
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from inscriptions.services import email_templates as tpl
 from inscriptions.services import mail as mail_svc
@@ -56,3 +56,19 @@ class MailServiceTests(TestCase):
         mail_svc.notify_superadmins_registration(reg)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("inscription", mail.outbox[0].subject.lower())
+
+
+class PlainTextRenderingTests(SimpleTestCase):
+    """La version texte des e-mails ne doit pas laisser passer d'entités HTML :
+    en français l'apostrophe est partout (« n'arrive », « d'inscription »)."""
+
+    def test_plain_text_decodes_html_entities(self):
+        from inscriptions.services.email_templates import paragraph, render_email
+
+        _, plain = render_email(
+            title="Sujet",
+            blocks=[paragraph("Je n'arrive pas & <ça> non plus")],
+        )
+        self.assertIn("Je n'arrive pas & <ça> non plus", plain)
+        self.assertNotIn("&#x27;", plain)
+        self.assertNotIn("&amp;", plain)
