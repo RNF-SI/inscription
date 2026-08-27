@@ -72,7 +72,8 @@ class MeApiTests(BaseApiTestCase):
 
     def test_me_returns_fonction_from_keycloak_when_missing_in_token(self):
         auth_client(self.client, self.regular_user)
-        with patch("inscriptions.views.fetch_user_info") as fetch_info:
+        # Le repli n'est tenté que si la synchro Keycloak est active (cf. _profile_fonction_for_user).
+        with self.settings(KEYCLOAK_SYNC_ENABLED=True), patch("inscriptions.views.fetch_user_info") as fetch_info:
             from inscriptions.user_identity import UserInfo
 
             fetch_info.return_value = UserInfo(

@@ -13,6 +13,12 @@ DATABASES = {
     }
 }
 
+# Les tests ne doivent JAMAIS joindre un vrai Keycloak : settings.py lit le .env du
+# développeur, et un test qui active KEYCLOAK_SYNC_ENABLED sans patcher tous les points
+# d'entrée partait sinon sur le serveur réel (30 s de timeout, résultats dépendant de
+# l'ordre d'exécution). Hôte non routable + timeout court = échec immédiat et déterministe.
+KEYCLOAK_BASE_URL = "http://127.0.0.1:9"
+KEYCLOAK_HTTP_TIMEOUT = 1
 KEYCLOAK_SYNC_ENABLED = False
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 SUPERADMIN_NOTIFY_EMAILS = ["admin@test.local"]
