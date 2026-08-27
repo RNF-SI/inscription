@@ -131,6 +131,27 @@ avec `origin=additional` (`create_additional_access_request`), sans `Registratio
 Chaque transition émet notification in-app (`services/notifications.py`) + e-mail
 (`services/mail.py` avec `services/email_templates.py`) et une trace `AuditLog`.
 
+### Route de contact mutualisée
+
+`POST /api/contact/` sert le formulaire « Contacter le support » de **toutes** les applications
+RNF utilisant `home-rnf`, pas seulement celle-ci. Chaque application déclare dans son
+`app.config.ts` l'URL de la route et la boîte support visée :
+
+```ts
+"contact": { "apiUrl": "https://…/api/contact/", "recipientEmail": "support@…" }
+```
+
+Le destinataire transite par le client mais est validé contre `CONTACT_ALLOWED_RECIPIENTS`
+(`.env`) : une adresse hors liste est refusée. Sans ce garde-fou la route serait un relais
+SMTP ouvert depuis le domaine RNF. Liste vide = route désactivée (503). La route est publique
+(le lien s'affiche sans session), limitée en débit (`ScopedRateThrottle`, scope `contact`,
+`CONTACT_THROTTLE_RATE`) et protégée par un champ piège `website`.
+
+Deux conséquences pour l'accueil d'une nouvelle application : son origine doit figurer dans
+`CORS_ALLOWED_ORIGINS`, et son intercepteur HTTP doit traiter `/contact` comme public (sinon
+les visiteurs anonymes sont bloqués avant l'appel). `ContactService` retombe sur le `mailto:`
+historique tant qu'une application n'a pas renseigné `apiUrl`.
+
 ### Découpage backend
 
 - `views.py` (~1750 lignes) : toutes les vues DRF, montées à plat dans `inscriptions/urls.py`

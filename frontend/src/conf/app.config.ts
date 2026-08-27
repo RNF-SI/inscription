@@ -18,6 +18,11 @@ export const AppConfig = {
         "hideAdminMenuForNonAdmins": true,
         "adminMenuLink": "admin"
     },
+    "contact": {
+        // Route mutualisée du backend inscription (voir home-rnf/services/contact.service.ts)
+        "apiUrl": "http://localhost:8000/api/contact/",
+        "recipientEmail": "support@reserves-naturelles.org"
+    },
     "menu": [
         {
             "nom":"accueil", 

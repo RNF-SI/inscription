@@ -38,6 +38,10 @@ export class MyCustomInterceptor implements HttpInterceptor {
     if (path.endsWith('/register') || path.endsWith('/register/')) {
       return true;
     }
+    // Formulaire de contact : accessible aux visiteurs anonymes.
+    if (path.endsWith('/contact') || path.endsWith('/contact/')) {
+      return true;
+    }
     if (path.endsWith('/organismes') || path.endsWith('/organismes/')) {
       return true;
     }
