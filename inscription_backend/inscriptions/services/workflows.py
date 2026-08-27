@@ -212,8 +212,8 @@ def _finalize_registration_if_done(registration: RegistrationRequest) -> None:
         return
     if any(i.status == AccessRequestItem.STATUS_PENDING for i in items):
         return
-    registration.status = RegistrationRequest.STATUS_COMPLETED
-    registration.save(update_fields=["status", "updated_at"])
+    # Pas de save(STATUS_COMPLETED) : la ligne est supprimée juste après, l'écriture
+    # ne serait jamais observable. La trace de clôture est dans AuditLog.
     _cleanup_completed_registration(registration)
 
 

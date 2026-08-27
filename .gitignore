@@ -122,3 +122,5 @@ frontend/src/assets/images/pearltrees.png
 frontend/src/assets/images/site.png
 frontend/src/assets/images/socle.png
 frontend/src/assets/images/tourbieres.png
+# Base de dev locale (repli sans DATABASE_URL) : la prod utilise PostgreSQL
+*.sqlite3
