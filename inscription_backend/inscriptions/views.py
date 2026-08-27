@@ -303,18 +303,27 @@ class OrganismeListView(APIView):
 
 
 class OrganismeDetailView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
     def get(self, request, pk):
         org = get_object_or_404(Organisme, pk=pk)
         return Response(OrganismeDetailSerializer(org).data)
 
 
 class ReserveListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
     def get(self, request):
         qs = Reserve.objects.filter(id_type__in=["5", "6", "18"]).order_by("area_name")
         return Response(ReserveSerializer(qs, many=True).data)
 
 
 class ApplicationListView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
     def get(self, request):
         qs = Application.objects.all()
         return Response(ApplicationSerializer(qs, many=True).data)
@@ -371,6 +380,17 @@ class KeycloakPublicConfigView(APIView):
         )
 
 
+def _keycloak_token_request(data: dict) -> requests.Response | None:
+    """POST vers l'endpoint token du realm. None si Keycloak est injoignable
+    (sinon l'exception requests remonte en 500 sur le chemin de connexion)."""
+    url = f"{settings.KEYCLOAK_BASE_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/token"
+    try:
+        return requests.post(url, data=data, timeout=getattr(settings, "KEYCLOAK_HTTP_TIMEOUT", 10))
+    except requests.RequestException as exc:
+        logger.warning("Keycloak injoignable (%s): %s", url, exc)
+        return None
+
+
 class TokenExchangeView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -388,8 +408,9 @@ class TokenExchangeView(APIView):
         }
         if settings.KEYCLOAK_APP_CLIENT_SECRET:
             data["client_secret"] = settings.KEYCLOAK_APP_CLIENT_SECRET
-        url = f"{settings.KEYCLOAK_BASE_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/token"
-        r = requests.post(url, data=data, timeout=30)
+        r = _keycloak_token_request(data)
+        if r is None:
+            return Response({"detail": "Service d’authentification indisponible."}, status=503)
         if r.status_code != 200:
             logger.warning("token exchange failed: %s", r.text[:500])
             return Response({"detail": "Échec de l’échange de jeton."}, status=400)
@@ -411,8 +432,9 @@ class RefreshTokenView(APIView):
         }
         if settings.KEYCLOAK_APP_CLIENT_SECRET:
             data["client_secret"] = settings.KEYCLOAK_APP_CLIENT_SECRET
-        url = f"{settings.KEYCLOAK_BASE_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/token"
-        r = requests.post(url, data=data, timeout=30)
+        r = _keycloak_token_request(data)
+        if r is None:
+            return Response({"detail": "Service d’authentification indisponible."}, status=503)
         if r.status_code != 200:
             logger.info("refresh token failed: %s", r.text[:500])
             return Response({"detail": "refresh_token invalide ou expiré"}, status=401)

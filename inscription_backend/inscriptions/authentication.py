@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional, Tuple
 
 import jwt
@@ -10,6 +11,29 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.request import Request
 
 logger = logging.getLogger(__name__)
+
+# PyJWKClient garde son cache de clés dans l'instance : la recréer à chaque requête
+# forçait un appel HTTPS au JWKS Keycloak par requête authentifiée. On garde une
+# instance par URL JWKS (l'URL dépend des settings, qui changent entre les tests).
+_jwks_clients: dict[str, PyJWKClient] = {}
+_jwks_lock = threading.Lock()
+
+
+def _jwks_client(jwks_url: str) -> PyJWKClient:
+    client = _jwks_clients.get(jwks_url)
+    if client is None:
+        with _jwks_lock:
+            client = _jwks_clients.get(jwks_url)
+            if client is None:
+                client = PyJWKClient(jwks_url, cache_keys=True)
+                _jwks_clients[jwks_url] = client
+    return client
+
+
+def reset_jwks_cache() -> None:
+    """Vide le cache des clés de signature (changement de realm, tests)."""
+    with _jwks_lock:
+        _jwks_clients.clear()
 
 
 class KeycloakUser:
@@ -49,13 +73,7 @@ class KeycloakJWTAuthentication(BaseAuthentication):
     def _decode(self, token: str) -> dict[str, Any]:
         issuer = f"{settings.KEYCLOAK_BASE_URL}/realms/{settings.KEYCLOAK_REALM}"
         jwks_url = f"{issuer}/protocol/openid-connect/certs"
-        jwks_client = PyJWKClient(jwks_url, cache_keys=True)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-        decode_kwargs: dict[str, Any] = {
-            "algorithms": ["RS256"],
-            "issuer": issuer,
-            "options": {"verify_aud": False},
-        }
+        signing_key = _jwks_client(jwks_url).get_signing_key_from_jwt(token)
         audience = settings.KEYCLOAK_APP_CLIENT_ID
         if audience:
             try:
@@ -68,7 +86,23 @@ class KeycloakJWTAuthentication(BaseAuthentication):
                 )
             except jwt.InvalidAudienceError:
                 pass
-        return jwt.decode(token, signing_key.key, **decode_kwargs)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=issuer,
+            options={"verify_aud": False},
+        )
+        # Keycloak met souvent `account` dans `aud` et le client émetteur dans `azp`.
+        # Sans ce contrôle, tout token du realm (y compris émis pour un autre client)
+        # serait accepté par l'API.
+        if audience:
+            azp = (claims.get("azp") or "").strip()
+            if azp != audience:
+                raise jwt.InvalidAudienceError(
+                    f"Token émis pour le client {azp or '(azp absent)'}, attendu {audience}"
+                )
+        return claims
 
 
 def get_current_sub(request: Request) -> str | None:

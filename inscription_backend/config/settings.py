@@ -91,8 +91,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "inscriptions.authentication.KeycloakJWTAuthentication",
     ],
+    # Fail-safe : une vue sans permission_classes explicite exige un JWT Keycloak.
+    # Les vues publiques (register, keycloak-config, catalogue…) déclarent
+    # `authentication_classes = []` + `permission_classes = []`.
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "inscriptions.permissions.IsKeycloakAuthenticated",
     ],
 }
 
@@ -110,6 +113,8 @@ KEYCLOAK_GROUP_APPLICATIONS = env("KEYCLOAK_GROUP_APPLICATIONS", default="applic
 KEYCLOAK_GROUP_SUPER_ADMIN = env("KEYCLOAK_GROUP_SUPER_ADMIN", default="super-admin")
 
 KEYCLOAK_SYNC_ENABLED = env.bool("KEYCLOAK_SYNC_ENABLED", default=bool(KEYCLOAK_ADMIN_CLIENT_SECRET))
+# Délai des appels HTTP vers Keycloak, sur le chemin synchrone des requêtes API.
+KEYCLOAK_HTTP_TIMEOUT = env.int("KEYCLOAK_HTTP_TIMEOUT", default=10)
 
 FRONTEND_PUBLIC_URL = env("FRONTEND_PUBLIC_URL", default="http://localhost:4200")
 EMAIL_BACKEND = env(

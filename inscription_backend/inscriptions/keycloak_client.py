@@ -49,7 +49,7 @@ class KeycloakAdminClient:
         }
         if self.admin_client_secret:
             data["client_secret"] = self.admin_client_secret
-        r = requests.post(self._token_url(), data=data, timeout=30)
+        r = self._send(requests.post, self._token_url(), data=data)
         if r.status_code != 200:
             logger.error("Keycloak token error: %s %s", r.status_code, r.text[:500])
             raise KeycloakAdminError("keycloak_token_failed")
@@ -65,17 +65,29 @@ class KeycloakAdminClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.get_access_token()}", "Content-Type": "application/json"}
 
+    @staticmethod
+    def _send(method, url: str, **kwargs) -> requests.Response:
+        """Enveloppe les erreurs réseau : sans cela, une ConnectionError/Timeout
+        remonte telle quelle et échappe aux `except KeycloakAdminError` des appelants
+        (dégradation gracieuse de /api/me/, des groupes, etc.) → 500."""
+        timeout = getattr(settings, "KEYCLOAK_HTTP_TIMEOUT", 10)
+        try:
+            return method(url, timeout=timeout, **kwargs)
+        except requests.RequestException as exc:
+            logger.warning("Keycloak injoignable (%s): %s", url, exc)
+            raise KeycloakAdminError("keycloak_unreachable", str(exc)) from exc
+
     def _get(self, path: str) -> requests.Response:
-        return requests.get(f"{self._admin_base}{path}", headers=self._headers(), timeout=30)
+        return self._send(requests.get, f"{self._admin_base}{path}", headers=self._headers())
 
     def _post(self, path: str, json: Any | None = None) -> requests.Response:
-        return requests.post(f"{self._admin_base}{path}", headers=self._headers(), json=json, timeout=30)
+        return self._send(requests.post, f"{self._admin_base}{path}", headers=self._headers(), json=json)
 
     def _put(self, path: str, json: Any | None = None) -> requests.Response:
-        return requests.put(f"{self._admin_base}{path}", headers=self._headers(), json=json, timeout=30)
+        return self._send(requests.put, f"{self._admin_base}{path}", headers=self._headers(), json=json)
 
     def _delete(self, path: str) -> requests.Response:
-        return requests.delete(f"{self._admin_base}{path}", headers=self._headers(), timeout=30)
+        return self._send(requests.delete, f"{self._admin_base}{path}", headers=self._headers())
 
     def _find_child_group_id(self, parent_id: str, child_name: str) -> str | None:
         children = self.get_subgroups(parent_id)
@@ -306,11 +318,11 @@ class KeycloakAdminClient:
 
     def user_join_group(self, user_id: str, group_id: str) -> None:
         h = {"Authorization": f"Bearer {self.get_access_token()}"}
-        r = requests.put(f"{self._admin_base}/users/{user_id}/groups/{group_id}", headers=h, timeout=30)
+        r = self._send(requests.put, f"{self._admin_base}/users/{user_id}/groups/{group_id}", headers=h)
         if r.status_code not in (200, 204):
             raise KeycloakAdminError(f"user_join_group:{r.status_code}:{r.text[:200]}")
         # Vérification best-effort: si l'API renvoie la liste des groupes, on confirme l'effet.
-        check = requests.get(f"{self._admin_base}/users/{user_id}/groups", headers=h, timeout=30)
+        check = self._send(requests.get, f"{self._admin_base}/users/{user_id}/groups", headers=h)
         if check.status_code == 200:
             groups = check.json() or []
             in_group = any(g.get("id") == group_id for g in groups if isinstance(g, dict))
@@ -321,7 +333,7 @@ class KeycloakAdminClient:
 
     def user_leave_group(self, user_id: str, group_id: str) -> None:
         h = {"Authorization": f"Bearer {self.get_access_token()}"}
-        r = requests.delete(f"{self._admin_base}/users/{user_id}/groups/{group_id}", headers=h, timeout=30)
+        r = self._send(requests.delete, f"{self._admin_base}/users/{user_id}/groups/{group_id}", headers=h)
         if r.status_code not in (200, 204):
             raise KeycloakAdminError(f"user_leave_group:{r.status_code}:{r.text[:200]}")
 
@@ -416,11 +428,11 @@ class KeycloakAdminClient:
         if client_id:
             params["client_id"] = client_id
         h = {"Authorization": f"Bearer {self.get_access_token()}"}
-        r = requests.put(
+        r = self._send(
+            requests.put,
             f"{self._admin_base}/users/{user_id}/send-verify-email",
             headers=h,
             params=params or None,
-            timeout=30,
         )
         if r.status_code not in (200, 204):
             logger.error("send_verify_email %s: %s", r.status_code, r.text[:500])

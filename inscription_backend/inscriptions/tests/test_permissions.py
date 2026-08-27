@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from inscriptions.permissions import is_app_admin
 from inscriptions.roles import application_admin_group_paths, is_super_admin, super_admin_group_paths
 from inscriptions.tests.helpers import (
@@ -69,3 +71,59 @@ class PermissionsTests(BaseApiTestCase):
         app = make_application(slug="waterwise")
         paths = list(application_admin_group_paths(app.slug))
         self.assertTrue(is_app_admin(paths, app))
+
+
+class DefaultPermissionTests(BaseApiTestCase):
+    """DEFAULT_PERMISSION_CLASSES est fail-safe : une vue sans permission_classes
+    explicite exige un JWT. Les vues réellement publiques doivent le déclarer."""
+
+    def test_default_permission_class_requires_authentication(self):
+        from rest_framework.settings import api_settings
+
+        from inscriptions.permissions import IsKeycloakAuthenticated
+
+        self.assertEqual(api_settings.DEFAULT_PERMISSION_CLASSES, [IsKeycloakAuthenticated])
+
+    def test_anonymous_is_rejected_on_authenticated_endpoints(self):
+        for url in ("/api/me/", "/api/notifications/", "/api/admin/registration-requests/"):
+            with self.subTest(url=url):
+                self.assertIn(self.client.get(url).status_code, (401, 403))
+
+    def test_public_endpoints_stay_reachable_anonymously(self):
+        from inscriptions.models import Organisme
+        from inscriptions.tests.helpers import make_application, make_reserve
+
+        org = Organisme.objects.create(id_organisme=1, nom_organisme="Org test")
+        make_reserve(area_code="RNN99", area_name="Réserve test", id_type="5")
+        make_application()
+        for url in (
+            "/api/auth/keycloak-config/",
+            "/api/organismes/",
+            f"/api/organisme/{org.pk}/",
+            "/api/reserves/",
+            "/api/applications/",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200, url)
+
+
+class TokenEndpointResilienceTests(BaseApiTestCase):
+    """Keycloak injoignable sur le chemin de connexion : 503 explicite, pas une 500."""
+
+    def test_token_exchange_returns_503_when_keycloak_is_down(self):
+        import requests
+
+        with patch("inscriptions.views.requests.post", side_effect=requests.ConnectionError("down")):
+            response = self.client.post(
+                "/api/auth/token/",
+                {"code": "c", "redirect_uri": "https://front/auth/callback"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 503)
+
+    def test_refresh_returns_503_when_keycloak_is_down(self):
+        import requests
+
+        with patch("inscriptions.views.requests.post", side_effect=requests.ConnectionError("down")):
+            response = self.client.post("/api/auth/refresh/", {"refresh_token": "r"}, format="json")
+        self.assertEqual(response.status_code, 503)
