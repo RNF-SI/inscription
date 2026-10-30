@@ -264,8 +264,21 @@ class ReferentCodesTests(TestCase):
 
 class ApplicationMappingTests(TestCase):
     def test_application_without_mapping_writes_nothing(self):
-        app = Application.objects.create(slug="ancrage", nom="Ancrage")
+        app = Application.objects.create(slug="sans-correspondance", nom="Sans correspondance")
         self.assertIsNone(mirror._application_mapping(app))
+
+    def test_group_alone_is_a_valid_mapping(self):
+        """L'accès est porté par le groupe ; cor_role_app_profil n'est plus alimenté."""
+        app = Application.objects.create(
+            slug="ancrage", nom="Ancrage", legacy_group_id_role=64
+        )
+        self.assertEqual(mirror._application_mapping(app), (None, 1, 64))
+
+    def test_grant_application_without_app_id_writes_only_the_group(self):
+        with fake_legacy(results=[(True,)]) as cursor:
+            legacy_writer.grant_application(7, group_id_role=64)
+        self.assertEqual(cursor.sql_matching("cor_role_app_profil"), [])
+        self.assertEqual(cursor.sql_matching("INSERT INTO utilisateurs.cor_roles")[0][1], [64, 7])
 
     def test_application_mapping_defaults_to_profil_lecteur(self):
         app = Application.objects.create(

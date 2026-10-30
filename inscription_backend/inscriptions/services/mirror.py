@@ -258,12 +258,17 @@ def legacy_set_referent(kc: KeycloakAdminClient, user_sub: str, code: str, valid
     legacy_writer.set_referent_valid(id_role, code, valid)
 
 
-def _application_mapping(application: Application) -> tuple[int, int, int | None] | None:
-    """Correspondance historique d'une application, ou ``None`` si non déclarée."""
-    if not application.legacy_id_application:
+def _application_mapping(application: Application) -> tuple[int | None, int, int | None] | None:
+    """Correspondance historique d'une application, ou ``None`` si rien n'est déclaré.
+
+    Le groupe suffit : c'est lui qui porte l'accès côté historique, l'identifiant
+    d'application ne servant qu'à écrire un droit dans ``cor_role_app_profil``, table
+    que la production n'alimente plus.
+    """
+    if not application.legacy_id_application and not application.legacy_group_id_role:
         return None
     return (
-        int(application.legacy_id_application),
+        int(application.legacy_id_application) if application.legacy_id_application else None,
         int(application.legacy_id_profil or 1),
         int(application.legacy_group_id_role) if application.legacy_group_id_role else None,
     )

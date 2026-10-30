@@ -306,29 +306,34 @@ def set_referent_valid(id_role: int, code: str, valid: bool) -> None:
 # --- Droits applicatifs --------------------------------------------------------
 
 
-def grant_application(id_role: int, *, id_application: int, id_profil: int = 1,
+def grant_application(id_role: int, *, id_application: int | None = None, id_profil: int = 1,
                       group_id_role: int | None = None) -> None:
-    """Accorde un droit applicatif, et l'appartenance au groupe legacy s'il est déclaré.
+    """Accorde l'accès à une application : groupe, et droit applicatif si déclaré.
 
-    ``is_default_group_for_app`` reste à ``false`` : un CHECK du schéma réserve la
-    valeur ``true`` aux lignes de groupe.
+    Les deux sont indépendants. En pratique c'est le groupe qui porte l'accès :
+    ``cor_role_app_profil`` n'est plus alimenté en production, aussi ``id_application``
+    est-il optionnel. ``is_default_group_for_app`` reste à ``false``, un CHECK du
+    schéma réservant ``true`` aux lignes de groupe.
     """
-    _execute(
-        "INSERT INTO utilisateurs.cor_role_app_profil (id_role, id_application, id_profil) "
-        "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-        [id_role, id_application, id_profil],
-    )
+    if id_application:
+        _execute(
+            "INSERT INTO utilisateurs.cor_role_app_profil (id_role, id_application, id_profil) "
+            "VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+            [id_role, id_application, id_profil],
+        )
     if group_id_role:
         add_to_groups(id_role, [group_id_role])
 
 
-def revoke_application(id_role: int, *, id_application: int,
+def revoke_application(id_role: int, *, id_application: int | None = None,
                        group_id_role: int | None = None) -> None:
-    """Retire tous les profils du compte sur cette application, et le groupe associé."""
-    _execute(
-        "DELETE FROM utilisateurs.cor_role_app_profil WHERE id_role = %s AND id_application = %s",
-        [id_role, id_application],
-    )
+    """Retire le groupe de l'application, et ses profils applicatifs s'il y en a."""
+    if id_application:
+        _execute(
+            "DELETE FROM utilisateurs.cor_role_app_profil "
+            "WHERE id_role = %s AND id_application = %s",
+            [id_role, id_application],
+        )
     if group_id_role:
         _execute(
             "DELETE FROM utilisateurs.cor_roles "
