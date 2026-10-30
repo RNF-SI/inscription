@@ -559,6 +559,34 @@ class KeycloakAdminClient:
             logger.error("update_user_profile %s: %s", resp.status_code, resp.text[:500])
             raise KeycloakAdminError(f"update_user_failed:{resp.status_code}")
 
+    def set_user_password(self, user_id: str, password: str) -> None:
+        """Remplace le mot de passe d'un compte, sans le marquer temporaire.
+
+        Keycloak applique ici la politique de mot de passe du realm et renvoie 400
+        avec son motif : on le remonte tel quel, c'est le seul message utile pour
+        l'usager.
+        """
+        r = self._put(
+            f"/users/{user_id}/reset-password",
+            json={"type": "password", "value": password, "temporary": False},
+        )
+        if r.status_code not in (200, 204):
+            detail = ""
+            try:
+                detail = (r.json() or {}).get("error_description") or (r.json() or {}).get("errorMessage") or ""
+            except ValueError:
+                pass
+            logger.error("set_user_password %s: %s", r.status_code, r.text[:300])
+            raise KeycloakAdminError(f"set_password_failed:{r.status_code}", detail)
+
+    def is_federated(self, user_id: str) -> bool:
+        """Vrai si le compte provient d'un annuaire (federationLink posé).
+
+        Le mot de passe d'un tel compte appartient à l'annuaire : la plateforme ne
+        doit pas prétendre le changer.
+        """
+        return bool((self.get_user(user_id) or {}).get("federationLink"))
+
     def set_user_attribute(self, user_id: str, name: str, value: str) -> None:
         """Pose un attribut sur un compte sans toucher au reste de sa représentation."""
         current = self._get(f"/users/{user_id}")

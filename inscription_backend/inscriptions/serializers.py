@@ -135,6 +135,29 @@ class AdminApplicationWriteSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PasswordChangeSerializer(serializers.Serializer):
+    """Changement de mot de passe par l'utilisateur lui-même.
+
+    Mêmes règles que l'inscription : huit caractères au minimum et une confirmation.
+    La politique du realm, si elle existe, est appliquée ensuite par Keycloak.
+    """
+
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password_confirmation = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_confirmation"]:
+            raise serializers.ValidationError(
+                {"new_password_confirmation": "Les mots de passe ne correspondent pas."}
+            )
+        if attrs["new_password"] == attrs["current_password"]:
+            raise serializers.ValidationError(
+                {"new_password": "Le nouveau mot de passe doit différer de l'actuel."}
+            )
+        return attrs
+
+
 class SignupItemSerializer(serializers.Serializer):
     application_slug = serializers.SlugField()
     justification = serializers.CharField(required=False, allow_blank=True)

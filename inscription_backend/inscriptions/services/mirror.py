@@ -258,6 +258,49 @@ def legacy_set_referent(kc: KeycloakAdminClient, user_sub: str, code: str, valid
     legacy_writer.set_referent_valid(id_role, code, valid)
 
 
+class PasswordChangeRefused(Exception):
+    """Changement de mot de passe refusé, avec un motif destiné à l'usager."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def change_password(kc: KeycloakAdminClient, user_sub: str, current: str, nouveau: str) -> None:
+    """Change le mot de passe dans Keycloak et dans la base historique.
+
+    L'ordre est celui du reste du miroir : l'écriture historique d'abord, annulable,
+    puis Keycloak qui ne l'est pas. Un échec Keycloak — politique de mot de passe du
+    realm, par exemple — annule donc l'écriture historique.
+
+    Le mot de passe courant est vérifié contre le bcrypt de ``t_roles`` : le client
+    SPA n'autorise pas le « direct grant », Keycloak ne peut donc pas valider pour
+    nous, et cette colonne porte le mot de passe courant puisque c'est cette même
+    fonction qui la tient à jour.
+    """
+    if kc.is_federated(user_sub):
+        raise PasswordChangeRefused(
+            "federated",
+            "Votre mot de passe est géré par l'annuaire de votre organisation : "
+            "il doit être modifié là-bas.",
+        )
+
+    id_role = legacy_id_role_for(kc, user_sub)
+    if id_role is None:
+        raise PasswordChangeRefused(
+            "no_legacy_account",
+            "Aucun compte historique ne correspond : contactez le support.",
+        )
+
+    if not legacy_writer.verify_password(id_role, current):
+        raise PasswordChangeRefused("wrong_current", "Mot de passe actuel incorrect.")
+
+    with atomic_mirror():
+        legacy_writer.set_password(id_role, nouveau)
+        kc.set_user_password(user_sub, nouveau)
+
+
 def _application_mapping(application: Application) -> tuple[int | None, int, int | None] | None:
     """Correspondance historique d'une application, ou ``None`` si rien n'est déclaré.
 

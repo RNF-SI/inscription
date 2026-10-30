@@ -1,6 +1,7 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { AuthService } from 'src/app/core/auth/auth-service.service';
+import { ToastService } from 'src/app/core/services/toast.service';
 import { ApiService, MeResponse, ReserveOptionDto } from 'src/app/services/api.service';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
@@ -21,11 +22,15 @@ export class MoncompteComponent implements OnInit {
   addingReserve = false;
   removingReserveCode: string | null = null;
   referentSavingCode: string | null = null;
+  passwordForm: UntypedFormGroup;
+  changingPassword = false;
+  passwordError = '';
 
   constructor(
     private fb: UntypedFormBuilder,
     private api: ApiService,
     private auth: AuthService,
+    private toast: ToastService,
     private cdr: ChangeDetectorRef,
   ) {}
 
@@ -37,6 +42,12 @@ export class MoncompteComponent implements OnInit {
       fonction: [''],
       organisme: [{ value: '', disabled: true }],
       email: [''],
+    });
+
+    this.passwordForm = this.fb.group({
+      current_password: ['', [Validators.required]],
+      new_password: ['', [Validators.required, Validators.minLength(8)]],
+      new_password_confirmation: ['', [Validators.required]],
     });
 
     const cached = this.auth.getMeSnapshot();
@@ -189,6 +200,42 @@ export class MoncompteComponent implements OnInit {
         this.referentSavingCode = null;
       },
     });
+  }
+
+  changePassword(): void {
+    this.passwordError = '';
+    if (this.passwordForm.invalid) {
+      this.passwordForm.markAllAsTouched();
+      return;
+    }
+    const data = this.passwordForm.value;
+    if (data.new_password !== data.new_password_confirmation) {
+      this.passwordError = 'Les deux saisies ne correspondent pas.';
+      return;
+    }
+    this.changingPassword = true;
+    this.api
+      .changeMyPassword(data)
+      .pipe(
+        finalize(() => {
+          this.changingPassword = false;
+          this.cdr.detectChanges();
+        }),
+      )
+      .subscribe({
+        next: () => {
+          this.passwordForm.reset();
+          this.toast.success(
+            'Il est actif sur toutes les plateformes RNF.',
+            'Mot de passe modifié',
+          );
+        },
+        error: (err) => {
+          // Le backend renvoie un motif exploitable : mot de passe actuel faux,
+          // compte géré par l'annuaire, ou refus de la politique du realm.
+          this.passwordError = err?.error?.detail || 'Changement de mot de passe impossible.';
+        },
+      });
   }
 
   private loadReserveOptions(): void {

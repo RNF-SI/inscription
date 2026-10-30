@@ -20,6 +20,7 @@ from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
 from inscriptions.models import (
     AccessRequestItem,
     Application,
+    AuditLog,
     Notification,
     Organisme,
     ReserveMemberRemovalRequest,
@@ -47,6 +48,7 @@ from inscriptions.serializers import (
     NotificationSerializer,
     OrganismeDetailSerializer,
     OrganismeSerializer,
+    PasswordChangeSerializer,
     ReserveSerializer,
     SignupSerializer,
 )
@@ -625,6 +627,47 @@ class MeView(APIView):
                 "unread_notifications": Notification.objects.filter(user_sub=user_sub, read=False).count(),
             }
         )
+
+
+class MePasswordView(APIView):
+    """Changement de mot de passe par l'utilisateur lui-même.
+
+    Seul chemin autorisé tant que les applications RNF lisent leurs comptes dans la
+    base historique : la console de compte Keycloak n'écrirait que dans Keycloak, et
+    l'usager garderait son ancien mot de passe partout ailleurs.
+    """
+
+    def post(self, request):
+        user = require_keycloak_user(request)
+        if not user:
+            return Response({"detail": "Non authentifié"}, status=401)
+
+        ser = PasswordChangeSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        kc = KeycloakAdminClient()
+        try:
+            mirror.change_password(
+                kc,
+                user.sub,
+                ser.validated_data["current_password"],
+                ser.validated_data["new_password"],
+            )
+        except mirror.PasswordChangeRefused as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=400)
+        except KeycloakAdminError as exc:
+            logger.warning("Changement de mot de passe refusé par Keycloak : %s", exc)
+            # Un 400 de Keycloak porte le motif de sa politique de mot de passe :
+            # c'est la seule information utile à l'usager, on la laisse passer.
+            if str(exc.code).startswith("set_password_failed:400"):
+                return Response({"detail": exc.detail}, status=400)
+            return Response({"detail": "Changement de mot de passe impossible."}, status=502)
+        except LegacyWriteError as exc:
+            logger.warning("Changement de mot de passe impossible côté historique : %s", exc)
+            return Response({"detail": "Changement de mot de passe impossible."}, status=502)
+
+        AuditLog.objects.create(actor_sub=user.sub, action="password_change", payload={})
+        return Response({"ok": True})
 
 
 class MeReserveOptionsView(APIView):

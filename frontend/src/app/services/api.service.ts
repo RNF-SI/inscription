@@ -202,6 +202,21 @@ export class ApiService {
     return this.http.get<ReserveOptionDto[]>(`${environment.apiUrl}/me/reserve-options/`);
   }
 
+  /**
+   * Change le mot de passe de l'utilisateur connecté.
+   *
+   * Passe obligatoirement par la plateforme : la console de compte Keycloak
+   * n'écrirait que dans Keycloak, et l'ancien mot de passe resterait valable sur
+   * les applications qui lisent encore la base historique.
+   */
+  changeMyPassword(payload: {
+    current_password: string;
+    new_password: string;
+    new_password_confirmation: string;
+  }): Observable<unknown> {
+    return this.http.post(`${environment.apiUrl}/me/password/`, payload);
+  }
+
   addMyReserve(areaCode: string): Observable<unknown> {
     return this.http.post(`${environment.apiUrl}/me/reserves/${areaCode}/`, {});
   }

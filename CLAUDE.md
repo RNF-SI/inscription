@@ -211,6 +211,20 @@ son enregistrement `Application` (avec `legacy_id_profil`, 1 = Lecteur, et
 `legacy_group_id_role` pour `utilisateurs.cor_roles`). Sans cette correspondance, rien
 n'est écrit côté historique.
 
+**Le mot de passe se change par `POST /api/me/password/`, et nulle part ailleurs.**
+`mirror.change_password()` écrit le bcrypt dans `t_roles.pass_plus` puis le pose dans
+Keycloak. La console de compte Keycloak n'écrirait que dans Keycloak : l'usager
+garderait son ancien mot de passe sur toutes les applications qui lisent la base
+historique. Retirer `manage-account` des rôles par défaut du realm ferme ce chemin.
+
+Le mot de passe actuel est vérifié contre le bcrypt historique, et non par Keycloak :
+le client SPA n'autorise pas le « direct grant », et l'activer pour cela affaiblirait
+le realm. Un compte fédéré depuis un annuaire (`federationLink` posé) est refusé — son
+mot de passe ne nous appartient pas.
+
+⚠️ **Il n'existe pas encore de parcours « mot de passe oublié ».** Celui de Keycloak
+est désactivé au niveau du realm, et il écrirait de toute façon d'un seul côté.
+
 Pour tester sur une copie de production, il faut d'abord **remplacer toutes les tables
 distantes par des tables locales** : un `pg_dump` emporte `CREATE SERVER`, `CREATE USER
 MAPPING` et `CREATE FOREIGN TABLE`, donc la copie écrit vers les cibles d'origine. Ne

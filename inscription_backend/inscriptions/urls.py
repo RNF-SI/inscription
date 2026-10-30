@@ -23,6 +23,7 @@ urlpatterns = [
         views.MeReferentReserveRemovalRequestView.as_view(),
     ),
     path("me/additional-access/", views.AdditionalAccessCreateView.as_view()),
+    path("me/password/", views.MePasswordView.as_view()),
     path("notifications/", views.NotificationListView.as_view()),
     path("notifications/unread-count/", views.NotificationUnreadCountView.as_view()),
     path("notifications/delete-read/", views.NotificationDeleteReadView.as_view()),

@@ -150,5 +150,45 @@
         </div>
     </div>
 
+    <h3 class="underlined main-color mt-5">Mot de passe</h3>
+    <p class="text-muted">
+        C'est le seul endroit qui met votre mot de passe à jour pour l'ensemble des
+        plateformes RNF.
+    </p>
+    <form [formGroup]="passwordForm" (ngSubmit)="changePassword()">
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Mot de passe actuel</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="current_password"
+                       autocomplete="current-password">
+            </div>
+        </div>
+        <div class="form-group row mt-2">
+            <label class="col-sm-3 col-form-label text-end">Nouveau mot de passe</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="new_password"
+                       autocomplete="new-password">
+                <small class="text-muted">Huit caractères au minimum.</small>
+            </div>
+        </div>
+        <div class="form-group row mt-2">
+            <label class="col-sm-3 col-form-label text-end">Confirmation</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="new_password_confirmation"
+                       autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-group row mt-3">
+            <div class="col-sm-6 offset-sm-3">
+                <div class="alert alert-danger py-2" *ngIf="passwordError">{{ passwordError }}</div>
+                <button type="submit" class="btn btn-success"
+                        [disabled]="changingPassword || passwordForm.invalid">
+                    <span *ngIf="!changingPassword">Modifier le mot de passe</span>
+                    <span *ngIf="changingPassword">Modification…</span>
+                </button>
+            </div>
+        </div>
+    </form>
+
     <br><br>
 </div>

@@ -82,6 +82,30 @@ def hash_password(plain: str) -> tuple[str, str | None]:
     return pass_plus, pass_md5
 
 
+def verify_password(id_role: int, plain: str) -> bool:
+    """Vérifie un mot de passe contre le bcrypt historique.
+
+    C'est le contrôle que font les applications RNF elles-mêmes. Le client SPA
+    n'autorise pas le « direct grant », on ne peut donc pas demander à Keycloak de
+    valider ; et comme cette colonne est tenue à jour par la plateforme, elle porte
+    bien le mot de passe courant.
+
+    Renvoie faux si le compte n'a pas de hash exploitable, plutôt que de laisser
+    passer : sans preuve, pas de changement.
+    """
+    row = _execute(
+        "SELECT pass_plus FROM utilisateurs.t_roles WHERE id_role = %s", [id_role], fetch="one"
+    )
+    hashed = (row[0] if row else "") or ""
+    if not hashed.startswith(("$2a$", "$2b$", "$2y$")):
+        return False
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except ValueError:
+        logger.warning("Hash bcrypt illisible pour le rôle %s", id_role)
+        return False
+
+
 def set_password(id_role: int, plain: str) -> None:
     """Met à jour le mot de passe d'un compte historique."""
     pass_plus, pass_md5 = hash_password(plain)
