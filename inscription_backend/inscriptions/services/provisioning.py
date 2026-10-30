@@ -8,6 +8,7 @@ from django.utils.text import slugify
 
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
 from inscriptions.models import Application, Organisme, RegistrationRequest
+from inscriptions.services import mirror
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +44,28 @@ def provision_user_groups_after_super_approval(
 
 
 def provision_application_access(kc: KeycloakAdminClient, keycloak_user_id: str, application: Application) -> None:
-    if not settings.KEYCLOAK_SYNC_ENABLED:
-        return
-    gid = kc.ensure_application_group(application.slug)
-    kc.user_join_group(keycloak_user_id, gid)
+    """Accorde l'accès applicatif dans Keycloak et dans la base historique.
+
+    Point de passage unique de tous les appelants : c'est ici que l'écriture miroir
+    se greffe, plutôt que dans chacune des vues qui accordent un accès.
+    """
+    with mirror.atomic_mirror():
+        # Écriture historique d'abord : elle est annulable, l'appel Keycloak non.
+        mirror.legacy_grant_application(kc, keycloak_user_id, application)
+        if settings.KEYCLOAK_SYNC_ENABLED:
+            gid = kc.ensure_application_group(application.slug)
+            kc.user_join_group(keycloak_user_id, gid)
 
 
 def revoke_application_access(kc: KeycloakAdminClient, keycloak_user_id: str, application: Application) -> None:
-    if not settings.KEYCLOAK_SYNC_ENABLED:
-        return
-    gid = kc.ensure_application_group(application.slug)
-    try:
-        kc.user_leave_group(keycloak_user_id, gid)
-    except KeycloakAdminError:
-        logger.warning("Impossible de retirer le groupe %s pour %s", application.slug, keycloak_user_id)
+    """Retire l'accès applicatif dans Keycloak et dans la base historique."""
+    with mirror.atomic_mirror():
+        mirror.legacy_revoke_application(kc, keycloak_user_id, application)
+        if settings.KEYCLOAK_SYNC_ENABLED:
+            gid = kc.ensure_application_group(application.slug)
+            try:
+                kc.user_leave_group(keycloak_user_id, gid)
+            except KeycloakAdminError:
+                logger.warning(
+                    "Impossible de retirer le groupe %s pour %s", application.slug, keycloak_user_id
+                )

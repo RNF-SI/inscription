@@ -20,6 +20,12 @@ DATABASES = {
 KEYCLOAK_BASE_URL = "http://127.0.0.1:9"
 KEYCLOAK_HTTP_TIMEOUT = 1
 KEYCLOAK_SYNC_ENABLED = False
+
+# Même raison pour la base historique : la suite unitaire ne doit joindre aucun
+# PostgreSQL. Les tests qui exercent l'écriture miroir bouchonnent le curseur.
+LEGACY_WRITE_ENABLED = False
+LEGACY_WRITE_PASS_MD5 = False
+
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 SUPERADMIN_NOTIFY_EMAILS = ["admin@test.local"]
 

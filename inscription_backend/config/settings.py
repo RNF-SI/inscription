@@ -146,6 +146,19 @@ LEGACY_DATABASE_URL = env("LEGACY_DATABASE_URL", default="").strip()
 if LEGACY_DATABASE_URL:
     DATABASES["legacy"] = env.db_url_config(LEGACY_DATABASE_URL)
 
+# Écriture miroir vers la base historique (schémas utilisateurs / complement_rnf).
+# Tant que les applications RNF lisent leurs comptes dans cette base, toute mutation
+# faite ici doit y être répercutée, sinon l'inscription ne produit plus rien pour elles.
+# Désactivable pour diagnostiquer sans écrire ; sans LEGACY_DATABASE_URL il n'y a de
+# toute façon pas de connexion "legacy".
+LEGACY_WRITE_ENABLED = env.bool("LEGACY_WRITE_ENABLED", default=bool(LEGACY_DATABASE_URL))
+
+# utilisateurs.t_roles porte deux colonnes de mot de passe : pass_plus (bcrypt, utilisée
+# par les versions récentes de pypnusershub) et pass (md5, héritée). Vérifier côté base
+# si le parc en dépend encore avant d'activer :
+#   SELECT count(*) FROM utilisateurs.t_roles WHERE pass IS NOT NULL;
+LEGACY_WRITE_PASS_MD5 = env.bool("LEGACY_WRITE_PASS_MD5", default=False)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

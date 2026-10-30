@@ -53,6 +53,8 @@ from inscriptions.serializers import (
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
 from inscriptions.services import contact as contact_svc
+from inscriptions.services import mirror
+from inscriptions.services.legacy_writer import LegacyWriteError
 from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import reserve_notifications as reserve_notify
 from inscriptions.services import notifications as notify_svc
@@ -504,10 +506,22 @@ class MeView(APIView):
             }
             if "fonction" in data:
                 update_kwargs["function_value"] = data.get("fonction")
-            kc.update_user_profile(user.sub, **update_kwargs)
-        except KeycloakAdminError as exc:
-            logger.warning("Me patch keycloak failed: %s", exc)
-            return Response({"detail": "Mise à jour Keycloak impossible."}, status=502)
+            with mirror.atomic_mirror():
+                # L'écriture historique est annulable, pas l'appel Keycloak : on la
+                # fait d'abord pour qu'un échec Keycloak ne laisse rien derrière lui.
+                mirror.update_legacy_profile(
+                    kc,
+                    user.sub,
+                    identifiant=data.get("username"),
+                    email=data.get("email"),
+                    prenom_role=data.get("first_name"),
+                    nom_role=data.get("last_name"),
+                    remarques=data.get("fonction"),
+                )
+                kc.update_user_profile(user.sub, **update_kwargs)
+        except (KeycloakAdminError, LegacyWriteError) as exc:
+            logger.warning("Me patch failed: %s", exc)
+            return Response({"detail": "Mise à jour du profil impossible."}, status=502)
 
         return self.get(request)
 
@@ -526,7 +540,10 @@ class MeView(APIView):
             "first_name": claims.get("given_name") or claims.get("first_name") or "",
             "last_name": claims.get("family_name") or claims.get("last_name") or "",
             "is_super_admin": is_super_admin(groups),
-            "legacy_id_role": None,
+            # Exposé si un mapper Keycloak place l'attribut dans le jeton. On évite
+            # volontairement d'interroger Keycloak ou la base historique ici : /me/
+            # est appelé à chaque chargement de page.
+            "legacy_id_role": claims.get("legacy_id_role") or None,
             "fonction": _profile_fonction_for_user(user.sub, claims),
             "organisme": (
                 _organisme_name_from_group_path(org_group_path)
@@ -642,11 +659,13 @@ class MeReserveLinkDetailView(APIView):
             return Response({"detail": "Réserve non liée à votre organisme"}, status=403)
         try:
             kc = KeycloakAdminClient()
-            gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_join_group(user.sub, gid)
-        except KeycloakAdminError as exc:
-            logger.warning("Ajout groupe reserve keycloak impossible: %s", exc)
-            return Response({"detail": "Ajout de la réserve impossible côté Keycloak"}, status=502)
+            with mirror.atomic_mirror():
+                mirror.legacy_join_reserve(kc, user.sub, reserve.area_code)
+                gid = kc.ensure_reserve_group(reserve.area_code)
+                kc.user_join_group(user.sub, gid)
+        except (KeycloakAdminError, LegacyWriteError) as exc:
+            logger.warning("Ajout de la réserve impossible: %s", exc)
+            return Response({"detail": "Ajout de la réserve impossible"}, status=502)
         member_info = UserInfo.from_claims(_claims_with_groups(user.claims, user.sub))
         reserve_notify.notify_referents_new_member(member_info, reserve)
         return Response({"ok": True}, status=201)
@@ -660,11 +679,13 @@ class MeReserveLinkDetailView(APIView):
             return Response({"detail": "Réserve introuvable"}, status=404)
         try:
             kc = KeycloakAdminClient()
-            gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_leave_group(user.sub, gid)
-        except KeycloakAdminError as exc:
-            logger.warning("Suppression groupe reserve keycloak impossible: %s", exc)
-            return Response({"detail": "Suppression de la réserve impossible côté Keycloak"}, status=502)
+            with mirror.atomic_mirror():
+                mirror.legacy_leave_reserve(kc, user.sub, reserve.area_code)
+                gid = kc.ensure_reserve_group(reserve.area_code)
+                kc.user_leave_group(user.sub, gid)
+        except (KeycloakAdminError, LegacyWriteError) as exc:
+            logger.warning("Suppression de la réserve impossible: %s", exc)
+            return Response({"detail": "Suppression de la réserve impossible"}, status=502)
         return Response(status=204)
 
 
@@ -864,15 +885,17 @@ class AdminDecideReserveMemberRemovalRequestView(APIView):
             try:
                 kc = KeycloakAdminClient()
                 root = (getattr(settings, "KEYCLOAK_GROUP_RESERVES", "reserves") or "reserves").strip("/")
-                reserve_group = kc.find_group_by_path(f"/{root}/{req.reserve.area_code}")
-                if reserve_group and reserve_group.get("id"):
-                    kc.user_leave_group(req.target_sub, reserve_group["id"])
-                referent_group = kc.find_group_by_path(f"/{root}/{req.reserve.area_code}/referent")
-                if referent_group and referent_group.get("id"):
-                    kc.user_leave_group(req.target_sub, referent_group["id"])
-            except KeycloakAdminError as exc:
+                with mirror.atomic_mirror():
+                    mirror.legacy_leave_reserve(kc, req.target_sub, req.reserve.area_code)
+                    reserve_group = kc.find_group_by_path(f"/{root}/{req.reserve.area_code}")
+                    if reserve_group and reserve_group.get("id"):
+                        kc.user_leave_group(req.target_sub, reserve_group["id"])
+                    referent_group = kc.find_group_by_path(f"/{root}/{req.reserve.area_code}/referent")
+                    if referent_group and referent_group.get("id"):
+                        kc.user_leave_group(req.target_sub, referent_group["id"])
+            except (KeycloakAdminError, LegacyWriteError) as exc:
                 logger.warning("Retrait membre reserve impossible: %s", exc)
-                return Response({"detail": "Échec du retrait côté Keycloak"}, status=502)
+                return Response({"detail": "Échec du retrait"}, status=502)
 
         req.status = (
             ReserveMemberRemovalRequest.STATUS_APPROVED
@@ -912,15 +935,17 @@ class AdminReserveMemberDirectRemoveView(APIView):
         try:
             kc = KeycloakAdminClient()
             root = (getattr(settings, "KEYCLOAK_GROUP_RESERVES", "reserves") or "reserves").strip("/")
-            reserve_group = kc.find_group_by_path(f"/{root}/{reserve.area_code}")
-            if reserve_group and reserve_group.get("id"):
-                kc.user_leave_group(user_sub, reserve_group["id"])
-            referent_group = kc.find_group_by_path(f"/{root}/{reserve.area_code}/referent")
-            if referent_group and referent_group.get("id"):
-                kc.user_leave_group(user_sub, referent_group["id"])
-        except KeycloakAdminError as exc:
+            with mirror.atomic_mirror():
+                mirror.legacy_leave_reserve(kc, user_sub, reserve.area_code)
+                reserve_group = kc.find_group_by_path(f"/{root}/{reserve.area_code}")
+                if reserve_group and reserve_group.get("id"):
+                    kc.user_leave_group(user_sub, reserve_group["id"])
+                referent_group = kc.find_group_by_path(f"/{root}/{reserve.area_code}/referent")
+                if referent_group and referent_group.get("id"):
+                    kc.user_leave_group(user_sub, referent_group["id"])
+        except (KeycloakAdminError, LegacyWriteError) as exc:
             logger.warning("Retrait direct membre reserve impossible: %s", exc)
-            return Response({"detail": "Échec du retrait côté Keycloak"}, status=502)
+            return Response({"detail": "Échec du retrait"}, status=502)
 
         return Response({"ok": True})
 
@@ -954,11 +979,13 @@ class AdminReserveMemberDirectAddView(APIView):
 
         try:
             kc = KeycloakAdminClient()
-            gid = kc.ensure_reserve_group(reserve.area_code)
-            kc.user_join_group(user_sub, gid)
-        except KeycloakAdminError as exc:
+            with mirror.atomic_mirror():
+                mirror.legacy_join_reserve(kc, user_sub, reserve.area_code)
+                gid = kc.ensure_reserve_group(reserve.area_code)
+                kc.user_join_group(user_sub, gid)
+        except (KeycloakAdminError, LegacyWriteError) as exc:
             logger.warning("Ajout direct membre reserve impossible: %s", exc)
-            return Response({"detail": "Échec de l'ajout côté Keycloak"}, status=502)
+            return Response({"detail": "Échec de l'ajout"}, status=502)
 
         member_info = fetch_user_info(user_sub) or UserInfo(
             sub=user_sub, email=email, username=email, first_name="", last_name=""
@@ -1050,11 +1077,13 @@ class AdminDecideReserveReferentRequestView(APIView):
         if approve:
             try:
                 kc = KeycloakAdminClient()
-                gid = kc.ensure_reserve_referent_group(req.reserve.area_code)
-                kc.user_join_group(req.user_sub, gid)
-            except KeycloakAdminError as exc:
-                logger.warning("Validation referent impossible côté Keycloak: %s", exc)
-                return Response({"detail": "Échec côté Keycloak"}, status=502)
+                with mirror.atomic_mirror():
+                    mirror.legacy_set_referent(kc, req.user_sub, req.reserve.area_code, True)
+                    gid = kc.ensure_reserve_referent_group(req.reserve.area_code)
+                    kc.user_join_group(req.user_sub, gid)
+            except (KeycloakAdminError, LegacyWriteError) as exc:
+                logger.warning("Validation referent impossible: %s", exc)
+                return Response({"detail": "Échec de la validation"}, status=502)
 
         user_info = fetch_user_info(req.user_sub) or UserInfo(
             sub=req.user_sub, email="", username=req.user_sub, first_name="", last_name=""

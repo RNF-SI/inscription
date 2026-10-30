@@ -402,6 +402,18 @@ class KeycloakAdminClient:
             raise KeycloakAdminError("create_user_no_id")
         return uid
 
+    def delete_user(self, user_id: str) -> None:
+        """Supprime un compte Keycloak.
+
+        Sert à compenser une création lorsque l'écriture miroir vers la base
+        historique échoue : Keycloak n'étant pas transactionnel, c'est le seul moyen
+        de revenir à l'état initial. Un 404 est tenu pour un succès (déjà absent).
+        """
+        r = self._delete(f"/users/{user_id}")
+        if r.status_code not in (200, 204, 404):
+            logger.error("delete_user %s: %s", r.status_code, r.text[:300])
+            raise KeycloakAdminError("delete_user_failed")
+
     def find_user_by_username(self, username: str) -> str | None:
         r = self._get(f"/users?username={requests.utils.quote(username)}&exact=true")
         if r.status_code != 200:
@@ -470,6 +482,20 @@ class KeycloakAdminClient:
         resp = self._put(f"/users/{user_id}", json=data)
         if resp.status_code not in (200, 204):
             logger.error("update_user_profile %s: %s", resp.status_code, resp.text[:500])
+            raise KeycloakAdminError(f"update_user_failed:{resp.status_code}")
+
+    def set_user_attribute(self, user_id: str, name: str, value: str) -> None:
+        """Pose un attribut sur un compte sans toucher au reste de sa représentation."""
+        current = self._get(f"/users/{user_id}")
+        if current.status_code != 200:
+            raise KeycloakAdminError(f"get_user_failed:{current.status_code}")
+        data = current.json() or {}
+        attrs = data.get("attributes") or {}
+        attrs[name] = [str(value)]
+        data["attributes"] = attrs
+        resp = self._put(f"/users/{user_id}", json=data)
+        if resp.status_code not in (200, 204):
+            logger.error("set_user_attribute %s: %s", resp.status_code, resp.text[:300])
             raise KeycloakAdminError(f"update_user_failed:{resp.status_code}")
 
     def get_user(self, user_id: str) -> dict:

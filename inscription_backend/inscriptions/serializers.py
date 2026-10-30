@@ -73,6 +73,11 @@ class ApplicationCatalogSerializer(serializers.ModelSerializer):
             "member_count",
             "admin_count",
             "counts_updated_at",
+            # Visible côté administration seulement : ApplicationSerializer, lui,
+            # sert la route publique et n'expose pas ces identifiants internes.
+            "legacy_id_application",
+            "legacy_id_profil",
+            "legacy_group_id_role",
         )
 
 
@@ -88,12 +93,20 @@ class AdminApplicationWriteSerializer(serializers.ModelSerializer):
             "managed_by_si",
             "requires_access_request",
             "keycloak_client_id",
+            # Correspondance vers la base historique : sans legacy_id_application,
+            # l'accès à cette application n'est pas répercuté côté utilisateurs.
+            "legacy_id_application",
+            "legacy_id_profil",
+            "legacy_group_id_role",
         )
         extra_kwargs = {
             "url": {"required": False, "allow_blank": True},
             "image": {"read_only": True},
             "description": {"required": False, "allow_blank": True},
             "keycloak_client_id": {"required": False, "allow_blank": True},
+            "legacy_id_application": {"required": False, "allow_null": True},
+            "legacy_id_profil": {"required": False},
+            "legacy_group_id_role": {"required": False, "allow_null": True},
         }
 
     def __init__(self, *args, **kwargs):

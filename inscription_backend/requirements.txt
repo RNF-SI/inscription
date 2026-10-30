@@ -6,6 +6,9 @@ requests>=2.31,<3
 PyJWT[crypto]>=2.8,<3
 cryptography>=41,<44
 Pillow>=9.0
+# Hachage des mots de passe pour la base historique : pypnusershub lit un
+# bcrypt $2b$ de coût 12 dans utilisateurs.t_roles.pass_plus.
+bcrypt>=4.0,<5
 
 # PostgreSQL — installer selon ton URL :
 # - postgres://… (Django classique) → psycopg2-binary

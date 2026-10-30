@@ -20,6 +20,8 @@ from inscriptions.models import (
 )
 from inscriptions.roles import list_application_admin_subs, list_application_admins, list_super_admin_subs
 from inscriptions.services import mail as mail_svc
+from inscriptions.services import mirror
+from inscriptions.services.legacy_writer import LegacyWriteError
 from inscriptions.services import provisioning as prov
 from inscriptions.services import reserve_notifications as reserve_notify
 from inscriptions.services import notifications as notify_svc
@@ -101,38 +103,54 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
         raise ValueError("invalid_status")
     kc = KeycloakAdminClient()
     plain_password = decrypt_text(registration.password_cipher)
-    keycloak_user_id = ""
-    if settings.KEYCLOAK_SYNC_ENABLED:
-        try:
-            keycloak_user_id = kc.create_user(
-                username=registration.username,
-                email=registration.email,
-                first_name=registration.first_name,
-                last_name=registration.last_name,
-                password=plain_password,
-                temporary_password=False,
-                require_verify_email=True,
-                function_value=(registration.remarks or "").strip(),
+
+    # Les trois écritures d'état — base historique, Keycloak, base locale — doivent
+    # réussir ensemble ou pas du tout : les applications RNF lisent encore leurs
+    # comptes dans la base historique, un compte présent d'un seul côté est invisible
+    # ou inconnectable. Les notifications qui suivent sortent du bloc : un mail parti
+    # n'est pas annulable, et son échec ne doit pas défaire une inscription valide.
+    with mirror.atomic_mirror() as undo:
+        # La ligne t_roles d'abord : son id_role part dans les attributs Keycloak.
+        # Le trigger after_insert_user_function en déduit les liens cor_role_rn.
+        legacy_id_role = mirror.create_legacy_role(registration, plain_password)
+
+        keycloak_user_id = ""
+        if settings.KEYCLOAK_SYNC_ENABLED:
+            extra_attributes = (
+                {mirror.LEGACY_ID_ROLE_ATTRIBUTE: [str(legacy_id_role)]} if legacy_id_role else None
             )
+            try:
+                keycloak_user_id = kc.create_user(
+                    username=registration.username,
+                    email=registration.email,
+                    first_name=registration.first_name,
+                    last_name=registration.last_name,
+                    password=plain_password,
+                    temporary_password=False,
+                    require_verify_email=True,
+                    function_value=(registration.remarks or "").strip(),
+                    extra_attributes=extra_attributes,
+                )
+            except KeycloakAdminError as exc:
+                logger.exception("Keycloak create_user: %s", exc)
+                raise
+            undo.push(lambda uid=keycloak_user_id: kc.delete_user(uid))
             try:
                 kc.send_verify_email(keycloak_user_id, client_id=settings.KEYCLOAK_APP_CLIENT_ID)
             except KeycloakAdminError as exc:
                 logger.warning("Keycloak send_verify_email failed for %s: %s", keycloak_user_id, exc)
-        except KeycloakAdminError as exc:
-            logger.exception("Keycloak create_user: %s", exc)
-            raise
-    else:
-        keycloak_user_id = f"local-{registration.public_id}"
+        else:
+            keycloak_user_id = f"local-{registration.public_id}"
 
-    registration.keycloak_user_id = keycloak_user_id
-    registration.status = RegistrationRequest.STATUS_PENDING_APPS
-    registration.save(update_fields=["keycloak_user_id", "status", "updated_at"])
+        registration.keycloak_user_id = keycloak_user_id
+        registration.status = RegistrationRequest.STATUS_PENDING_APPS
+        registration.save(update_fields=["keycloak_user_id", "status", "updated_at"])
 
-    if settings.KEYCLOAK_SYNC_ENABLED:
-        try:
+        if settings.KEYCLOAK_SYNC_ENABLED:
+            # L'échec était auparavant seulement journalisé. Sous la règle du tout ou
+            # rien il doit annuler l'approbation : un compte sans son organisme ni ses
+            # réserves n'a pas les droits attendus.
             prov.provision_user_groups_after_super_approval(kc, keycloak_user_id, registration)
-        except KeycloakAdminError:
-            logger.exception("Provisioning org/reserve groups failed")
 
     user_info = _registration_user_info(registration)
 
@@ -250,9 +268,9 @@ def app_admin_decide_item(
         kc = KeycloakAdminClient()
         try:
             prov.provision_application_access(kc, user_sub, item.application)
-        except KeycloakAdminError as exc:
-            logger.exception("provision app group failed")
-            raise ValueError("Échec du provisioning Keycloak pour cette application.") from exc
+        except (KeycloakAdminError, LegacyWriteError) as exc:
+            logger.exception("provision app access failed")
+            raise ValueError("Échec de l'attribution de l'accès à cette application.") from exc
         mail_svc.send_app_access_granted_user_mail(user=user_info, application=item.application)
         _notify_user_sub(user_sub, f"Accès : {item.application.nom}", "Votre demande a été acceptée.")
     else:
@@ -355,9 +373,9 @@ def app_admin_decide_additional_item(
         kc = KeycloakAdminClient()
         try:
             prov.provision_application_access(kc, sub, item.application)
-        except KeycloakAdminError as exc:
+        except (KeycloakAdminError, LegacyWriteError) as exc:
             logger.exception("provision additional app failed")
-            raise ValueError("Échec du provisioning Keycloak pour cette application.") from exc
+            raise ValueError("Échec de l'attribution de l'accès à cette application.") from exc
         mail_svc.send_app_access_granted_user_mail(user=user_info, application=item.application)
         _notify_user_sub(sub, f"Accès : {item.application.nom}", "Votre demande a été acceptée.")
     else:

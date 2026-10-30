@@ -53,6 +53,24 @@ class Application(models.Model):
     keycloak_admin_count = models.IntegerField(null=True, blank=True)
     keycloak_counts_updated_at = models.DateTimeField(null=True, blank=True)
 
+    # Correspondance vers la base historique, pour l'écriture miroir.
+    # Une application dont legacy_id_application est vide n'écrit rien côté legacy :
+    # le déploiement peut précéder le renseignement de ces valeurs.
+    legacy_id_application = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="utilisateurs.t_applications.id_application",
+    )
+    legacy_id_profil = models.IntegerField(
+        default=1,
+        help_text="utilisateurs.t_profils.id_profil ; 1 = Lecteur, ce qu'accordait UsersHub",
+    )
+    legacy_group_id_role = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="utilisateurs.t_roles.id_role du groupe (groupe=true) à alimenter dans cor_roles",
+    )
+
     class Meta:
         db_table = "inscription_application"
         ordering = ["nom"]

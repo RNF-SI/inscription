@@ -68,8 +68,27 @@ KEYCLOAK_TEST_INTEGRATION=1 DJANGO_SETTINGS_MODULE=config.settings \
 Ils refusent de s'exécuter sur `rnf`, `si-rnf`, `master`… En local, pointer `KEYCLOAK_REALM`
 vers un realm de test (`inscription-test`) dans `.env`.
 
+Les tests d'intégration de l'écriture miroir **effacent des schémas entiers** : ils refusent
+toute base dont le nom ne contient pas « test », et le `.env` pointant sur la production,
+il faut écraser `LEGACY_DATABASE_URL` dans l'environnement (django-environ lit le `.env`
+en `overwrite=False`, la variable exportée gagne donc) :
+
+```bash
+createdb -T template0 inscription_legacy_test
+export LEGACY_TEST_INTEGRATION=1
+LEGACY_DATABASE_URL=postgres://user:pass@localhost:5432/inscription_legacy_test \
+  DJANGO_SETTINGS_MODULE=config.settings \
+  python manage.py test inscriptions.tests.test_legacy_integration
+```
+
+Ils chargent `inscriptions/tests/sql/legacy_schema.sql`, qui reproduit le schéma historique
+**avec ses triggers de production** : c'est ce qui permet de vérifier que `cor_role_rn` est
+bien peuplé par le trigger, sans doublon, et que les bases satellites reçoivent le compte.
+
 Autres commandes de gestion : `promote_super --email=…`, `import_application_images`,
-`migrate_legacy`, `migrate_legacy_users_to_keycloak` (voir README.md §4 — destructif, `--dry-run` d'abord).
+`migrate_legacy`, `migrate_legacy_users_to_keycloak` (voir README.md §4 — destructif, `--dry-run` d'abord),
+`reconcile_legacy_keycloak` (compare base historique et Keycloak ; rapport seul, `--apply`
+se limite à reposer l'attribut `legacy_id_role`).
 
 ### Frontend (`frontend/`)
 
@@ -121,6 +140,44 @@ client de service `inscription-admin`), dont les `ensure_*_group` sont idempoten
 
 Conséquence pratique : les demandes en attente (référent, retrait de membre) sont **supprimées**
 une fois traitées — l'état final vit dans Keycloak, pas en base.
+
+### Écriture miroir vers la base historique
+
+Les autres applications RNF lisent encore leurs comptes dans `geonature_global`
+(schémas `utilisateurs` et `complement_rnf`). Toute mutation faite ici y est donc
+répercutée, en plus de Keycloak — qui n'est pour l'instant consommé que par cette
+application. `inscriptions/services/legacy_writer.py` porte **toutes** les écritures
+historiques, `services/mirror.py` les orchestre avec Keycloak.
+
+Règles qui gouvernent ce code :
+
+- **Tout ou rien.** `mirror.atomic_mirror()` ouvre une transaction sur chaque base et
+  tient une pile d'annulations pour ce que Keycloak a déjà fait. L'écriture
+  historique passe **avant** l'appel Keycloak : PostgreSQL sait annuler, l'API Admin
+  non, donc un échec Keycloak laisse la base intacte.
+- **`cor_role_rn` est peuplé par un trigger à la création.**
+  `complement_rnf.after_insert_user_function()` lit `champs_addi->'reserves'` à
+  l'INSERT de `t_roles`. On écrit donc `champs_addi` et on laisse faire ; écrire aussi
+  les lignes produirait des doublons. `sync_reserves()` ne sert qu'aux modifications
+  ultérieures.
+- **Colonnes à ne jamais écrire** : `id_role`, `uuid_role`, `active`, `groupe` (valeurs
+  par défaut PostgreSQL), `date_insert` et `date_update` (triggers `tri_modify_date_*`).
+- **Ne pas vider `pass_plus`** : `complement_rnf.user_change()` conditionne l'insertion
+  dans `site_internet_utilisateurs` à `pass_plus IS NOT NULL`.
+- **`cor_role_rn.rn_id` est le code textuel** de la réserve (`RNN41`), clé étrangère
+  vers `ref_geo.l_areas.area_code` : aucune conversion vers un identifiant numérique.
+- Le mot de passe en clair n'existe qu'à l'instant du déchiffrement Fernet dans
+  `super_admin_approve` : c'est le seul endroit où le bcrypt historique peut être
+  calculé (`$2b$`, coût 12, comme le produisait UsersHub).
+
+Le lien entre les deux mondes est l'attribut Keycloak `legacy_id_role`, posé à la
+création et par l'import. `mirror.legacy_id_role_for()` le lit, avec repli sur l'e-mail
+puis l'identifiant.
+
+Une application ne répercute ses accès que si `legacy_id_application` est renseigné sur
+son enregistrement `Application` (avec `legacy_id_profil`, 1 = Lecteur, et
+éventuellement `legacy_group_id_role` pour `utilisateurs.cor_roles`). Sans cette
+correspondance, rien n'est écrit côté historique.
 
 ### Workflow d'inscription (le cœur métier)
 
