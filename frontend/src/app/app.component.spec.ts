@@ -26,10 +26,12 @@ describe('AppComponent', () => {
     expect(app.title).toEqual('inscription');
   });
 
-  it('should render title', () => {
+  // Le gabarit ne contient que la sortie de routage : tout le reste de
+  // l'interface est porté par les composants routés.
+  it('renders the router outlet', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.content span')?.textContent).toContain('inscription app is running!');
+    expect(compiled.querySelector('router-outlet')).not.toBeNull();
   });
 });

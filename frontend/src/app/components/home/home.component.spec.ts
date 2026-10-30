@@ -1,11 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormsModule } from '@angular/forms';
+import { MatCardModule } from '@angular/material/card';
+import { MatGridListModule } from '@angular/material/grid-list';
+import { RouterTestingModule } from '@angular/router/testing';
+import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { of } from 'rxjs';
 
 import { HomeComponent } from './home.component';
 import { ApiService } from 'src/app/services/api.service';
-import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
-import { ToastrService } from 'ngx-toastr';
+import { AuthService } from 'src/app/core/auth/auth-service.service';
+import { ToastService } from 'src/app/core/services/toast.service';
 import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
+import { LoadingSpinnerComponent } from 'src/app/core/components/loading-spinner/loading-spinner.component';
 
 describe('HomeComponent', () => {
   let component: HomeComponent;
@@ -13,7 +19,16 @@ describe('HomeComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [HomeComponent],
+      declarations: [HomeComponent, LoadingSpinnerComponent],
+      // La grille d'applications utilise les cartes et la grille Material,
+      // les icones FontAwesome et [(ngModel)] pour les filtres.
+      imports: [
+        FormsModule,
+        RouterTestingModule,
+        MatCardModule,
+        MatGridListModule,
+        FontAwesomeModule,
+      ],
       providers: [
         {
           provide: ApiService,
@@ -38,9 +53,19 @@ describe('HomeComponent', () => {
             getMeSnapshot: () => null,
             restoreSession: () => of(false),
             refreshMeFromApi: () => of(null),
+            // Lu par le getter `user`, donc a chaque detection de changements.
+            getCurrentUser: () => null,
           },
         },
-        { provide: ToastrService, useValue: { success: () => undefined, error: () => undefined } },
+        {
+          provide: ToastService,
+          useValue: {
+            success: () => undefined,
+            error: () => undefined,
+            warning: () => undefined,
+            info: () => undefined,
+          },
+        },
         { provide: NgbModal, useValue: { open: () => ({}) } },
       ],
     }).compileComponents();
