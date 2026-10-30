@@ -49,6 +49,8 @@ from inscriptions.serializers import (
     OrganismeDetailSerializer,
     OrganismeSerializer,
     PasswordChangeSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
     ReserveSerializer,
     SignupSerializer,
 )
@@ -56,6 +58,7 @@ from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
 from inscriptions.services import contact as contact_svc
 from inscriptions.services import mirror
+from inscriptions.services import password_reset as password_reset_svc
 from inscriptions.services.legacy_writer import LegacyWriteError
 from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import reserve_notifications as reserve_notify
@@ -667,6 +670,60 @@ class MePasswordView(APIView):
             return Response({"detail": "Changement de mot de passe impossible."}, status=502)
 
         AuditLog.objects.create(actor_sub=user.sub, action="password_change", payload={})
+        return Response({"ok": True})
+
+
+class PasswordResetRequestView(APIView):
+    """Demande de réinitialisation. Route publique, limitée en débit.
+
+    Répond toujours la même chose : révéler qu'une adresse est inconnue permettrait
+    de dresser la liste des comptes existants.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
+
+    def post(self, request):
+        ser = PasswordResetRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        password_reset_svc.request_reset(ser.validated_data["email"])
+        return Response(
+            {
+                "ok": True,
+                "detail": "Si un compte existe pour cette adresse, un lien vient d'être envoyé.",
+            }
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """Réinitialisation par jeton. Route publique, limitée en débit."""
+
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
+
+    def post(self, request):
+        ser = PasswordResetConfirmSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            password_reset_svc.confirm_reset(
+                ser.validated_data["token"], ser.validated_data["new_password"]
+            )
+        except password_reset_svc.PasswordResetError as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=400)
+        except mirror.PasswordChangeRefused as exc:
+            return Response({"detail": exc.message, "code": exc.code}, status=400)
+        except KeycloakAdminError as exc:
+            logger.warning("Réinitialisation refusée par Keycloak : %s", exc)
+            if str(exc.code).startswith("set_password_failed:400"):
+                return Response({"detail": exc.detail}, status=400)
+            return Response({"detail": "Réinitialisation impossible."}, status=502)
+        except LegacyWriteError as exc:
+            logger.warning("Réinitialisation impossible côté historique : %s", exc)
+            return Response({"detail": "Réinitialisation impossible."}, status=502)
         return Response({"ok": True})
 
 

@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class Organisme(models.Model):
@@ -214,6 +215,29 @@ class Notification(models.Model):
     class Meta:
         db_table = "inscription_notification"
         ordering = ["-created_at"]
+
+
+class PasswordResetToken(models.Model):
+    """Jeton de réinitialisation de mot de passe, à usage unique et daté.
+
+    Seule l'empreinte SHA-256 du jeton est conservée : une fuite de cette table ne
+    doit pas suffire à réinitialiser des comptes. Le jeton en clair n'existe que dans
+    le lien envoyé par e-mail.
+    """
+
+    token_hash = models.CharField(max_length=64, unique=True)
+    user_sub = models.CharField(max_length=200, db_index=True)
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "inscription_password_reset_token"
+        ordering = ["-created_at"]
+
+    def is_usable(self) -> bool:
+        return self.used_at is None and self.expires_at > timezone.now()
 
 
 class AuditLog(models.Model):

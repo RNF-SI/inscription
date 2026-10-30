@@ -24,6 +24,8 @@ urlpatterns = [
     ),
     path("me/additional-access/", views.AdditionalAccessCreateView.as_view()),
     path("me/password/", views.MePasswordView.as_view()),
+    path("password-reset/", views.PasswordResetRequestView.as_view()),
+    path("password-reset/confirm/", views.PasswordResetConfirmView.as_view()),
     path("notifications/", views.NotificationListView.as_view()),
     path("notifications/unread-count/", views.NotificationUnreadCountView.as_view()),
     path("notifications/delete-read/", views.NotificationDeleteReadView.as_view()),

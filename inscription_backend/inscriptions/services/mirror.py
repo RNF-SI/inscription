@@ -279,23 +279,42 @@ def change_password(kc: KeycloakAdminClient, user_sub: str, current: str, nouvea
     nous, et cette colonne porte le mot de passe courant puisque c'est cette même
     fonction qui la tient à jour.
     """
+    id_role = _password_target(kc, user_sub)
+    if not legacy_writer.verify_password(id_role, current):
+        raise PasswordChangeRefused("wrong_current", "Mot de passe actuel incorrect.")
+    _write_password(kc, user_sub, id_role, nouveau)
+
+
+def set_password_without_verification(kc: KeycloakAdminClient, user_sub: str, nouveau: str) -> None:
+    """Pose un mot de passe sans contrôler l'actuel.
+
+    Réservé au parcours « mot de passe oublié », où la preuve est le jeton reçu par
+    e-mail. Les refus restent les mêmes : compte fédéré, ou sans correspondance
+    historique.
+    """
+    id_role = _password_target(kc, user_sub)
+    _write_password(kc, user_sub, id_role, nouveau)
+
+
+def _password_target(kc: KeycloakAdminClient, user_sub: str) -> int:
+    """Vérifie que le mot de passe de ce compte nous appartient, et renvoie l'id_role."""
     if kc.is_federated(user_sub):
         raise PasswordChangeRefused(
             "federated",
             "Votre mot de passe est géré par l'annuaire de votre organisation : "
             "il doit être modifié là-bas.",
         )
-
     id_role = legacy_id_role_for(kc, user_sub)
     if id_role is None:
         raise PasswordChangeRefused(
             "no_legacy_account",
             "Aucun compte historique ne correspond : contactez le support.",
         )
+    return id_role
 
-    if not legacy_writer.verify_password(id_role, current):
-        raise PasswordChangeRefused("wrong_current", "Mot de passe actuel incorrect.")
 
+def _write_password(kc: KeycloakAdminClient, user_sub: str, id_role: int, nouveau: str) -> None:
+    """Écrit le mot de passe des deux côtés, l'historique d'abord car annulable."""
     with atomic_mirror():
         legacy_writer.set_password(id_role, nouveau)
         kc.set_user_password(user_sub, nouveau)

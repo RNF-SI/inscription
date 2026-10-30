@@ -100,6 +100,9 @@ REST_FRAMEWORK = {
     # Seule la route de contact est limitée (scope "contact"), via ScopedRateThrottle.
     "DEFAULT_THROTTLE_RATES": {
         "contact": env("CONTACT_THROTTLE_RATE", default="10/hour"),
+        # Route publique : limiter freine autant le harcèlement d'une boîte mail
+        # que la recherche d'adresses valides.
+        "password_reset": env("PASSWORD_RESET_THROTTLE_RATE", default="5/hour"),
     },
 }
 
@@ -121,6 +124,9 @@ KEYCLOAK_SYNC_ENABLED = env.bool("KEYCLOAK_SYNC_ENABLED", default=bool(KEYCLOAK_
 KEYCLOAK_HTTP_TIMEOUT = env.int("KEYCLOAK_HTTP_TIMEOUT", default=10)
 
 FRONTEND_PUBLIC_URL = env("FRONTEND_PUBLIC_URL", default="http://localhost:4200")
+
+# Durée de validité d'un lien de réinitialisation de mot de passe.
+PASSWORD_RESET_TTL_MINUTES = env.int("PASSWORD_RESET_TTL_MINUTES", default=60)
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",

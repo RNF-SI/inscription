@@ -38,6 +38,10 @@ export class MyCustomInterceptor implements HttpInterceptor {
     if (path.endsWith('/register') || path.endsWith('/register/')) {
       return true;
     }
+    // Mot de passe oublié : par définition, l'usager n'a pas de session.
+    if (path.includes('/password-reset')) {
+      return true;
+    }
     // Formulaire de contact : accessible aux visiteurs anonymes.
     if (path.endsWith('/contact') || path.endsWith('/contact/')) {
       return true;

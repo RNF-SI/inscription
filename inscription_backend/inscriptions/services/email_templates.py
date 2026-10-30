@@ -253,6 +253,30 @@ def render_email(
     return html_doc, "\n\n".join(part for part in plain_parts if part)
 
 
+def password_reset_email(*, token: str, ttl_minutes: int) -> tuple[str, str, str]:
+    """Lien de réinitialisation. Le jeton ne voyage que là, et nulle part ailleurs."""
+    url = frontend_url(f"/nouveau-mot-de-passe?token={token}")
+    html_doc, plain = render_email(
+        title="Réinitialisation de votre mot de passe",
+        preheader=f"Lien valable {ttl_minutes} minutes.",
+        blocks=[
+            paragraph(
+                "Vous avez demandé à réinitialiser votre mot de passe sur les plateformes "
+                "de Réserves Naturelles de France."
+            ),
+            button("Choisir un nouveau mot de passe", url),
+            paragraph(
+                f"Ce lien est valable {ttl_minutes} minutes et ne peut servir qu'une seule fois."
+            ),
+        ],
+        secondary_note=(
+            "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : "
+            "votre mot de passe reste inchangé."
+        ),
+    )
+    return "Réinitialisation de votre mot de passe", html_doc, plain
+
+
 def registration_submitted_user_email(registration: RegistrationRequest) -> tuple[str, str, str]:
     subject = "Votre demande d'inscription a bien été reçue"
     preheader = "Votre demande est en attente de validation par un administrateur."

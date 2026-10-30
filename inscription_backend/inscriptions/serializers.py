@@ -158,6 +158,25 @@ class PasswordChangeSerializer(serializers.Serializer):
         return attrs
 
 
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Le jeton remplace la connaissance du mot de passe actuel."""
+
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    new_password_confirmation = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_confirmation"]:
+            raise serializers.ValidationError(
+                {"new_password_confirmation": "Les mots de passe ne correspondent pas."}
+            )
+        return attrs
+
+
 class SignupItemSerializer(serializers.Serializer):
     application_slug = serializers.SlugField()
     justification = serializers.CharField(required=False, allow_blank=True)

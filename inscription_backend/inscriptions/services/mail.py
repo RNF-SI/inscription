@@ -94,6 +94,13 @@ def notify_superadmins_registration(registration: RegistrationRequest) -> None:
     send_html_email(recipients, subject, html_body, text_body)
 
 
+def send_password_reset_mail(*, email: str, token: str, ttl) -> None:
+    subject, html_body, text_body = tpl.password_reset_email(
+        token=token, ttl_minutes=int(ttl.total_seconds() // 60)
+    )
+    send_html_email([email], subject, html_body, text_body)
+
+
 def send_registration_submitted_user_mail(registration: RegistrationRequest) -> None:
     subject, html_body, text_body = tpl.registration_submitted_user_email(registration)
     send_html_email([registration.email], subject, html_body, text_body)

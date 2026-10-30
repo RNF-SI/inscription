@@ -222,8 +222,14 @@ le client SPA n'autorise pas le « direct grant », et l'activer pour cela affai
 le realm. Un compte fédéré depuis un annuaire (`federationLink` posé) est refusé — son
 mot de passe ne nous appartient pas.
 
-⚠️ **Il n'existe pas encore de parcours « mot de passe oublié ».** Celui de Keycloak
-est désactivé au niveau du realm, et il écrirait de toute façon d'un seul côté.
+Le parcours « mot de passe oublié » est porté par la plateforme pour la même raison :
+`POST /api/password-reset/` puis `POST /api/password-reset/confirm/`, routes publiques
+limitées en débit (`password_reset`). Trois précautions dans
+`services/password_reset.py` : la demande répond toujours la même chose, connue ou
+non, pour ne pas révéler quelles adresses existent ; seule l'empreinte SHA-256 du
+jeton est stockée ; et le jeton est à usage unique, invalidé avec les autres en
+attente du même compte. Les deux routes doivent rester dans `isPublicApiRequest` de
+l'intercepteur HTTP.
 
 Pour tester sur une copie de production, il faut d'abord **remplacer toutes les tables
 distantes par des tables locales** : un `pg_dump` emporte `CREATE SERVER`, `CREATE USER

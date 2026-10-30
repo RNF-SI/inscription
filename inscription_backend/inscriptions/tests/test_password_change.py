@@ -148,3 +148,138 @@ class ChangementTests(TestCase):
              mock.patch.object(legacy_writer, "set_password"):
             with self.assertRaises(KeycloakAdminError):
                 mirror.change_password(kc, "sub-1", "ancien", "NouveauMotDePasse1")
+
+
+class ReinitialisationTests(TestCase):
+    """Parcours « mot de passe oublié ».
+
+    Trois propriétés à verrouiller : on ne révèle pas quelles adresses existent, le
+    jeton n'est pas stocké en clair, et il ne sert qu'une fois.
+    """
+
+    def setUp(self):
+        from django.core import mail as django_mail
+
+        django_mail.outbox = []
+        self.kc = mock.MagicMock()
+        self.kc.is_federated.return_value = False
+        self.kc.find_user_by_email.return_value = "sub-1"
+        self.patch_kc = mock.patch(
+            "inscriptions.services.password_reset.KeycloakAdminClient", return_value=self.kc
+        )
+        self.patch_kc.start()
+        self.addCleanup(self.patch_kc.stop)
+        self.patch_role = mock.patch(
+            "inscriptions.services.password_reset.mirror.legacy_id_role_for", return_value=7
+        )
+        self.patch_role.start()
+        self.addCleanup(self.patch_role.stop)
+
+    def _demande(self, email="jean@example.org"):
+        from inscriptions.services import password_reset
+
+        password_reset.request_reset(email)
+
+    def test_adresse_inconnue_ne_cree_rien(self):
+        from inscriptions.models import PasswordResetToken
+        from django.core import mail as django_mail
+
+        self.kc.find_user_by_email.return_value = None
+        self._demande()
+        self.assertEqual(PasswordResetToken.objects.count(), 0)
+        self.assertEqual(len(django_mail.outbox), 0)
+
+    def test_compte_federe_ne_cree_rien(self):
+        from inscriptions.models import PasswordResetToken
+
+        self.kc.is_federated.return_value = True
+        self._demande()
+        self.assertEqual(PasswordResetToken.objects.count(), 0)
+
+    def test_sans_compte_historique_ne_cree_rien(self):
+        from inscriptions.models import PasswordResetToken
+
+        self.patch_role.stop()
+        with mock.patch(
+            "inscriptions.services.password_reset.mirror.legacy_id_role_for", return_value=None
+        ):
+            self._demande()
+        self.patch_role.start()
+        self.assertEqual(PasswordResetToken.objects.count(), 0)
+
+    def test_jeton_cree_et_mail_envoye_sans_jeton_en_clair_en_base(self):
+        from django.core import mail as django_mail
+        from inscriptions.models import PasswordResetToken
+
+        self._demande()
+        entry = PasswordResetToken.objects.get()
+        self.assertEqual(len(django_mail.outbox), 1)
+        corps = django_mail.outbox[0].body + str(django_mail.outbox[0].alternatives or "")
+        # Le jeton figure dans le lien du mail, jamais en clair dans la table.
+        self.assertIn("nouveau-mot-de-passe?token=", corps)
+        self.assertEqual(len(entry.token_hash), 64)
+        self.assertNotIn(entry.token_hash, corps)
+
+    def _jeton_envoye(self):
+        from django.core import mail as django_mail
+        import re
+
+        corps = django_mail.outbox[0].body + str(django_mail.outbox[0].alternatives or "")
+        return re.search(r"token=([A-Za-z0-9_\-]+)", corps).group(1)
+
+    def test_confirmation_nominale_consomme_le_jeton(self):
+        from inscriptions.models import PasswordResetToken
+        from inscriptions.services import password_reset
+
+        self._demande()
+        jeton = self._jeton_envoye()
+        with mock.patch.object(password_reset.mirror, "set_password_without_verification") as ecriture:
+            password_reset.confirm_reset(jeton, "NouveauMotDePasse1")
+        ecriture.assert_called_once()
+        self.assertIsNotNone(PasswordResetToken.objects.get().used_at)
+
+    def test_jeton_rejoue_est_refuse(self):
+        from inscriptions.services import password_reset
+
+        self._demande()
+        jeton = self._jeton_envoye()
+        with mock.patch.object(password_reset.mirror, "set_password_without_verification"):
+            password_reset.confirm_reset(jeton, "NouveauMotDePasse1")
+        with self.assertRaises(password_reset.PasswordResetError) as ctx:
+            password_reset.confirm_reset(jeton, "EncoreUnAutre1")
+        self.assertEqual(ctx.exception.code, "invalid_token")
+
+    def test_jeton_expire_est_refuse(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from inscriptions.models import PasswordResetToken
+        from inscriptions.services import password_reset
+
+        self._demande()
+        jeton = self._jeton_envoye()
+        PasswordResetToken.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
+        with self.assertRaises(password_reset.PasswordResetError):
+            password_reset.confirm_reset(jeton, "NouveauMotDePasse1")
+
+    def test_jeton_inconnu_est_refuse(self):
+        from inscriptions.services import password_reset
+
+        with self.assertRaises(password_reset.PasswordResetError):
+            password_reset.confirm_reset("jeton-inexistant", "NouveauMotDePasse1")
+
+    def test_echec_decriture_rend_le_jeton_reutilisable(self):
+        """Si l'écriture échoue, l'usager doit pouvoir réessayer avec le même lien."""
+        from inscriptions.models import PasswordResetToken
+        from inscriptions.services import password_reset
+
+        self._demande()
+        jeton = self._jeton_envoye()
+        with mock.patch.object(
+            password_reset.mirror, "set_password_without_verification",
+            side_effect=KeycloakAdminError("set_password_failed:400", "trop court"),
+        ):
+            with self.assertRaises(KeycloakAdminError):
+                password_reset.confirm_reset(jeton, "court")
+        self.assertIsNone(PasswordResetToken.objects.get().used_at)

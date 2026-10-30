@@ -217,6 +217,20 @@ export class ApiService {
     return this.http.post(`${environment.apiUrl}/me/password/`, payload);
   }
 
+  /** Demande un lien de réinitialisation. Route publique. */
+  requestPasswordReset(email: string): Observable<unknown> {
+    return this.http.post(`${environment.apiUrl}/password-reset/`, { email });
+  }
+
+  /** Réinitialise le mot de passe à partir du jeton reçu par e-mail. */
+  confirmPasswordReset(payload: {
+    token: string;
+    new_password: string;
+    new_password_confirmation: string;
+  }): Observable<unknown> {
+    return this.http.post(`${environment.apiUrl}/password-reset/confirm/`, payload);
+  }
+
   addMyReserve(areaCode: string): Observable<unknown> {
     return this.http.post(`${environment.apiUrl}/me/reserves/${areaCode}/`, {});
   }
