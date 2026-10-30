@@ -4,7 +4,7 @@ import logging
 from email.mime.image import MIMEImage
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 
 from inscriptions.models import Application, RegistrationRequest, Reserve
 from inscriptions.services import email_templates as tpl
@@ -49,6 +49,35 @@ def send_html_email(
     message.attach_alternative(html_body, "text/html")
     if attach_logo:
         _attach_logo(message)
+    try:
+        message.send(fail_silently=False)
+    except Exception:
+        logger.exception("Échec d'envoi e-mail à %s", ", ".join(cleaned))
+        if raise_on_error:
+            raise
+
+
+def send_plain_email(
+    recipients: list[str],
+    subject: str,
+    text_body: str,
+    *,
+    reply_to: str = "",
+    extra_headers: dict[str, str] | None = None,
+    raise_on_error: bool = False,
+) -> None:
+    """Message texte brut, sans habillage HTML ni logo (boîte de ticketing)."""
+    cleaned = [email.strip() for email in recipients if (email or "").strip()]
+    if not cleaned:
+        return
+    message = EmailMessage(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=cleaned,
+        reply_to=[reply_to.strip()] if (reply_to or "").strip() else None,
+        headers={k: v for k, v in (extra_headers or {}).items() if v},
+    )
     try:
         message.send(fail_silently=False)
     except Exception:

@@ -607,26 +607,16 @@ def contact_message_email(
     sender_email: str,
     subject: str,
     message: str,
-    context_rows: list[tuple[str, str]] | None = None,
-) -> tuple[str, str, str]:
-    """Message du formulaire de contact, à destination d'une boîte support (Zammad)."""
+) -> tuple[str, str]:
+    """Message du formulaire de contact, en texte brut.
+
+    Le destinataire est une boîte Zammad, pas un lecteur humain : ni mise en page
+    HTML, ni logo, ni formule de politesse — seulement la plateforme de provenance,
+    le sujet et le contenu. L'expéditeur reste indiqué, sans quoi le support n'a
+    aucun moyen de répondre si Zammad n'exploite pas l'en-tête Reply-To.
+    """
     mail_subject = f"[{app_name}] {subject}" if app_name else subject
-    rows = [
-        ("Application", app_name or "—"),
-        ("Expéditeur", f"{sender_name} <{sender_email}>" if sender_name else sender_email),
-        ("Répondre à", sender_email),
-    ]
-    rows.extend(context_rows or [])
-    # Le message est saisi librement : une ligne vide sépare les paragraphes.
-    body_blocks = [paragraph(line) for line in message.splitlines() if line.strip()] or [paragraph(message)]
-    html_doc, plain = render_email(
-        title=subject or "Message de contact",
-        preheader=f"Message envoyé depuis {app_name}" if app_name else "Message de contact",
-        blocks=[
-            info_table(rows),
-            section_title("Message"),
-            *body_blocks,
-        ],
-        secondary_note="Répondre directement à ce message contacte son expéditeur.",
-    )
-    return mail_subject, html_doc, plain
+    sender = f"{sender_name} <{sender_email}>" if sender_name else sender_email
+    header = [f"Plateforme : {app_name}" if app_name else "", f"Expéditeur : {sender}"]
+    body = "\n".join([line for line in header if line] + ["", message.strip()])
+    return mail_subject, body

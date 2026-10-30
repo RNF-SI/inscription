@@ -13,7 +13,7 @@ import logging
 from django.conf import settings
 
 from inscriptions.services import email_templates as tpl
-from inscriptions.services.mail import send_html_email
+from inscriptions.services.mail import send_plain_email
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +58,27 @@ def send_contact_message(
     subject: str,
     message: str,
     recipient: str = "",
-    context_rows: list[tuple[str, str]] | None = None,
 ) -> str:
     """Envoie le message au support. Renvoie l'adresse réellement utilisée."""
     to = resolve_recipient(recipient)
-    mail_subject, html_body, text_body = tpl.contact_message_email(
+    mail_subject, text_body = tpl.contact_message_email(
         app_name=app_name,
         sender_name=sender_name,
         sender_email=sender_email,
         subject=subject,
         message=message,
-        context_rows=context_rows,
     )
     try:
-        send_html_email(
+        send_plain_email(
             [to],
             mail_subject,
-            html_body,
             text_body,
-            # Zammad crée le ticket depuis l'expéditeur SMTP (le domaine RNF) :
-            # le Reply-To garantit que la réponse du support part vers l'usager.
+            # Zammad rattache le ticket à l'expéditeur SMTP, ici le domaine RNF :
+            # sans X-Zammad-Customer-Email, tous les tickets auraient le même client.
+            # L'en-tête n'est pris en compte que si le canal e-mail Zammad est
+            # déclaré « trusted » ; sinon Zammad l'ignore et le Reply-To reste
+            # le seul indice pour joindre l'usager.
+            extra_headers={"X-Zammad-Customer-Email": sender_email},
             reply_to=sender_email,
             raise_on_error=True,
         )
