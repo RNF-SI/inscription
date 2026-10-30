@@ -336,6 +336,17 @@ export class AuthService {
   }
 
   getCurrentUser(): any {
+    // Les instantanés de localStorage survivent à la disparition des jetons : session
+    // expirée, nettoyage partiel, ou onglet rouvert longtemps après. Sans ce garde,
+    // l'interface croit l'utilisateur connecté — badges d'accès sur les applications,
+    // menu du compte — alors qu'aucune session n'existe. On en profite pour purger le
+    // résidu, sinon getCurrentUser() le recopierait dans `current_user` à chaque appel.
+    if (!this.authenticated) {
+      if (localStorage.getItem(LS_CURRENT_USER) || localStorage.getItem(LS_ME)) {
+        this.cleanLocalStorage();
+      }
+      return null;
+    }
     const currentUser = localStorage.getItem(LS_CURRENT_USER);
     if (currentUser) {
       return JSON.parse(currentUser);
