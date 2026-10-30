@@ -1,10 +1,10 @@
 import { Component, OnInit, TemplateRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { faArrowUpRightFromSquare, faBan, faCheck, faClock, faKey, faUserPlus } from '@fortawesome/free-solid-svg-icons';
-import { User } from '../../home-rnf/models/user.model';
-import { AuthService } from '../../home-rnf/services/auth-service.service';
+import { User } from '../../core/auth/user.model';
+import { AuthService } from '../../core/auth/auth-service.service';
 import { Organisme } from '../../models/models';
 import { ApiService, ApplicationDto, MeApplicationRow } from 'src/app/services/api.service';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from '../../core/services/toast.service';
 import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
 import { catchError, finalize } from 'rxjs/operators';
@@ -27,7 +27,7 @@ export class HomeComponent implements OnInit {
   constructor(
     private _authService: AuthService,
     private api: ApiService,
-    private toastr: ToastrService,
+    private toast: ToastService,
     private modalService: NgbModal,
     private cdr: ChangeDetectorRef,
   ) {}
@@ -226,13 +226,13 @@ export class HomeComponent implements OnInit {
     }
     const justification = this.requestJustification.trim();
     if (!justification) {
-      this.toastr.warning('La justification est obligatoire pour envoyer la demande.', 'Demande d’accès');
+      this.toast.warning('La justification est obligatoire pour envoyer la demande.', 'Demande d’accès');
       return;
     }
     this.loadingRequestBySlug[app.slug] = true;
     this.api.requestAdditionalAccess([app.slug], justification).subscribe({
       next: () => {
-        this.toastr.success('Demande envoyée au validateur.', 'Demande d’accès');
+        this.toast.success('Demande envoyée au validateur.', 'Demande d’accès');
         this.closeAccessRequestModal();
         this._authService.refreshMeFromApi().subscribe({
           next: () => this.mergeAccessStatus(),
@@ -241,7 +241,7 @@ export class HomeComponent implements OnInit {
       },
       error: (err) => {
         const msg = err?.error?.detail || err?.error?.msg || 'Impossible d’envoyer la demande.';
-        this.toastr.error(msg, 'Demande d’accès');
+        this.toast.error(msg, 'Demande d’accès');
       },
     }).add(() => {
       this.loadingRequestBySlug[app.slug] = false;

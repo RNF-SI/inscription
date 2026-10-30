@@ -1,6 +1,6 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
-import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { AuthService } from 'src/app/core/auth/auth-service.service';
 import { ApiService, MeResponse, ReserveOptionDto } from 'src/app/services/api.service';
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';

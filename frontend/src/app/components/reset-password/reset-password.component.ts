@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from 'src/app/core/services/toast.service';
 import { RegisterService } from 'src/app/services/register.service';
 
 @Component({
@@ -20,7 +20,7 @@ export class ResetPasswordComponent {
     private _registerService: RegisterService,
     private router: Router,
     private activatedRoute: ActivatedRoute,
-    private _toasterService: ToastrService
+    private _toastService: ToastService
   ) {
     this.activatedRoute.queryParams.subscribe((params) => {
       let token = params['token'];
@@ -42,16 +42,12 @@ export class ResetPasswordComponent {
       data['token'] = this.token;
       this._registerService.passwordChange(data).subscribe(
         (res) => {
-          this._toasterService.info(res.msg, '', {
-            positionClass: 'toast-top-center',
-            tapToDismiss: true,
-            timeOut: 10000,
-          });
+          this._toastService.info(res.msg, undefined, { duree: 10000 });
           this.router.navigate(['/']);
         },
         // error callback
         (error) => {
-          this._toasterService.error(error.error.msg, '');
+          this._toastService.error(error.error.msg);
         }
       );
     }

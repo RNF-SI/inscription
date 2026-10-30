@@ -1,9 +1,9 @@
 import { Component, OnDestroy, OnInit, ChangeDetectorRef } from '@angular/core';
 import { forkJoin, Subject } from 'rxjs';
 import { finalize, takeUntil } from 'rxjs/operators';
-import { NotificationBadgeService } from 'src/app/home-rnf/services/notification-badge.service';
-import { AdminGuardService } from 'src/app/home-rnf/services/admin-guard.service';
-import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { NotificationBadgeService } from 'src/app/core/services/notification-badge.service';
+import { AdminGuardService } from 'src/app/core/auth/admin-guard.service';
+import { AuthService } from 'src/app/core/auth/auth-service.service';
 import { ApiService, NotificationAdminTab, NotificationDto } from 'src/app/services/api.service';
 
 @Component({

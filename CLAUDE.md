@@ -13,10 +13,22 @@ Le dépôt contient trois dossiers de code :
 | `frontend/` | **Frontend actif** : SPA Angular 22 |
 | `backend/` | **Ancien backend Flask/UsersHub**, conservé pour rollback uniquement — ne pas y développer |
 
-`frontend/src/app/home-rnf/` est un **sous-module git** (`RNF-SI/home-rnf`) partagé entre les
-applications RNF : il fournit le layout (`NavHomeComponent`), les guards (`AuthGuard`, `AdminGuard`)
-et surtout `AuthService` (flux OIDC complet). Les modifications qui y sont faites concernent tous
-les projets RNF — les committer et pousser séparément dans le sous-module.
+`frontend/src/app/core/` est le **socle internalisé** : l'ancien sous-module `RNF-SI/home-rnf` a
+été repris dans le dépôt (comme dans `socle-v2`), il n'y a donc plus de sous-module git. Il fournit
+le layout (`NavHomeComponent`), les guards et `AuthService` (flux OIDC complet) :
+
+| Dossier | Contenu |
+|---|---|
+| `core/auth/` | `AuthService`, `AuthGuard`, `AdminGuard`, `LazyDialog`, `LogoutLinkService`, `User` |
+| `core/components/` | `nav-home`, `login`, `logout`, `forgot-password`, `loading-spinner`, `toast` |
+| `core/services/` | `notification-badge`, `contact`, `search`, `redirect`, `toast` |
+| `core/pipes/` | `inputError` (utilisé par le template de `login`) |
+
+Ces composants sont `standalone: false` et sont déclarés dans `app.module.ts`, qui reprend aussi ce
+que fournissait `HomeRnfModule` : les modules Material correspondants, les bouchons
+`MAT_DIALOG_DATA`/`MatDialogRef` (`LoginComponent` est routé, pas ouvert en dialogue) et
+`library.addIconPacks(fab, fas, far)` — le menu lit ses icônes depuis `AppConfig`, elles ne sont
+pas dans la liste explicite d'`addIcons`.
 
 Documentation détaillée : `README.md` (déploiement, cutover), `inscription_backend/docs/keycloak-v1-spec.txt`
 (conventions de groupes Keycloak), `inscription_backend/docs/runbook-cutover.txt`.
@@ -134,7 +146,7 @@ Chaque transition émet notification in-app (`services/notifications.py`) + e-ma
 ### Route de contact mutualisée
 
 `POST /api/contact/` sert le formulaire « Contacter le support » de **toutes** les applications
-RNF utilisant `home-rnf`, pas seulement celle-ci. Chaque application déclare dans son
+RNF (celles qui utilisent encore le socle `home-rnf` comme celle-ci, détachée). Chaque application déclare dans son
 `app.config.ts` l'URL de la route et la boîte support visée :
 
 ```ts
@@ -146,6 +158,14 @@ Le destinataire transite par le client mais est validé contre `CONTACT_ALLOWED_
 SMTP ouvert depuis le domaine RNF. Liste vide = route désactivée (503). La route est publique
 (le lien s'affiche sans session), limitée en débit (`ScopedRateThrottle`, scope `contact`,
 `CONTACT_THROTTLE_RATE`) et protégée par un champ piège `website`.
+
+Le mail est en **texte brut** (le destinataire est une file de tickets, pas un lecteur) et
+porte `X-Zammad-Customer-Email` avec l'adresse de l'usager. Sans cet en-tête Zammad rattache
+tous les tickets au `DEFAULT_FROM_EMAIL`, puisqu'il identifie le client par le `From`.
+**Zammad n'honore les en-têtes `X-Zammad-*` que sur un canal e-mail déclaré « trusted »** :
+sans ce réglage côté Zammad, l'en-tête est ignoré et seul le `Reply-To` permet de joindre
+l'usager. Un canal « trusted » accepte ces en-têtes de *tout* expéditeur — préférer une
+adresse d'arrivée dédiée à la plateforme plutôt que la boîte support publique.
 
 Deux conséquences pour l'accueil d'une nouvelle application : son origine doit figurer dans
 `CORS_ALLOWED_ORIGINS`, et son intercepteur HTTP doit traiter `/contact` comme public (sinon
@@ -165,7 +185,7 @@ historique tant qu'une application n'a pas renseigné `apiUrl`.
 
 ### Flux d'authentification frontend
 
-1. `AuthService` (sous-module `home-rnf`) lit `GET /api/auth/keycloak-config/` — le `.env` Django est
+1. `AuthService` (`core/auth`) lit `GET /api/auth/keycloak-config/` — le `.env` Django est
    la source de vérité ; `environment.ts` n'est qu'un repli réseau. La réponse est mise en cache dans
    `sessionStorage` (clé `keycloak_public_config`) : la vider après changement d'URL Keycloak.
 2. Redirection Authorization Code vers Keycloak → retour sur `/auth/callback`
@@ -178,6 +198,12 @@ historique tant qu'une application n'a pas renseigné `apiUrl`.
 4. `GET /api/me/` renvoie l'état consolidé (profil, organisme, réserves, `is_super_admin`,
    `is_app_admin`, compteur de notifications) ; `AuthService` en garde un snapshot.
 
+Les messages transitoires passent par `ToastService` (`core/services/toast.service.ts`), qui ouvre
+un `MatSnackBar` rempli par `ToastComponent`. Ses quatre méthodes (`success`, `error`, `warning`,
+`info`) prennent le message puis un titre optionnel. La couleur vient des classes
+`rnf-toast--<niveau>` définies dans `src/styles/toast.scss` : elles ne font que poser les tokens
+`--mat-snack-bar-*` sur le conteneur Material, sans cibler ses classes internes.
+
 Côté Angular : NgModules classiques (pas de standalone), `app.module.ts` déclare tout,
 `api.service.ts` centralise les appels HTTP, `admin-dashboard.component.ts` (~1550 lignes) porte
 l'ensemble de l'interface d'administration par onglets.
@@ -189,9 +215,9 @@ l'ensemble de l'interface d'administration par onglets.
   Keycloak est la source de vérité.
 - Les erreurs Keycloak sont journalisées côté Django avec leur cause interne mais renvoyées au
   client sous forme générique (`KeycloakAdminError` → message neutre).
-- `DEFAULT_PERMISSION_CLASSES` vaut `AllowAny` : **toute nouvelle vue est publique par défaut**.
-  Déclarer explicitement `permission_classes` (les vues `admin/*` le font) ou, pour les vues
-  `me/*` et `notifications/*`, garder la garde manuelle `require_keycloak_user(request)` → 401.
+- `DEFAULT_PERMISSION_CLASSES` vaut `IsKeycloakAuthenticated` : **toute nouvelle vue exige un JWT
+  par défaut**. Une vue réellement publique déclare explicitement `authentication_classes = []` et
+  `permission_classes = []`.
 - `db.sqlite3` n'est plus versionné : c'est le repli local quand `DATABASE_URL` est absent,
   la production utilise PostgreSQL.
 - Toute erreur réseau vers Keycloak doit ressortir en `KeycloakAdminError` (le client

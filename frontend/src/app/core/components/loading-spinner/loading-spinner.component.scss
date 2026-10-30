@@ -1,0 +1,28 @@
+.spinner {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.spinner-img {
+  height: 20vh;
+  width: 20vh;
+  animation: loading-spinner-img 3s linear infinite;
+}
+
+.progress-text {
+  position: absolute;
+  font-size: 2vh;
+  color: white;
+  font-weight: bold;
+}
+
+@keyframes loading-spinner-img {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

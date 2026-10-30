@@ -1,0 +1,178 @@
+<div [ngClass]="{'panel-heading-home': isHomePage, 'panel-heading': !isHomePage}">
+  <div [ngClass]="{'title-home': isHomePage, 'title': !isHomePage}">
+    {{ title | uppercase }}
+  </div>
+  <div>
+    <span class="subtitle"> {{ subtitle | uppercase }} </span>
+  </div>
+  <div class="credit">
+    {{credit}}
+  </div>
+</div>
+<mat-toolbar>
+  <div *ngFor="let e of menuItems">
+    <a [routerLink]="e.lien">
+      <fa-icon [icon]="$any([e.classFa, e.nomFa])"></fa-icon> {{ e.nom | uppercase }}
+    </a>
+  </div>
+
+  <div class="search-bar" *ngIf="searchInput">
+    <mat-form-field>
+      <mat-label>Recherche</mat-label>
+      <input type="text" matInput [formControl]="searchControl" [matAutocomplete]="auto" [placeholder]="placeholder">
+      <mat-autocomplete #auto="matAutocomplete" [displayWith]="displayFn"
+        (optionSelected)="onSearchItemSelected($event)">
+        <mat-option *ngFor="let item of filteredSearchItems | async" [value]="item">
+          {{ item.nom }}
+        </mat-option>
+      </mat-autocomplete>
+    </mat-form-field>
+  </div>
+
+  <span class="example-spacer"></span>
+
+  <a [routerLink]="'login'" *ngIf="!signedIn">
+    <fa-icon [icon]="['fas', 'right-to-bracket']" size="2x"></fa-icon>
+  </a>
+  <a [matMenuTriggerFor]="menuSettings" *ngIf="signedIn" class="user-menu-link">
+    {{ user!.prenom_role | titlecase }} {{ user!.nom_role | titlecase }}
+    <span class="user-icon-wrap">
+      <fa-icon [icon]="['fas', 'user']"></fa-icon>
+      <span class="notification-pin" *ngIf="showNotifications && unreadCount > 0">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+    </span>
+  </a>
+  <mat-menu #menuSettings="matMenu">
+    <div *ngFor="let i of menucompte">
+      <button mat-menu-item [routerLink]="[i.lien]">
+        <fa-icon [icon]="$any([i.classFa, i.nomFa])"></fa-icon> {{ i.texte }}
+      </button>
+    </div>
+  </mat-menu>
+</mat-toolbar>
+
+
+
+
+<div class="app-content">
+  <div>
+    <router-outlet></router-outlet>
+  </div>
+
+</div>
+
+<footer class="text-center text-lg-start text-muted" *ngIf="displayFooter">
+  <section class="panel-footer">
+    <div class="container text-center text-md-start mt-5">
+      <div class="row mt-3">
+        <div class="col-md-5 col-lg-5 col-xl-4 mx-auto mb-4">
+          <h6 class="text-uppercase fw-bold mb-4">
+            <i class="fas fa-gem me-3 text-secondary"></i>Réserves Naturelles de France
+          </h6>
+          <p>
+            2 allée Pierre Lacroute <br>
+            CS 67524 <br>
+            21075 Dijon cedex <br>
+            03 80 48 91 00
+          </p>
+        </div>
+
+        <div class="col-md-4 col-lg-3 col-xl-3 mx-auto mb-md-0 mb-4">
+          <h6 class="text-uppercase fw-bold mb-4">Réseaux Sociaux</h6>
+          <div class="d-flex justify-content-between">
+            <div><a href="https://www.facebook.com/rn.de.france" class="me-4 link-secondary" target="_blank">
+                <fa-icon [icon]="['fab', 'facebook']" size="3x" class="white-icon"></fa-icon>
+              </a></div>
+            <div><a href="https://www.instagram.com/reserves_naturelles_de_france/" class="me-4 link-secondary"
+                target="_blank">
+                <fa-icon [icon]="['fab', 'instagram']" size="3x" class="white-icon"></fa-icon>
+              </a></div>
+            <div><a href="https://www.linkedin.com/company/50041043" class="me-4 link-secondary" target="_blank">
+                <fa-icon [icon]="['fab', 'linkedin']" size="3x" class="white-icon"></fa-icon>
+              </a> </div>
+            <div><a href="https://github.com/RNF-SI" class="me-4 link-secondary" target="_blank">
+                <fa-icon [icon]="['fab', 'github']" size="3x" class="white-icon"></fa-icon>
+              </a></div>
+          </div>
+          <div class="contact">
+            <br>
+            <a href="#" (click)="$event.preventDefault(); openContactModal()">
+              Contacter le support</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</footer>
+
+<ng-template #contactModal let-modal>
+  <div class="modal-header">
+    <h5 class="modal-title">Contactez-nous</h5>
+    <button
+      type="button"
+      class="btn-close"
+      aria-label="Fermer"
+      (click)="modal.dismiss('cancel'); closeContactModal()"
+      [disabled]="contactSubmitting"
+    ></button>
+  </div>
+  <div class="modal-body">
+    <div class="mb-3">
+      <label for="contact-email" class="form-label">E-mail</label>
+      <input
+        id="contact-email"
+        type="email"
+        class="form-control"
+        [(ngModel)]="contactEmail"
+        [readonly]="contactEmailLocked"
+        [disabled]="contactSubmitting"
+        required
+        autocomplete="email"
+      />
+      <small class="text-muted" *ngIf="contactEmailLocked">
+        Adresse associée à votre compte.
+      </small>
+    </div>
+    <div class="mb-3">
+      <label for="contact-subject" class="form-label">Sujet</label>
+      <input
+        id="contact-subject"
+        type="text"
+        class="form-control"
+        [(ngModel)]="contactSubject"
+        [disabled]="contactSubmitting"
+        maxlength="200"
+        required
+      />
+    </div>
+    <div class="mb-0">
+      <label for="contact-message" class="form-label">Message</label>
+      <textarea
+        id="contact-message"
+        class="form-control"
+        rows="5"
+        [(ngModel)]="contactMessage"
+        [disabled]="contactSubmitting"
+        maxlength="5000"
+        required
+      ></textarea>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button
+      type="button"
+      class="btn btn-outline-secondary"
+      (click)="modal.dismiss('cancel'); closeContactModal()"
+      [disabled]="contactSubmitting"
+    >
+      Annuler
+    </button>
+    <button
+      type="button"
+      class="btn btn-success"
+      (click)="submitContact()"
+      [disabled]="!canSubmitContact()"
+    >
+      <span>{{ contactSubmitting ? 'Envoi…' : 'Envoyer' }}</span>
+    </button>
+  </div>
+</ng-template>

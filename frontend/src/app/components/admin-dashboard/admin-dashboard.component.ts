@@ -15,14 +15,14 @@ import {
   UserApplicationAccessRowDto,
   ReferentReserveMembersRowDto,
 } from 'src/app/services/api.service';
-import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { AuthService } from 'src/app/core/auth/auth-service.service';
 import {
   APPLICATION_IMAGE_ASPECT_RATIO,
   APPLICATION_IMAGE_HEIGHT,
   APPLICATION_IMAGE_WIDTH,
 } from 'src/app/constants/application-image.constants';
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from 'src/app/core/services/toast.service';
 
 @Component({
   standalone: false,
@@ -152,7 +152,7 @@ export class AdminDashboardComponent implements OnInit {
     private api: ApiService,
     private auth: AuthService,
     private route: ActivatedRoute,
-    private toastr: ToastrService,
+    private toast: ToastService,
     private cdr: ChangeDetectorRef,
   ) {}
 
@@ -423,12 +423,12 @@ export class AdminDashboardComponent implements OnInit {
         if (fromModal) {
           this.cancelReferentRemovalModal();
         }
-        this.toastr.success('La demande de retrait a été transmise aux administrateurs.', 'Demande envoyée');
+        this.toast.success('La demande de retrait a été transmise aux administrateurs.', 'Demande envoyée');
         this.loadReservesTab(true);
       },
       error: (err) => {
         const msg = err?.error?.detail || 'Impossible d’envoyer la demande de retrait.';
-        this.toastr.error(msg, 'Demande de retrait');
+        this.toast.error(msg, 'Demande de retrait');
         this.referentRemovalSavingKey = null;
       },
       complete: () => {
@@ -1426,14 +1426,14 @@ export class AdminDashboardComponent implements OnInit {
     if (!payload.nom) {
       const msg = 'Le nom est requis.';
       this.catalogFormError = msg;
-      this.toastr.error(msg, 'Enregistrement');
+      this.toast.error(msg, 'Enregistrement');
       this.cdr.detectChanges();
       return;
     }
     if (!this.catalogEditingSlug && !payload.slug) {
       const msg = 'Le slug est requis pour une nouvelle application.';
       this.catalogFormError = msg;
-      this.toastr.error(msg, 'Enregistrement');
+      this.toast.error(msg, 'Enregistrement');
       this.cdr.detectChanges();
       return;
     }
@@ -1479,14 +1479,14 @@ export class AdminDashboardComponent implements OnInit {
       next: (saved) => {
         this.upsertCatalogApplication(saved);
         this.closeCatalogModal();
-        this.toastr.success('Application enregistrée avec succès.', 'Enregistrement');
+        this.toast.success('Application enregistrée avec succès.', 'Enregistrement');
         this.reloadApplicationsCatalog();
         this.cdr.detectChanges();
       },
       error: (err) => {
         const msg = this.catalogSaveErrorMessage(err);
         this.catalogFormError = msg;
-        this.toastr.error(msg, 'Enregistrement');
+        this.toast.error(msg, 'Enregistrement');
       },
     });
   }

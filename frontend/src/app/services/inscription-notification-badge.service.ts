@@ -1,8 +1,8 @@
 import { Injectable, NgZone, OnDestroy } from '@angular/core';
 import { of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
-import { NotificationBadgeService } from 'src/app/home-rnf/services/notification-badge.service';
-import { AuthService } from 'src/app/home-rnf/services/auth-service.service';
+import { NotificationBadgeService } from 'src/app/core/services/notification-badge.service';
+import { AuthService } from 'src/app/core/auth/auth-service.service';
 import { AppConfig } from 'src/conf/app.config';
 import { ApiService } from './api.service';
 

@@ -7,7 +7,7 @@ import {
 } from '@angular/common/http';
 import { Observable, of, throwError } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
-import { AuthService } from '../home-rnf/services/auth-service.service';
+import { AuthService } from '../core/auth/auth-service.service';
 
 @Injectable()
 export class MyCustomInterceptor implements HttpInterceptor {

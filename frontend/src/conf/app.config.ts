@@ -19,7 +19,7 @@ export const AppConfig = {
         "adminMenuLink": "admin"
     },
     "contact": {
-        // Route mutualisée du backend inscription (voir home-rnf/services/contact.service.ts)
+        // Route mutualisée du backend inscription (voir core/services/contact.service.ts)
         "apiUrl": "http://localhost:8000/api/contact/",
         "recipientEmail": "support@reserves-naturelles.org"
     },

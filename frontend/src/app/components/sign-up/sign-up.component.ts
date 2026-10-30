@@ -3,7 +3,7 @@ import { AbstractControl, UntypedFormBuilder, UntypedFormControl, UntypedFormGro
 import { MatSelect } from '@angular/material/select';
 import { Router } from '@angular/router';
 
-import { ToastrService } from 'ngx-toastr';
+import { ToastService } from 'src/app/core/services/toast.service';
 import { ReplaySubject, Subject, take, takeUntil } from 'rxjs';
 
 import { IDropdownSettings } from 'ng-multiselect-dropdown';
@@ -53,7 +53,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     private fb: UntypedFormBuilder,
     private _registerService: RegisterService,
     private router: Router,
-    private _toasterService: ToastrService,
+    private _toastService: ToastService,
     private cdr: ChangeDetectorRef,
   ) {
   }
@@ -244,7 +244,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.form.valid) {
       const invalid = this.invalidSelectedApplications();
       if (invalid.length > 0) {
-        this._toasterService.error(
+        this._toastService.error(
           'Merci de renseigner une justification pour chaque application demandée.',
           'Inscription'
         );
@@ -260,7 +260,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
       this._registerService
         .signupUser(finalForm)
         .subscribe((res) => {
-          this._toasterService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.', 'Votre demande d\'inscription a bien été prise en compte !')
+          this._toastService.info('Vous recevrez un mail de confirmation quand elle aura été validée par un administrateur.', 'Votre demande d\'inscription a bien été prise en compte !')
           this.router.navigate(['/']);
         },
           error => {
@@ -270,7 +270,7 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
               (body?.errors ? JSON.stringify(body.errors) : '') ||
               error.message ||
               'Erreur serveur';
-            this._toasterService.error(detail, 'Inscription');
+            this._toastService.error(detail, 'Inscription');
           })
         .add(() => {
           this.disableSubmit = false;
