@@ -174,10 +174,34 @@ Le lien entre les deux mondes est l'attribut Keycloak `legacy_id_role`, posé à
 création et par l'import. `mirror.legacy_id_role_for()` le lit, avec repli sur l'e-mail
 puis l'identifiant.
 
+Ce que la base de production montre, et que les réglages reproduisent :
+
+- **Les groupes portent les droits, pas `cor_role_app_profil`.** Cette table ne compte
+  que 31 lignes pour 993 comptes, posées à la main entre 2022 et 2024 ; aucune depuis
+  2025. `LEGACY_INSCRIPTION_APP_ID` vaut donc 0 par défaut. C'est
+  `legacy_group_id_role` sur `Application` qui compte, pas `legacy_id_application`.
+- **Tout compte créé entre dans `Grp_all`** (202 des 211 comptes de 2026) :
+  `LEGACY_DEFAULT_GROUP_IDS` vaut `[69]`. L'omettre priverait les inscrits de ce que ce
+  groupe confère. `add_to_groups()` vérifie l'existence de chaque groupe avant insertion,
+  une clé étrangère en défaut ferait échouer toute la création.
+- **Le md5 est toujours alimenté** : les comptes les plus récents en portent un, d'où
+  `LEGACY_WRITE_PASS_MD5` à `True` par défaut.
+- **La chaîne de triggers est profonde.** Un INSERT dans `t_roles` écrit en cascade dans
+  `utilisateurs_saisie`, `utilisateurs_sinp` (tables distantes vers deux autres bases
+  GeoNature), `complement_rnf.cor_role_rn`, puis `site_internet_utilisateurs` et
+  `site_internet_cor_utilisateur_rn` (tables distantes vers MySQL). Une création de
+  compte fait donc plusieurs écritures distantes synchrones dans la transaction.
+
 Une application ne répercute ses accès que si `legacy_id_application` est renseigné sur
 son enregistrement `Application` (avec `legacy_id_profil`, 1 = Lecteur, et
-éventuellement `legacy_group_id_role` pour `utilisateurs.cor_roles`). Sans cette
-correspondance, rien n'est écrit côté historique.
+`legacy_group_id_role` pour `utilisateurs.cor_roles`). Sans cette correspondance, rien
+n'est écrit côté historique.
+
+Pour tester sur une copie de production, il faut d'abord **remplacer toutes les tables
+distantes par des tables locales** : un `pg_dump` emporte `CREATE SERVER`, `CREATE USER
+MAPPING` et `CREATE FOREIGN TABLE`, donc la copie écrit vers les cibles d'origine. Ne
+pas couper le lien sans remplacer la table : l'INSERT du trigger échouerait et annulerait
+la création de compte.
 
 ### Workflow d'inscription (le cœur métier)
 

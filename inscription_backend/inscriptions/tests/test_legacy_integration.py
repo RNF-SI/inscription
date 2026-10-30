@@ -63,6 +63,23 @@ class LegacyIntegrationTests(TestCase):
                 "Pointez LEGACY_DATABASE_URL vers une base jetable dont le nom "
                 "contient « test »."
             )
+        # Le nom ne suffit pas : une copie de production s'appelle volontiers
+        # « …_test ». Ces tests attendent une base vide ; la présence de comptes
+        # signale une vraie base, qu'il ne faut surtout pas vider.
+        with connections["legacy"].cursor() as cursor:
+            cursor.execute(
+                "SELECT to_regclass('utilisateurs.t_roles') IS NOT NULL"
+            )
+            if cursor.fetchone()[0]:
+                cursor.execute("SELECT count(*) FROM utilisateurs.t_roles")
+                existants = cursor.fetchone()[0]
+                if existants:
+                    raise SkipTest(
+                        f"Base « {name} » refusée : elle contient déjà {existants} "
+                        "comptes dans utilisateurs.t_roles. Ces tests effacent les "
+                        "schémas utilisateurs, complement_rnf et ref_geo — n'utilisez "
+                        "qu'une base vide."
+                    )
         with connections["legacy"].cursor() as cursor:
             for schema in ("utilisateurs", "utilisateurs_saisie", "utilisateurs_sinp",
                            "complement_rnf", "ref_geo"):

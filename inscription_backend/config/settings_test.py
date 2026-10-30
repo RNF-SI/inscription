@@ -25,6 +25,8 @@ KEYCLOAK_SYNC_ENABLED = False
 # PostgreSQL. Les tests qui exercent l'écriture miroir bouchonnent le curseur.
 LEGACY_WRITE_ENABLED = False
 LEGACY_WRITE_PASS_MD5 = False
+LEGACY_DEFAULT_GROUP_IDS = []
+LEGACY_INSCRIPTION_APP_ID = 0
 
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 SUPERADMIN_NOTIFY_EMAILS = ["admin@test.local"]

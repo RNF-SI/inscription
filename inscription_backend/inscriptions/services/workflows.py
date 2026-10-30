@@ -152,68 +152,73 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
             # réserves n'a pas les droits attendus.
             prov.provision_user_groups_after_super_approval(kc, keycloak_user_id, registration)
 
-    user_info = _registration_user_info(registration)
+        # Le reste de la validation entre lui aussi dans le bloc : sinon une erreur
+        # survenant ici annulerait la transaction Django tout en laissant la ligne
+        # historique et le compte Keycloak committés — le compte existerait pour les
+        # applications RNF sans qu'aucune demande n'en garde trace.
 
-    for code in registration.reserve_codes or []:
-        r = Reserve.objects.filter(area_code=code).first()
-        if r and settings.KEYCLOAK_SYNC_ENABLED:
-            reserve_notify.notify_referents_new_member(user_info, r)
+        user_info = _registration_user_info(registration)
 
-    requested_referent_codes: list[str] = []
-    champs_addi = registration.champs_addi or {}
-    raw_referent = champs_addi.get("reserves_referent")
-    if isinstance(raw_referent, list):
-        for item in raw_referent:
-            code = ""
-            if isinstance(item, dict):
-                code = str(item.get("id") or "").strip()
-            elif isinstance(item, str):
-                code = item.strip()
-            if code:
-                requested_referent_codes.append(code)
-    allowed_codes = set(str(c).strip() for c in (registration.reserve_codes or []) if str(c).strip())
-    for code in requested_referent_codes:
-        if code not in allowed_codes:
-            continue
-        reserve = Reserve.objects.filter(area_code=code).first()
-        if not reserve:
-            continue
-        _referent_req, created = ReserveReferentRequest.objects.get_or_create(
-            user_sub=keycloak_user_id,
-            reserve=reserve,
-            status=ReserveReferentRequest.STATUS_PENDING,
+        for code in registration.reserve_codes or []:
+            r = Reserve.objects.filter(area_code=code).first()
+            if r and settings.KEYCLOAK_SYNC_ENABLED:
+                reserve_notify.notify_referents_new_member(user_info, r)
+
+        requested_referent_codes: list[str] = []
+        champs_addi = registration.champs_addi or {}
+        raw_referent = champs_addi.get("reserves_referent")
+        if isinstance(raw_referent, list):
+            for item in raw_referent:
+                code = ""
+                if isinstance(item, dict):
+                    code = str(item.get("id") or "").strip()
+                elif isinstance(item, str):
+                    code = item.strip()
+                if code:
+                    requested_referent_codes.append(code)
+        allowed_codes = set(str(c).strip() for c in (registration.reserve_codes or []) if str(c).strip())
+        for code in requested_referent_codes:
+            if code not in allowed_codes:
+                continue
+            reserve = Reserve.objects.filter(area_code=code).first()
+            if not reserve:
+                continue
+            _referent_req, created = ReserveReferentRequest.objects.get_or_create(
+                user_sub=keycloak_user_id,
+                reserve=reserve,
+                status=ReserveReferentRequest.STATUS_PENDING,
+            )
+            if created:
+                reserve_notify.notify_referent_request_created(user_info, reserve)
+
+        for item in registration.items.select_related("application"):
+            justification = (item.request_justification or "").strip()
+            justification_text = justification if justification else "Aucune justification fournie."
+            _notify_app_admins(
+                item.application,
+                title="Nouvelle demande d'accès",
+                body=(
+                    f"{user_label(user_info)} demande l'accès à {item.application.nom}. "
+                    f"Justification: {justification_text}"
+                ),
+            )
+            mail_svc.send_app_access_request_admin_mail(
+                admins=list_application_admins(item.application),
+                applicant=user_info,
+                application=item.application,
+                justification=justification_text,
+            )
+
+        mail_svc.send_registration_approved_user_mail(registration)
+        _notify_user_sub(
+            keycloak_user_id,
+            "Inscription validée",
+            "Vos demandes d'accès aux applications sont en cours de traitement.",
         )
-        if created:
-            reserve_notify.notify_referent_request_created(user_info, reserve)
+        _log(actor_sub, "super_admin_approve", {"registration": str(registration.public_id)})
 
-    for item in registration.items.select_related("application"):
-        justification = (item.request_justification or "").strip()
-        justification_text = justification if justification else "Aucune justification fournie."
-        _notify_app_admins(
-            item.application,
-            title="Nouvelle demande d'accès",
-            body=(
-                f"{user_label(user_info)} demande l'accès à {item.application.nom}. "
-                f"Justification: {justification_text}"
-            ),
-        )
-        mail_svc.send_app_access_request_admin_mail(
-            admins=list_application_admins(item.application),
-            applicant=user_info,
-            application=item.application,
-            justification=justification_text,
-        )
-
-    mail_svc.send_registration_approved_user_mail(registration)
-    _notify_user_sub(
-        keycloak_user_id,
-        "Inscription validée",
-        "Vos demandes d'accès aux applications sont en cours de traitement.",
-    )
-    _log(actor_sub, "super_admin_approve", {"registration": str(registration.public_id)})
-
-    if not registration.items.filter(origin=AccessRequestItem.ORIGIN_REGISTRATION).exists():
-        _cleanup_completed_registration(registration, actor_sub=actor_sub)
+        if not registration.items.filter(origin=AccessRequestItem.ORIGIN_REGISTRATION).exists():
+            _cleanup_completed_registration(registration, actor_sub=actor_sub)
 
 
 @transaction.atomic

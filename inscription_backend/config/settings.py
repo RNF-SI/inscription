@@ -157,7 +157,23 @@ LEGACY_WRITE_ENABLED = env.bool("LEGACY_WRITE_ENABLED", default=bool(LEGACY_DATA
 # par les versions récentes de pypnusershub) et pass (md5, héritée). Vérifier côté base
 # si le parc en dépend encore avant d'activer :
 #   SELECT count(*) FROM utilisateurs.t_roles WHERE pass IS NOT NULL;
-LEGACY_WRITE_PASS_MD5 = env.bool("LEGACY_WRITE_PASS_MD5", default=False)
+# Les comptes récents de la base de production portent presque tous un md5 : la
+# colonne est toujours alimentée aujourd'hui, pas un résidu. Ne pas l'écrire ferait
+# diverger les comptes créés ici de ceux créés par UsersHub.
+LEGACY_WRITE_PASS_MD5 = env.bool("LEGACY_WRITE_PASS_MD5", default=True)
+
+# Groupes (utilisateurs.cor_roles) auxquels tout compte créé est rattaché.
+# Sur l'installation RNF, 69 est « Grp_all », que porte la quasi-totalité des comptes
+# actifs : l'omettre priverait les nouveaux inscrits de ce que ce groupe confère.
+LEGACY_DEFAULT_GROUP_IDS = [
+    int(v) for v in env.list("LEGACY_DEFAULT_GROUP_IDS", default=["69"]) if str(v).strip()
+]
+
+# utilisateurs.t_applications.id_application de la plateforme d'inscription.
+# Désactivé par défaut : la base de production ne montre qu'une seule ligne INS, créée
+# en 2023, et aucune depuis 2025 — cor_role_app_profil n'est plus alimenté à la
+# validation, ce sont les groupes qui portent les droits. Mettre 6 pour le rétablir.
+LEGACY_INSCRIPTION_APP_ID = env.int("LEGACY_INSCRIPTION_APP_ID", default=0)
 
 LOGGING = {
     "version": 1,

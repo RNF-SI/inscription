@@ -113,16 +113,26 @@ class CreateRoleSqlTests(TestCase):
         self.assertIsNone(params[7])  # pass md5 désactivé
 
     def test_grant_application_writes_profil_and_group(self):
-        with fake_legacy() as cursor:
+        # Le (True,) répond au contrôle « ce rôle est-il bien un groupe ? ».
+        with fake_legacy(results=[(True,)]) as cursor:
             legacy_writer.grant_application(
                 7, id_application=14, id_profil=1, group_id_role=36
             )
         profil = cursor.sql_matching("cor_role_app_profil")
-        groupe = cursor.sql_matching("cor_roles")
+        groupe = cursor.sql_matching("INSERT INTO utilisateurs.cor_roles")
         self.assertEqual(len(profil), 1)
         self.assertEqual(profil[0][1], [7, 14, 1])
         self.assertEqual(len(groupe), 1)
         self.assertEqual(groupe[0][1], [36, 7])
+
+    def test_add_to_groups_skips_unknown_and_non_group_roles(self):
+        """Un identifiant douteux ne doit pas faire échouer la création entière."""
+        with fake_legacy(results=[None, (False,), (True,)]) as cursor:
+            ajoutes = legacy_writer.add_to_groups(7, [404, 12, 69])
+        self.assertEqual(ajoutes, [69])
+        inserts = cursor.sql_matching("INSERT INTO utilisateurs.cor_roles")
+        self.assertEqual(len(inserts), 1)
+        self.assertEqual(inserts[0][1], [69, 7])
 
     def test_grant_application_skips_group_when_not_declared(self):
         with fake_legacy() as cursor:

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from contextlib import ExitStack, contextmanager
 
+from django.conf import settings
 from django.db import transaction
 
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
@@ -32,8 +33,14 @@ logger = logging.getLogger(__name__)
 #: Attribut Keycloak portant l'identifiant du compte dans la base historique.
 LEGACY_ID_ROLE_ATTRIBUTE = "legacy_id_role"
 
-#: Application « inscription » côté UsersHub, dont la validation accordait le droit.
-LEGACY_INSCRIPTION_APP_ID = 6
+def _inscription_app_id() -> int:
+    """Application « inscription » côté UsersHub, dont la validation accordait le droit.
+
+    Configurable car toutes les instances ne portent pas cette ligne : sur un
+    GeoNature de test, l'identifiant 6 n'existe pas et l'INSERT échouerait sur la
+    clé étrangère de cor_role_app_profil. 0 désactive le droit.
+    """
+    return int(getattr(settings, "LEGACY_INSCRIPTION_APP_ID", 6) or 0)
 
 
 class _Compensation:
@@ -178,7 +185,15 @@ def create_legacy_role(registration: RegistrationRequest, plain_password: str) -
         password=plain_password,
         champs_addi=champs_addi,
     )
-    legacy_writer.grant_application(id_role, id_application=LEGACY_INSCRIPTION_APP_ID)
+    # UsersHub rattache tout nouveau compte à ses groupes par défaut (Grp_all sur
+    # l'installation RNF) : sans cela, l'inscrit n'a pas ce que ce groupe confère.
+    default_groups = getattr(settings, "LEGACY_DEFAULT_GROUP_IDS", []) or []
+    if default_groups:
+        legacy_writer.add_to_groups(id_role, default_groups)
+
+    app_id = _inscription_app_id()
+    if app_id:
+        legacy_writer.grant_application(id_role, id_application=app_id)
     return id_role
 
 

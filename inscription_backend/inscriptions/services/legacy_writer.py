@@ -319,11 +319,7 @@ def grant_application(id_role: int, *, id_application: int, id_profil: int = 1,
         [id_role, id_application, id_profil],
     )
     if group_id_role:
-        _execute(
-            "INSERT INTO utilisateurs.cor_roles (id_role_groupe, id_role_utilisateur) "
-            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            [group_id_role, id_role],
-        )
+        add_to_groups(id_role, [group_id_role])
 
 
 def revoke_application(id_role: int, *, id_application: int,
@@ -339,6 +335,48 @@ def revoke_application(id_role: int, *, id_application: int,
             "WHERE id_role_groupe = %s AND id_role_utilisateur = %s",
             [group_id_role, id_role],
         )
+
+
+def add_to_groups(id_role: int, group_ids) -> list[int]:
+    """Rattache le compte à des groupes (``utilisateurs.cor_roles``).
+
+    Chaque identifiant est vérifié avant insertion : une ligne absente, ou qui n'est
+    pas un groupe, déclencherait une violation de clé étrangère et ferait échouer
+    toute la création. Les identifiants écartés sont journalisés et renvoyés à vide.
+    Renvoie la liste des groupes effectivement rattachés.
+    """
+    ajoutes: list[int] = []
+    for group_id in group_ids:
+        if not group_id:
+            continue
+        row = _execute(
+            "SELECT COALESCE(groupe, false) FROM utilisateurs.t_roles WHERE id_role = %s",
+            [group_id],
+            fetch="one",
+        )
+        if not row:
+            logger.warning("Groupe historique %s inexistant, rattachement ignoré", group_id)
+            continue
+        if not row[0]:
+            logger.warning("Le rôle %s n'est pas un groupe, rattachement ignoré", group_id)
+            continue
+        _execute(
+            "INSERT INTO utilisateurs.cor_roles (id_role_groupe, id_role_utilisateur) "
+            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            [group_id, id_role],
+        )
+        ajoutes.append(int(group_id))
+    return ajoutes
+
+
+def list_group_ids(id_role: int) -> set[int]:
+    """Groupes historiques auxquels le compte appartient."""
+    rows = _execute(
+        "SELECT id_role_groupe FROM utilisateurs.cor_roles WHERE id_role_utilisateur = %s",
+        [id_role],
+        fetch="all",
+    )
+    return {int(r[0]) for r in (rows or [])}
 
 
 def list_application_ids(id_role: int) -> set[int]:
