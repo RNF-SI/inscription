@@ -12,9 +12,10 @@ from inscriptions.services.legacy_user_migration import (
 
 
 class LegacyUserMigrationMappingTests(SimpleTestCase):
-    def test_build_legacy_application_slug_map_manual_and_fuzzy(self):
+    def test_build_legacy_application_slug_map_fuzzy(self):
+        """Le rapprochement par nom suffit : plus aucune correspondance codée en dur."""
         legacy_apps = [
-            LegacyApplicationRow(14, "geonature", "Application GeoNature"),
+            LegacyApplicationRow(4, "GNS", "GeoNature saisie"),
             LegacyApplicationRow(99, "waterwise-db", "Waterwise DB management"),
         ]
         django_apps = [
@@ -22,8 +23,15 @@ class LegacyUserMigrationMappingTests(SimpleTestCase):
             Application(slug="waterwise", nom="Waterwise DB management"),
         ]
         mapping = build_legacy_application_slug_map(legacy_apps, django_apps)
-        self.assertEqual(mapping[14], "geonature-saisie")
+        self.assertEqual(mapping[4], "geonature-saisie")
         self.assertEqual(mapping[99], "waterwise")
+
+    def test_communaute_rnf_nest_pas_rapprochee_de_geonature(self):
+        """id 14 = Communauté RNF en production : il ne doit rien accorder."""
+        legacy_apps = [LegacyApplicationRow(14, "COMM_RNF", "Communauté RNF")]
+        django_apps = [Application(slug="geonature-saisie", nom="GeoNature Saisie")]
+        mapping = build_legacy_application_slug_map(legacy_apps, django_apps)
+        self.assertNotIn(14, mapping)
 
     def test_normalize_email_fallback(self):
         self.assertEqual(_normalize_email("", "jean.dupont"), "jean.dupont@legacy-migration.local")

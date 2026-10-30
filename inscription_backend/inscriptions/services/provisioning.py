@@ -43,24 +43,43 @@ def provision_user_groups_after_super_approval(
         kc.user_join_group(keycloak_user_id, gid)
 
 
-def provision_application_access(kc: KeycloakAdminClient, keycloak_user_id: str, application: Application) -> None:
+def provision_application_access(
+    kc: KeycloakAdminClient,
+    keycloak_user_id: str,
+    application: Application,
+    *,
+    mirror_legacy: bool = True,
+) -> None:
     """Accorde l'accès applicatif dans Keycloak et dans la base historique.
 
     Point de passage unique de tous les appelants : c'est ici que l'écriture miroir
     se greffe, plutôt que dans chacune des vues qui accordent un accès.
+
+    ``mirror_legacy=False`` pour l'import de l'existant, qui va dans l'autre sens :
+    il lit la base historique pour peupler Keycloak. Y réécrire serait circulaire, et
+    déclencherait pour chaque compte importé la diffusion vers les bases GeoNature
+    satellites et le site internet.
     """
     with mirror.atomic_mirror():
         # Écriture historique d'abord : elle est annulable, l'appel Keycloak non.
-        mirror.legacy_grant_application(kc, keycloak_user_id, application)
+        if mirror_legacy:
+            mirror.legacy_grant_application(kc, keycloak_user_id, application)
         if settings.KEYCLOAK_SYNC_ENABLED:
             gid = kc.ensure_application_group(application.slug)
             kc.user_join_group(keycloak_user_id, gid)
 
 
-def revoke_application_access(kc: KeycloakAdminClient, keycloak_user_id: str, application: Application) -> None:
+def revoke_application_access(
+    kc: KeycloakAdminClient,
+    keycloak_user_id: str,
+    application: Application,
+    *,
+    mirror_legacy: bool = True,
+) -> None:
     """Retire l'accès applicatif dans Keycloak et dans la base historique."""
     with mirror.atomic_mirror():
-        mirror.legacy_revoke_application(kc, keycloak_user_id, application)
+        if mirror_legacy:
+            mirror.legacy_revoke_application(kc, keycloak_user_id, application)
         if settings.KEYCLOAK_SYNC_ENABLED:
             gid = kc.ensure_application_group(application.slug)
             try:

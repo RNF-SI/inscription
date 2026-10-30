@@ -22,10 +22,14 @@ LEGACY_ADMIN_PROFIL_ID = 6
 LEGACY_SUPER_ADMIN_GROUP_NAMES = {"grp_admin"}
 MIGRATION_EMAIL_DOMAIN = "legacy-migration.local"
 
-# Correspondances manuelles id_application UsersHub → slug catalogue Django.
-MANUAL_LEGACY_APP_SLUG: dict[int, str] = {
-    14: "geonature-saisie",
-}
+# Correspondances manuelles id_application UsersHub → slug catalogue Django, pour les
+# cas que le rapprochement par nom ne retrouve pas.
+#
+# L'entrée 14 → geonature-saisie a été retirée : dans la base de production, 14 est
+# COMM_RNF (Communauté RNF) et GeoNature saisie porte l'id 4, que le rapprochement
+# automatique retrouve seul. Conserver l'entrée accordait GeoNature saisie aux membres
+# de la Communauté RNF.
+MANUAL_LEGACY_APP_SLUG: dict[int, str] = {}
 
 
 @dataclass
@@ -559,7 +563,8 @@ def migrate_legacy_user_to_keycloak(
     for slug in sorted(user.app_member_slugs):
         app = Application.objects.filter(slug=slug).first()
         if app:
-            prov.provision_application_access(kc, user_id, app)
+            # L'import ne réécrit rien dans la base historique : il en vient.
+            prov.provision_application_access(kc, user_id, app, mirror_legacy=False)
 
     for slug in sorted(user.app_admin_slugs):
         app = Application.objects.filter(slug=slug).first()

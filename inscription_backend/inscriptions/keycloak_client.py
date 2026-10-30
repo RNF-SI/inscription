@@ -29,6 +29,12 @@ class KeycloakAdminClient:
         self.admin_client_id = settings.KEYCLOAK_ADMIN_CLIENT_ID
         self.admin_client_secret = (settings.KEYCLOAK_ADMIN_CLIENT_SECRET or "").strip()
         self._token: Optional[str] = None
+        # Listages de groupes mémorisés le temps de vie du client. L'arborescence est
+        # parcourue à chaque ensure_* : sans cela, créer les 289 groupes d'organisme
+        # relit 289 fois les ~280 enfants de /organismes, soit un quart d'heure avant
+        # que l'import ne traite son premier compte. Les vues instancient un client
+        # par requête : la mémorisation y est donc de très courte durée.
+        self._groups_cache: dict[str, list[dict]] = {}
 
     @property
     def _admin_base(self) -> str:
@@ -77,17 +83,35 @@ class KeycloakAdminClient:
             logger.warning("Keycloak injoignable (%s): %s", url, exc)
             raise KeycloakAdminError("keycloak_unreachable", str(exc)) from exc
 
+    def _request(self, method, path: str, **kwargs) -> requests.Response:
+        """Appelle l'Admin API, en redemandant un jeton une fois sur 401.
+
+        Le jeton est mis en cache sans suivi d'expiration, et Keycloak peut par
+        ailleurs renvoyer un jeton déjà périmé lorsqu'il réutilise une session client
+        existante : son `iat` est alors celui de la session, pas celui de l'émission.
+        Sans ce réessai, un import de plusieurs centaines de comptes s'interrompt au
+        premier 401. Rejouer est sans risque : un 401 signifie que la requête a été
+        rejetée, donc sans effet de bord.
+        """
+        url = f"{self._admin_base}{path}"
+        response = self._send(method, url, headers=self._headers(), **kwargs)
+        if response.status_code == 401:
+            logger.info("Jeton admin refusé (401), renouvellement et réessai : %s", path)
+            self.reset_token()
+            response = self._send(method, url, headers=self._headers(), **kwargs)
+        return response
+
     def _get(self, path: str) -> requests.Response:
-        return self._send(requests.get, f"{self._admin_base}{path}", headers=self._headers())
+        return self._request(requests.get, path)
 
     def _post(self, path: str, json: Any | None = None) -> requests.Response:
-        return self._send(requests.post, f"{self._admin_base}{path}", headers=self._headers(), json=json)
+        return self._request(requests.post, path, json=json)
 
     def _put(self, path: str, json: Any | None = None) -> requests.Response:
-        return self._send(requests.put, f"{self._admin_base}{path}", headers=self._headers(), json=json)
+        return self._request(requests.put, path, json=json)
 
     def _delete(self, path: str) -> requests.Response:
-        return self._send(requests.delete, f"{self._admin_base}{path}", headers=self._headers())
+        return self._request(requests.delete, path)
 
     def _find_child_group_id(self, parent_id: str, child_name: str) -> str | None:
         children = self.get_subgroups(parent_id)
@@ -148,11 +172,32 @@ class KeycloakAdminClient:
 
         return _walk(tops)
 
+    #: Clé du cache pour la racine, qui n'a pas d'identifiant de parent.
+    _RACINE = ""
+
+    def invalidate_group_cache(self, parent_id: str | None = None) -> None:
+        """Oublie les listages mémorisés, pour un parent ou pour tous."""
+        if parent_id is None:
+            self._groups_cache.clear()
+        else:
+            self._groups_cache.pop(parent_id, None)
+
+    def _remember_group(self, parent_id: str, group_id: str, name: str) -> None:
+        """Ajoute un groupe tout juste créé au listage mémorisé de son parent."""
+        cached = self._groups_cache.get(parent_id)
+        if cached is not None and not any(g.get("id") == group_id for g in cached):
+            cached.append({"id": group_id, "name": name})
+
     def list_top_groups(self) -> list[dict]:
+        cached = self._groups_cache.get(self._RACINE)
+        if cached is not None:
+            return cached
         r = self._get("/groups?briefRepresentation=false")
         if r.status_code != 200:
             raise KeycloakAdminError(f"list_groups:{r.status_code}")
-        return r.json() or []
+        groups = r.json() or []
+        self._groups_cache[self._RACINE] = groups
+        return groups
 
     def get_group(self, group_id: str) -> dict:
         r = self._get(f"/groups/{group_id}")
@@ -195,6 +240,9 @@ class KeycloakAdminClient:
     def get_subgroups(self, parent_id: str) -> list[dict]:
         # Endpoint dédié aux sous-groupes (plus fiable que le champ subGroups de /groups/{id}).
         # On itère par pages pour éviter les réponses tronquées.
+        cached = self._groups_cache.get(parent_id)
+        if cached is not None:
+            return cached
         out: list[dict] = []
         first = 0
         page_size = 200
@@ -208,7 +256,9 @@ class KeycloakAdminClient:
                 if legacy.status_code != 200:
                     raise KeycloakAdminError(f"get_group_children:{r.status_code}")
                 data = legacy.json() or {}
-                return data.get("subGroups") or []
+                fallback = data.get("subGroups") or []
+                self._groups_cache[parent_id] = fallback
+                return fallback
 
             batch = r.json() or []
             if not isinstance(batch, list):
@@ -217,6 +267,7 @@ class KeycloakAdminClient:
             if len(batch) < page_size:
                 break
             first += page_size
+        self._groups_cache[parent_id] = out
         return out
 
     def create_child_group(self, parent_id: str, name: str) -> str:
@@ -224,7 +275,9 @@ class KeycloakAdminClient:
         if r.status_code == 409:
             # Le groupe existe déjà (course condition / duplication) :
             # on relit avec retries pour gérer la latence d'indexation Keycloak.
+            # Le listage mémorisé ne peut pas contenir ce groupe : on le jette.
             for _ in range(5):
+                self.invalidate_group_cache(parent_id)
                 gid = self._find_child_group_id(parent_id, name)
                 if gid:
                     return gid
@@ -236,6 +289,7 @@ class KeycloakAdminClient:
         try:
             j = r.json()
             if isinstance(j, dict) and j.get("id"):
+                self._remember_group(parent_id, j["id"], name)
                 return j["id"]
         except ValueError:
             pass
@@ -243,12 +297,14 @@ class KeycloakAdminClient:
         gid = loc.rstrip("/").split("/")[-1] if loc else ""
         if not gid:
             raise KeycloakAdminError("create_child_group_no_id")
+        self._remember_group(parent_id, gid, name)
         return gid
 
     def create_top_group(self, name: str) -> str:
         r = self._post("/groups", json={"name": name})
         if r.status_code == 409:
             # Déjà présent : on retourne l'id existant.
+            self.invalidate_group_cache(self._RACINE)
             for g in self.list_top_groups():
                 if g.get("name") == name and g.get("id"):
                     return g["id"]
@@ -256,7 +312,9 @@ class KeycloakAdminClient:
         if r.status_code not in (200, 201):
             raise KeycloakAdminError(f"create_top_group_failed:{r.status_code}:{r.text[:200]}")
         loc = r.headers.get("Location", "")
-        return loc.rstrip("/").split("/")[-1]
+        gid = loc.rstrip("/").split("/")[-1]
+        self._remember_group(self._RACINE, gid, name)
+        return gid
 
     def ensure_root(self, root_name: str) -> str:
         for g in self.list_top_groups():

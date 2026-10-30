@@ -208,6 +208,34 @@ class SyncReservesTests(TestCase):
 
 # TestCase et non SimpleTestCase : atomic_mirror ouvre une transaction, ce que
 # SimpleTestCase interdit.
+class ImportNeReecritPasTests(TestCase):
+    """L'import de l'existant lit la base historique : il ne doit rien y réécrire.
+
+    Sans cela, peupler Keycloak depuis UsersHub déclencherait, pour chaque compte,
+    la diffusion vers les bases GeoNature satellites et le site internet.
+    """
+
+    @override_settings(KEYCLOAK_SYNC_ENABLED=False)
+    def test_provision_access_sans_miroir(self):
+        from inscriptions.services import provisioning
+
+        app = Application.objects.create(slug="ancrage", nom="Ancrage", legacy_group_id_role=64)
+        with mock.patch.object(provisioning.mirror, "legacy_grant_application") as ecriture:
+            provisioning.provision_application_access(
+                mock.MagicMock(), "sub-1", app, mirror_legacy=False
+            )
+        ecriture.assert_not_called()
+
+    @override_settings(KEYCLOAK_SYNC_ENABLED=False)
+    def test_provision_access_avec_miroir_par_defaut(self):
+        from inscriptions.services import provisioning
+
+        app = Application.objects.create(slug="ancrage", nom="Ancrage", legacy_group_id_role=64)
+        with mock.patch.object(provisioning.mirror, "legacy_grant_application") as ecriture:
+            provisioning.provision_application_access(mock.MagicMock(), "sub-1", app)
+        ecriture.assert_called_once()
+
+
 class CompensationTests(TestCase):
     def test_undo_runs_in_reverse_on_failure(self):
         done = []
