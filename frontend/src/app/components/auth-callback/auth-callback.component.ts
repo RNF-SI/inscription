@@ -34,16 +34,24 @@ export class AuthCallbackComponent implements OnInit {
             const target = this.auth.safePostLoginTarget(raw);
             this.router.navigateByUrl(target, { replaceUrl: true });
           },
-          error: () => {
-            this.error = true;
-            this.cdr.markForCheck();
-          },
+          error: () => this.abandon(),
         });
       },
-      error: () => {
-        this.error = true;
-        this.cdr.markForCheck();
-      },
+      error: () => this.abandon(),
     });
+  }
+
+  /**
+   * Abandonne la connexion en effaçant ce qui a déjà été posé.
+   *
+   * L'échange du code stocke les jetons avant que le profil ne soit chargé : sans ce
+   * nettoyage, un échec à la seconde étape laisse une session à moitié établie. Le
+   * menu, qui se fie au profil, affiche alors « se connecter » — et l'utilisateur n'a
+   * plus aucun moyen de se déconnecter depuis l'interface.
+   */
+  private abandon(): void {
+    this.auth.clearSession();
+    this.error = true;
+    this.cdr.markForCheck();
   }
 }

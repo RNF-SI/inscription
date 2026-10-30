@@ -129,7 +129,7 @@ export class AuthService {
         const access = tokens['access_token'] as string;
         const idTok = tokens['id_token'] as string;
         const refresh = tokens['refresh_token'] as string;
-        const exp = tokens['expires_in'] ? String(Date.now() + Number(tokens['expires_in']) * 1000) : '';
+        const exp = this.accessDeadline(access, tokens['expires_in']);
         const refreshExp = tokens['refresh_expires_in']
           ? String(Date.now() + Number(tokens['refresh_expires_in']) * 1000)
           : '';
@@ -198,7 +198,7 @@ export class AuthService {
         const access = tokens['access_token'] as string;
         const idTok = tokens['id_token'] as string;
         const newRefresh = tokens['refresh_token'] as string;
-        const exp = tokens['expires_in'] ? String(Date.now() + Number(tokens['expires_in']) * 1000) : '';
+        const exp = this.accessDeadline(access, tokens['expires_in']);
         const refreshExp = tokens['refresh_expires_in']
           ? String(Date.now() + Number(tokens['refresh_expires_in']) * 1000)
           : '';
@@ -400,6 +400,40 @@ export class AuthService {
       }
       window.location.href = `${kc.keycloakUrl}/realms/${kc.realm}/protocol/openid-connect/logout?${params.toString()}`;
     });
+  }
+
+  /** Échéance réelle du jeton d'accès, lue dans sa charge utile.
+   *
+   * Se fier au seul `expires_in` masque un jeton émis déjà périmé : le client le
+   * croit frais, l'envoie, et le serveur le rejette — l'utilisateur se retrouve
+   * authentifié côté navigateur et inconnu côté API. L'`exp` du jeton, lui, est
+   * exactement ce que le serveur vérifiera.
+   */
+  private accessDeadline(token: string, expiresIn: unknown): string {
+    const fromToken = this.jwtExpiryMs(token);
+    if (fromToken) {
+      return String(fromToken);
+    }
+    return expiresIn ? String(Date.now() + Number(expiresIn) * 1000) : '';
+  }
+
+  private jwtExpiryMs(token: string): number | null {
+    try {
+      const part = (token || '').split('.')[1];
+      if (!part) {
+        return null;
+      }
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64 + '==='.slice((base64.length + 3) % 4)));
+      return typeof payload?.exp === 'number' ? payload.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Efface la session locale. Public : le callback doit pouvoir le faire. */
+  clearSession(): void {
+    this.cleanLocalStorage();
   }
 
   private cleanLocalStorage() {

@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 
 import { ApiService } from 'src/app/services/api.service';
 import { AuthService } from './auth-service.service';
@@ -48,6 +49,25 @@ describe('AuthService.getCurrentUser', () => {
     localStorage.setItem('refresh_token', 'jeton');
     localStorage.setItem('refresh_expires_at', String(Date.now() - 60_000));
     expect(service.getCurrentUser()).toBeNull();
+  });
+
+  it('se fie à l’exp du jeton, pas à la durée annoncée', (done) => {
+    // Keycloak peut renvoyer un jeton déjà périmé tout en annonçant expires_in=300.
+    // Si le client croit la durée annoncée, il envoie un jeton que le serveur
+    // rejette, et l'utilisateur se retrouve authentifié ici et inconnu de l'API.
+    const expPasse = Math.floor(Date.now() / 1000) - 60;
+    const charge = btoa(JSON.stringify({ exp: expPasse })).replace(/=+$/, '');
+    const jeton = `entete.${charge}.signature`;
+
+    const api = TestBed.inject(ApiService) as unknown as { exchangeCode: unknown };
+    api.exchangeCode = () =>
+      of({ access_token: jeton, refresh_token: 'r', expires_in: 300, refresh_expires_in: 1800 });
+
+    service.handleOAuthCallback('un-code').subscribe(() => {
+      expect(Number(localStorage.getItem('expires_at'))).toBe(expPasse * 1000);
+      expect(service.isAccessTokenExpired()).toBeTrue();
+      done();
+    });
   });
 
   it('renvoie l’utilisateur tant que le rafraîchissement reste valide', () => {
