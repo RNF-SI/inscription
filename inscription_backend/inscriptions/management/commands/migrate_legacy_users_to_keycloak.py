@@ -26,6 +26,8 @@ from inscriptions.models import Application
 from inscriptions.services.legacy_user_migration import (
     build_legacy_application_slug_map,
     clear_keycloak_users,
+    find_existing_keycloak_user,
+    link_existing_keycloak_user,
     load_legacy_applications,
     load_legacy_users,
     migrate_legacy_user_to_keycloak,
@@ -146,6 +148,7 @@ class Command(BaseCommand):
 
         created = 0
         skipped = 0
+        linked = 0
         errors = 0
         legacy_passwords = 0
         generated_passwords = 0
@@ -157,9 +160,21 @@ class Command(BaseCommand):
                 kc.reset_token()
 
             try:
-                if not dry_run and kc.find_user_by_username(user.username):
-                    skipped += 1
-                    self.stderr.write(self.style.WARNING(f"Utilisateur déjà présent, ignoré : {user.username}"))
+                # Un compte déjà présent — typiquement un membre de l'équipe fédéré
+                # depuis l'annuaire — reçoit ses droits sans qu'on touche à son
+                # identifiant, à son mot de passe ni à son profil.
+                existant = None if dry_run else find_existing_keycloak_user(kc, user)
+                if existant:
+                    user_id, critere = existant
+                    link_existing_keycloak_user(kc, user, user_id)
+                    linked += 1
+                    self.stdout.write(
+                        f"[{index}/{len(users)}] {user.username} ({user.email}) → {user_id} | "
+                        f"RATTACHÉ par {critere}, identifiants inchangés | "
+                        f"réserves={len(user.reserve_codes)} | apps={len(user.app_member_slugs)} | "
+                        f"admins={len(user.app_admin_slugs)} | super={user.is_super_admin}"
+                    )
+                    time.sleep(0.05)
                     continue
 
                 user_id, password_mode, generated_plain = migrate_legacy_user_to_keycloak(
@@ -212,7 +227,8 @@ class Command(BaseCommand):
         prefix = "[dry-run] " if dry_run else ""
         self.stdout.write(
             self.style.SUCCESS(
-                f"{prefix}Migration terminée ({batch_tag}) : {created} créé(s), {skipped} ignoré(s), "
+                f"{prefix}Migration terminée ({batch_tag}) : {created} créé(s), "
+                f"{linked} rattaché(s) à un compte existant, {skipped} ignoré(s), "
                 f"{errors} erreur(s), {legacy_passwords} mot(s) de passe legacy importé(s), "
                 f"{generated_passwords} mot(s) de passe généré(s)."
             )

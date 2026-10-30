@@ -484,6 +484,94 @@ def clear_keycloak_users(kc: KeycloakAdminClient, *, dry_run: bool = False) -> i
     return removed
 
 
+def find_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow) -> tuple[str, str] | None:
+    """Retrouve un compte déjà présent dans le realm. Renvoie (id, critère) ou None.
+
+    Les membres de l'équipe sont fédérés depuis l'annuaire : leur compte existe avant
+    l'import, souvent sous un identifiant différent de celui d'UsersHub. On les
+    rapproche donc par e-mail autant que par identifiant, pour leur attribuer les
+    droits plutôt que de créer un doublon.
+
+    Les e-mails de substitution (@legacy-migration.local), fabriqués pour les comptes
+    historiques sans adresse, ne peuvent correspondre à personne : on les ignore.
+    """
+    by_username = kc.find_user_by_username(user.username)
+    if by_username:
+        return by_username, "identifiant"
+    email = (user.email or "").strip()
+    if email and not email.lower().endswith("@" + MIGRATION_EMAIL_DOMAIN):
+        by_email = kc.find_user_by_email(email)
+        if by_email:
+            return by_email, "e-mail"
+    return None
+
+
+def assign_legacy_groups(kc: KeycloakAdminClient, user: LegacyUserRow, user_id: str) -> None:
+    """Attribue organisme, réserves, référents, applications et super-admin.
+
+    Séparé de la création : un compte fédéré existant reçoit ses droits sans qu'on
+    touche à son identifiant, à son mot de passe ni à son profil, tous gérés par
+    l'annuaire.
+    """
+    org = _resolve_organisme(user.id_organisme)
+    if org:
+        gid = kc.ensure_organisme_group(
+            org.keycloak_slug,
+            org.id_organisme,
+            org.nom_organisme,
+            org.uuid_organisme,
+        )
+        kc.user_join_group(user_id, gid)
+    elif user.id_organisme:
+        logger.warning(
+            "Organisme legacy %s introuvable pour %s — groupe non attribué",
+            user.id_organisme,
+            user.username,
+        )
+
+    for code in user.reserve_codes:
+        gid = kc.ensure_reserve_group(code)
+        kc.user_join_group(user_id, gid)
+
+    for code in user.referent_valid_codes:
+        gid = kc.ensure_reserve_referent_group(code)
+        kc.user_join_group(user_id, gid)
+
+    for slug in sorted(user.app_member_slugs):
+        app = Application.objects.filter(slug=slug).first()
+        if app:
+            # L'import ne réécrit rien dans la base historique : il en vient.
+            prov.provision_application_access(kc, user_id, app, mirror_legacy=False)
+
+    for slug in sorted(user.app_admin_slugs):
+        app = Application.objects.filter(slug=slug).first()
+        if app:
+            gid = kc.ensure_application_admin_group(app.slug)
+            kc.user_join_group(user_id, gid)
+
+    if user.is_super_admin:
+        gid = kc.ensure_super_admin_group()
+        kc.user_join_group(user_id, gid)
+
+
+def link_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow, user_id: str) -> None:
+    """Rattache un compte existant : droits, et mémorisation de l'id_role historique.
+
+    L'écriture de l'attribut est tolérante à l'échec : un compte fédéré en lecture
+    seule depuis l'annuaire refuse les modifications, ce qui ne doit pas empêcher
+    l'attribution des droits, qui vivent côté Keycloak.
+    """
+    try:
+        kc.set_user_attribute(user_id, "legacy_id_role", str(user.id_role))
+    except KeycloakAdminError as exc:
+        logger.info(
+            "Attribut legacy_id_role non posé sur %s (compte fédéré en lecture seule ?) : %s",
+            user.username,
+            exc,
+        )
+    assign_legacy_groups(kc, user, user_id)
+
+
 def migrate_legacy_user_to_keycloak(
     kc: KeycloakAdminClient,
     user: LegacyUserRow,
@@ -536,45 +624,7 @@ def migrate_legacy_user_to_keycloak(
         extra_attributes={"legacy_id_role": [str(user.id_role)]},
     )
 
-    org = _resolve_organisme(user.id_organisme)
-    if org:
-        gid = kc.ensure_organisme_group(
-            org.keycloak_slug,
-            org.id_organisme,
-            org.nom_organisme,
-            org.uuid_organisme,
-        )
-        kc.user_join_group(user_id, gid)
-    elif user.id_organisme:
-        logger.warning(
-            "Organisme legacy %s introuvable pour %s — groupe non attribué",
-            user.id_organisme,
-            user.username,
-        )
-
-    for code in user.reserve_codes:
-        gid = kc.ensure_reserve_group(code)
-        kc.user_join_group(user_id, gid)
-
-    for code in user.referent_valid_codes:
-        gid = kc.ensure_reserve_referent_group(code)
-        kc.user_join_group(user_id, gid)
-
-    for slug in sorted(user.app_member_slugs):
-        app = Application.objects.filter(slug=slug).first()
-        if app:
-            # L'import ne réécrit rien dans la base historique : il en vient.
-            prov.provision_application_access(kc, user_id, app, mirror_legacy=False)
-
-    for slug in sorted(user.app_admin_slugs):
-        app = Application.objects.filter(slug=slug).first()
-        if app:
-            gid = kc.ensure_application_admin_group(app.slug)
-            kc.user_join_group(user_id, gid)
-
-    if user.is_super_admin:
-        gid = kc.ensure_super_admin_group()
-        kc.user_join_group(user_id, gid)
+    assign_legacy_groups(kc, user, user_id)
 
     return user_id, password_mode, generated_plain
 

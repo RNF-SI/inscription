@@ -481,6 +481,23 @@ class KeycloakAdminClient:
             return None
         return arr[0].get("id")
 
+    def find_user_by_email(self, email: str) -> str | None:
+        """Retrouve un compte par e-mail exact, insensible à la casse.
+
+        Sert à rattacher un compte historique à un utilisateur déjà présent dans le
+        realm — typiquement fédéré depuis l'annuaire — plutôt qu'à en créer un double.
+        """
+        cleaned = (email or "").strip()
+        if not cleaned:
+            return None
+        r = self._get(f"/users?email={requests.utils.quote(cleaned)}&exact=true")
+        if r.status_code != 200:
+            return None
+        for u in r.json() or []:
+            if (u.get("email") or "").strip().lower() == cleaned.lower() and u.get("id"):
+                return u["id"]
+        return None
+
     def search_users(self, query: str, max_count: int = 20) -> list[dict]:
         q = (query or "").strip()
         if not q:

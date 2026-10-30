@@ -174,6 +174,20 @@ Le lien entre les deux mondes est l'attribut Keycloak `legacy_id_role`, posé à
 création et par l'import. `mirror.legacy_id_role_for()` le lit, avec repli sur l'e-mail
 puis l'identifiant.
 
+⚠️ **Cet attribut n'est conservé que si le realm l'accepte.** Le profil utilisateur de
+Keycloak ne déclare par défaut que `username`, `email`, `firstName`, `lastName` et
+`function` : tout autre attribut est accepté par l'API puis **silencieusement jeté**.
+Déclarer `legacy_id_role` dans *Realm settings → User profile* (comme l'est déjà
+`function`), sinon chaque résolution retombe sur la recherche par e-mail — ce qui
+fonctionne, mais coûte une requête de plus et casse si l'adresse change.
+
+L'import rattache les comptes déjà présents dans le realm — les membres de l'équipe,
+fédérés depuis l'annuaire — au lieu d'en créer des doubles :
+`find_existing_keycloak_user()` cherche par identifiant puis par e-mail, et
+`link_existing_keycloak_user()` n'attribue que les droits, sans toucher à
+l'identifiant, au mot de passe ni au profil, gérés par l'annuaire. Les adresses de
+substitution `@legacy-migration.local` ne sont jamais rapprochées.
+
 Ce que la base de production montre, et que les réglages reproduisent :
 
 - **Les groupes portent les droits, pas `cor_role_app_profil`.** Cette table ne compte
