@@ -70,13 +70,32 @@ bloquants.
 
     Le champ décisif est ``Packet count`` : non nul, le serveur répond.
 
-    **Reste à faire avant la bascule.** Le VLAN ``APPS`` a le même trou — son
-    jeu de règles finit par un ``Bloque le reste`` explicite et n'autorise pas
-    l'UDP 123. Tant que les applications y tournent en conteneur LXC, elles
-    héritent de l'horloge de l'hôte et rien ne se voit. Déployer le backend
-    Django en **VM** dans ce VLAN le ferait dériver face à un Keycloak
-    désormais à l'heure, c'est-à-dire dans la direction qui casse (§ 0.8).
-    Poser la même règle sur ``APPS`` avant d'y déployer quoi que ce soit.
+    **Le VLAN ``APPS`` avait le même trou, réglé le même jour.** Son jeu de
+    règles se termine par un ``Bloque le reste`` explicite et n'autorisait pas
+    l'UDP 123 ; la règle y est désormais posée elle aussi.
+
+    Ce VLAN porte l'application RADIS (dépôt ``equipe-app``), sur une VM. Son
+    horloge retardait de **4 min 06 s** — quarante fois la dérive de Keycloak.
+    PyJWT y voyait l'``iat`` de chaque jeton dans le futur et refusait *tous*
+    les jetons, pour tous les comptes, avec « Token invalide » et sans que le
+    message désigne jamais l'horloge. Mesure refaite avant correction :
+    **+246,185 s** ; après le même drop-in, **+0,001 s**, et la connexion
+    repasse. Le même incident, donc, sur un second serveur de production, le
+    même jour, par la même cause.
+
+    Deux leçons pour qui déploie une VM de plus derrière ce pare-feu :
+
+    - **La règle seule ne synchronise rien.** Son compteur d'états restait à
+      zéro après sa pose : ``systemd-timesyncd`` n'a aucun serveur déclaré par
+      défaut et continue d'interroger le pool public, qui reste bloqué. Il faut
+      la règle **et** le drop-in — autoriser un chemin que personne n'emprunte
+      ne change rien.
+    - **Un conteneur LXC n'est pas concerné** : il n'a ni ``/dev/rtc`` ni
+      ``CAP_SYS_TIME``, il hérite de l'horloge de l'hôte, que chrony tient.
+      Seules les VM dérivent. C'est pourquoi le backend Django, en conteneur,
+      restait juste pendant que RADIS décrochait de quatre minutes sur la même
+      infrastructure — et pourquoi l'y déployer un jour en VM demanderait le
+      même traitement.
 
 0.2 — Déclarer ``legacy_id_role`` ET ``uuid_role`` dans le profil utilisateur du
       realm de prod.
