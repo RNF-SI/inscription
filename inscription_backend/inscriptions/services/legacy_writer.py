@@ -194,6 +194,14 @@ def deactivate_role(id_role: int) -> None:
     _execute("UPDATE utilisateurs.t_roles SET active = false WHERE id_role = %s", [id_role])
 
 
+def get_role_identifiant(id_role: int) -> str:
+    """Identifiant historique du compte, celui que connaissent les applications RNF."""
+    row = _execute(
+        "SELECT identifiant FROM utilisateurs.t_roles WHERE id_role = %s", [id_role], fetch="one"
+    )
+    return (row[0] if row else "") or ""
+
+
 def find_role_id(*, email: str = "", identifiant: str = "") -> int | None:
     """Retrouve un ``id_role`` par e-mail puis par identifiant.
 

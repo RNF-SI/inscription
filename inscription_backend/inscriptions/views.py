@@ -57,6 +57,7 @@ from inscriptions.serializers import (
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
 from inscriptions.services import contact as contact_svc
+from inscriptions.services import legacy_writer
 from inscriptions.services import mirror
 from inscriptions.services import password_reset as password_reset_svc
 from inscriptions.services.legacy_writer import LegacyWriteError
@@ -489,6 +490,38 @@ class ContactMessageView(APIView):
         return Response({"detail": "Votre message a bien été transmis au support."})
 
 
+def _identifiant_deja_pris(kc: KeycloakAdminClient, user_sub: str, identifiant: str | None) -> str:
+    """Motif de refus si cet identifiant appartient déjà à quelqu'un d'autre.
+
+    Chaîne vide s'il est libre. La vérification porte sur les deux mondes : Keycloak
+    répondrait 409 de lui-même, mais la base historique, elle, accepterait peut-être
+    le doublon selon ses contraintes — et deux comptes partageant un identifiant
+    casseraient la connexion des applications qui l'y lisent.
+    """
+    cleaned = (identifiant or "").strip()
+    if not cleaned:
+        return ""
+
+    try:
+        occupant = kc.find_user_by_username(cleaned)
+    except KeycloakAdminError:
+        occupant = None
+    if occupant and occupant != user_sub:
+        return "Cet identifiant est déjà utilisé."
+
+    if not legacy_writer.is_enabled():
+        return ""
+    try:
+        id_role_occupant = legacy_writer.find_role_id(identifiant=cleaned)
+        if id_role_occupant is None:
+            return ""
+        if id_role_occupant != mirror.legacy_id_role_for(kc, user_sub):
+            return "Cet identifiant est déjà utilisé."
+    except LegacyWriteError:
+        logger.warning("Vérification d'unicité de l'identifiant impossible")
+    return ""
+
+
 class MeView(APIView):
     def patch(self, request):
         user = require_keycloak_user(request)
@@ -501,8 +534,12 @@ class MeView(APIView):
         if not data:
             return Response({"detail": "Aucune modification fournie."}, status=400)
 
+        kc = KeycloakAdminClient()
+        conflit = _identifiant_deja_pris(kc, user.sub, data.get("username"))
+        if conflit:
+            return Response({"detail": conflit}, status=409)
+
         try:
-            kc = KeycloakAdminClient()
             update_kwargs = {
                 "username": data.get("username"),
                 "email": data.get("email"),
@@ -524,10 +561,23 @@ class MeView(APIView):
                     remarques=data.get("fonction"),
                 )
                 kc.update_user_profile(user.sub, **update_kwargs)
-        except (KeycloakAdminError, LegacyWriteError) as exc:
+        except KeycloakAdminError as exc:
+            logger.warning("Me patch failed: %s", exc)
+            # Keycloak répond 409 quand l'identifiant ou l'adresse est déjà pris :
+            # c'est une saisie à corriger, pas une panne.
+            if str(exc).endswith(":409"):
+                return Response(
+                    {"detail": "Cet identifiant ou cette adresse est déjà utilisé."},
+                    status=409,
+                )
+            return Response({"detail": "Mise à jour du profil impossible."}, status=502)
+        except LegacyWriteError as exc:
             logger.warning("Me patch failed: %s", exc)
             return Response({"detail": "Mise à jour du profil impossible."}, status=502)
 
+        # L'identifiant a peut-être changé : la réponse doit refléter le nouvel état,
+        # pas celui mémorisé avant l'écriture.
+        mirror.forget_legacy_username_state(user.sub)
         return self.get(request)
 
     def get(self, request):
@@ -538,6 +588,9 @@ class MeView(APIView):
         groups = normalize_group_paths(groups_list)
         claims = {**user.claims, "groups": groups_list} if groups_list else user.claims
         org_group_path = _first_organisme_group_path(claims)
+        legacy_username, username_diverges = mirror.legacy_username_state(
+            KeycloakAdminClient(), user.sub
+        )
         profile_data = {
             "keycloak_sub": claims.get("sub") or user.sub,
             "email": claims.get("email") or "",
@@ -545,10 +598,14 @@ class MeView(APIView):
             "first_name": claims.get("given_name") or claims.get("first_name") or "",
             "last_name": claims.get("family_name") or claims.get("last_name") or "",
             "is_super_admin": is_super_admin(groups),
-            # Exposé si un mapper Keycloak place l'attribut dans le jeton. On évite
-            # volontairement d'interroger Keycloak ou la base historique ici : /me/
-            # est appelé à chaque chargement de page.
+            # Exposé si un mapper Keycloak place l'attribut dans le jeton ; sinon
+            # null, car le résoudre coûterait un appel de plus.
             "legacy_id_role": claims.get("legacy_id_role") or None,
+            # Identifiant connu des applications historiques. Il diffère de celui de
+            # Keycloak pour les comptes que l'import a dû renommer ; « Mon compte »
+            # s'en sert pour afficher l'ancien et inviter à le régulariser.
+            "legacy_username": legacy_username,
+            "username_diverges": username_diverges,
             "fonction": _profile_fonction_for_user(user.sub, claims),
             "organisme": (
                 _organisme_name_from_group_path(org_group_path)

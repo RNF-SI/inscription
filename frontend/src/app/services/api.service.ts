@@ -73,6 +73,11 @@ export interface MeResponse {
     organisme?: string;
     is_super_admin: boolean;
     legacy_id_role: number | null;
+    // Identifiant connu des applications historiques. Il diffère de celui de
+    // Keycloak pour les comptes que l'import a dû renommer ; username_diverges
+    // dit s'il faut inviter l'usager à régulariser.
+    legacy_username?: string;
+    username_diverges?: boolean;
   };
   applications: MeApplicationRow[];
   reserves: { area_code: string; area_name: string; referent: boolean; referent_valid: boolean; referent_pending?: boolean }[];

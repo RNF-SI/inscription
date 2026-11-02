@@ -6,6 +6,11 @@ import { ApiService, MeResponse, ReserveOptionDto } from 'src/app/services/api.s
 import { catchError, finalize } from 'rxjs/operators';
 import { of } from 'rxjs';
 
+/** L'identifiant historique s'il est connu, celui de Keycloak sinon. */
+function identifiantDe(me: MeResponse): string {
+  return me.profile.legacy_username || me.profile.username || '';
+}
+
 @Component({
   standalone: false,
   selector: 'app-moncompte',
@@ -25,6 +30,7 @@ export class MoncompteComponent implements OnInit {
   passwordForm: UntypedFormGroup;
   changingPassword = false;
   passwordError = '';
+  saveError = '';
 
   constructor(
     private fb: UntypedFormBuilder,
@@ -36,7 +42,13 @@ export class MoncompteComponent implements OnInit {
 
   ngOnInit(): void {
     this.form = this.fb.group({
-      identifiant: [{ value: '', disabled: true }],
+      // Les comptes que l'import a dû renommer portent deux identifiants : celui
+      // des applications historiques et celui de Keycloak. Le champ sert à en
+      // choisir un conforme, écrit des deux côtés, qui réconcilie les deux mondes.
+      // Les majuscules sont acceptées puis repliées à l'enregistrement, parce que
+      // Keycloak replie de son côté et que les deux mondes doivent recevoir la
+      // même valeur.
+      identifiant: ['', [Validators.required, Validators.minLength(3), Validators.pattern(/^[A-Za-z0-9._-]+$/)]],
       nom_role: [''],
       prenom_role: [''],
       fonction: [''],
@@ -87,6 +99,7 @@ export class MoncompteComponent implements OnInit {
 
   edit(): void {
     this.isEditing = true;
+    this.saveError = '';
     if (this.me) {
       this.patchFormFromMe(this.me);
     }
@@ -94,6 +107,7 @@ export class MoncompteComponent implements OnInit {
 
   cancel(): void {
     this.isEditing = false;
+    this.saveError = '';
     this.selectedReserveToAdd = '';
     if (this.me) {
       this.patchFormFromMe(this.me);
@@ -104,14 +118,26 @@ export class MoncompteComponent implements OnInit {
     if (this.saving) {
       return;
     }
+    this.saveError = '';
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
     const v = this.form.getRawValue();
-    this.saving = true;
-    this.api.updateMe({
+    const identifiant = (v.identifiant || '').trim().toLowerCase();
+    const payload: Parameters<ApiService['updateMe']>[0] = {
       first_name: (v.prenom_role || '').trim(),
       last_name: (v.nom_role || '').trim(),
       email: (v.email || '').trim(),
       fonction: (v.fonction || '').trim(),
-    }).subscribe({
+    };
+    // Transmis seulement s'il change : sinon un profil dont l'identifiant
+    // historique n'est pas conforme serait refusé à chaque modification de nom.
+    if (identifiant && identifiant !== this.identifiantAffiche.toLowerCase()) {
+      payload.username = identifiant;
+    }
+    this.saving = true;
+    this.api.updateMe(payload).subscribe({
       next: () => {
         this.auth.refreshAccessToken().subscribe({
           next: () => {
@@ -135,16 +161,36 @@ export class MoncompteComponent implements OnInit {
           },
         });
       },
-      error: () => {
+      error: (err) => {
+        // 409 : identifiant déjà pris. Le reste reste générique.
+        this.saveError =
+          err?.error?.detail ||
+          err?.error?.username?.[0] ||
+          'Enregistrement impossible.';
         this.saving = false;
+        this.cdr.detectChanges();
       },
     });
+  }
+
+  /** Identifiant à afficher : celui que connaissent les applications historiques. */
+  get identifiantAffiche(): string {
+    return this.me ? identifiantDe(this.me) : '';
+  }
+
+  /** Vrai tant que l'usager n'a pas choisi un identifiant valable des deux côtés. */
+  get identifiantARegulariser(): boolean {
+    return !!this.me?.profile?.username_diverges;
+  }
+
+  get identifiantKeycloak(): string {
+    return this.me?.profile?.username || '';
   }
 
   private patchFormFromMe(me: MeResponse): void {
     const p = me.profile;
     this.form.patchValue({
-      identifiant: p.username || '',
+      identifiant: identifiantDe(me),
       nom_role: p.last_name || '',
       prenom_role: p.first_name || '',
       fonction: p.fonction || '',

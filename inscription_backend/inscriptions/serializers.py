@@ -326,10 +326,24 @@ class MeUpdateSerializer(serializers.Serializer):
     fonction = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
     def validate_username(self, value: str) -> str:
-        username = (value or "").strip()
-        if not re.fullmatch(r"[A-Za-z0-9._@-]+", username):
+        """Même règle que ``normalize_username`` applique à l'import.
+
+        Minuscules, parce que Keycloak replie les identifiants en minuscules : laisser
+        passer une majuscule écrirait deux valeurs différentes des deux côtés et le
+        bandeau de régularisation ne disparaîtrait jamais. Pas d'arobase non plus — un
+        identifiant qui ressemble à une adresse devient ambigu dès que le realm
+        autorise la connexion par e-mail, et c'est précisément ce que Keycloak a
+        refusé à l'import.
+        """
+        username = (value or "").strip().lower()
+        if len(username) < 3:
             raise serializers.ValidationError(
-                "L'identifiant ne doit contenir que des lettres, chiffres ou . _ @ -"
+                "L'identifiant doit comporter au moins trois caractères."
+            )
+        if not re.fullmatch(r"[a-z0-9._-]+", username):
+            raise serializers.ValidationError(
+                "L'identifiant ne doit contenir que des lettres sans accent, "
+                "des chiffres, ou les signes . _ -"
             )
         return username
 

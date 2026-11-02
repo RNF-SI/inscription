@@ -70,6 +70,42 @@ class MeApiTests(BaseApiTestCase):
         update_profile.assert_called_once()
         self.assertEqual(update_profile.call_args.kwargs.get("function_value"), "Référent")
 
+    def test_me_expose_lidentifiant_historique_et_la_divergence(self):
+        """« Mon compte » affiche l'identifiant que connaissent les applications
+        historiques, et le bandeau de régularisation se règle sur username_diverges."""
+        auth_client(self.client, self.regular_user)
+        with patch(
+            "inscriptions.views.mirror.legacy_username_state",
+            return_value=("Paul Lesiak", True),
+        ):
+            data = self.client.get("/api/me/").json()
+        self.assertEqual(data["profile"]["legacy_username"], "Paul Lesiak")
+        self.assertTrue(data["profile"]["username_diverges"])
+
+    def test_me_patch_refuse_un_identifiant_deja_pris(self):
+        """Un identifiant partagé casserait la connexion aux applications qui le
+        lisent dans t_roles : le refus arrive avant toute écriture."""
+        auth_client(self.client, self.regular_user)
+        with patch(
+            "inscriptions.views._identifiant_deja_pris",
+            return_value="Cet identifiant est déjà utilisé.",
+        ), patch("inscriptions.views.KeycloakAdminClient.update_user_profile") as update_profile:
+            response = self.client.patch("/api/me/", {"username": "jean.dupont"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        update_profile.assert_not_called()
+
+    def test_me_patch_ecrit_lidentifiant_des_deux_cotes(self):
+        auth_client(self.client, self.regular_user)
+        with patch("inscriptions.views._identifiant_deja_pris", return_value=""), \
+             patch("inscriptions.views.mirror.update_legacy_profile") as legacy, \
+             patch("inscriptions.views.KeycloakAdminClient.update_user_profile") as update_profile:
+            response = self.client.patch("/api/me/", {"username": "Jean.Dupont"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Replié en minuscules : Keycloak le ferait de son côté, et les deux valeurs
+        # doivent rester identiques pour que la divergence disparaisse.
+        self.assertEqual(update_profile.call_args.kwargs.get("username"), "jean.dupont")
+        self.assertEqual(legacy.call_args.kwargs.get("identifiant"), "jean.dupont")
+
     def test_me_returns_fonction_from_keycloak_when_missing_in_token(self):
         auth_client(self.client, self.regular_user)
         # Le repli n'est tenté que si la synchro Keycloak est active (cf. _profile_fonction_for_user).

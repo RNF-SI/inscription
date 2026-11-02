@@ -21,6 +21,7 @@ import logging
 from contextlib import ExitStack, contextmanager
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
@@ -90,22 +91,30 @@ def atomic_mirror():
 
 
 def legacy_id_role_for(
-    kc: KeycloakAdminClient, user_sub: str, *, email: str = "", username: str = ""
+    kc: KeycloakAdminClient,
+    user_sub: str,
+    *,
+    email: str = "",
+    username: str = "",
+    user: dict | None = None,
 ) -> int | None:
     """Résout l'``id_role`` historique d'un compte Keycloak.
 
     Lit d'abord l'attribut ``legacy_id_role``. À défaut — compte créé avant la mise en
     place du miroir, ou importé sans attribut — retombe sur l'e-mail puis l'identifiant,
     et réécrit l'attribut pour que la résolution suivante soit directe.
+
+    ``user`` évite une lecture Keycloak quand l'appelant tient déjà la représentation.
     """
     if not legacy_writer.is_enabled():
         return None
 
-    try:
-        user = kc.get_user(user_sub) or {}
-    except KeycloakAdminError:
-        logger.warning("Lecture Keycloak impossible pour %s, repli sur e-mail", user_sub)
-        user = {}
+    if user is None:
+        try:
+            user = kc.get_user(user_sub) or {}
+        except KeycloakAdminError:
+            logger.warning("Lecture Keycloak impossible pour %s, repli sur e-mail", user_sub)
+            user = {}
 
     raw = (user.get("attributes") or {}).get(LEGACY_ID_ROLE_ATTRIBUTE)
     if isinstance(raw, list):
@@ -294,6 +303,74 @@ def set_password_without_verification(kc: KeycloakAdminClient, user_sub: str, no
     """
     id_role = _password_target(kc, user_sub)
     _write_password(kc, user_sub, id_role, nouveau)
+
+
+def legacy_username_for(kc: KeycloakAdminClient, user_sub: str) -> str:
+    """Identifiant historique d'un compte, chaîne vide si on ne le retrouve pas."""
+    return legacy_username_state(kc, user_sub)[0]
+
+
+#: ``/api/me/`` est appelé à chaque chargement de page, et résoudre l'identifiant
+#: historique coûte un appel Keycloak et une requête SQL. Le résultat ne change que
+#: lorsque l'usager se renomme, cas où ``forget_legacy_username_state()`` l'oublie.
+_CLE_ETAT_IDENTIFIANT = "legacy_username_state:"
+_DUREE_ETAT_IDENTIFIANT = 300
+
+
+def forget_legacy_username_state(user_sub: str) -> None:
+    """Oublie l'état mémorisé, après un changement d'identifiant."""
+    cache.delete(_CLE_ETAT_IDENTIFIANT + user_sub)
+
+
+def legacy_username_state(kc: KeycloakAdminClient, user_sub: str) -> tuple[str, bool]:
+    """Identifiant historique, et s'il faut inviter son titulaire à le régulariser.
+
+    L'import a dû renommer les identifiants que Keycloak refusait — espaces,
+    caractères interdits, moins de trois caractères. Ces comptes se connectent donc
+    sous un nom différent de celui que connaissent les applications historiques ;
+    « Mon compte » affiche l'ancien et propose d'en choisir un conforme, qui sera
+    écrit des deux côtés.
+
+    Un compte fédéré est exclu : son identifiant appartient à l'annuaire, la
+    plateforme ne peut pas le renommer, et le bandeau ne disparaîtrait jamais.
+    """
+    if not legacy_writer.is_enabled():
+        return "", False
+
+    memorise = cache.get(_CLE_ETAT_IDENTIFIANT + user_sub)
+    if memorise is not None:
+        return memorise[0], memorise[1]
+
+    try:
+        user = kc.get_user(user_sub) or {}
+    except KeycloakAdminError:
+        # Panne passagère : ne rien mémoriser, pour ne pas masquer la divergence
+        # pendant cinq minutes.
+        logger.warning("Lecture Keycloak impossible pour %s", user_sub)
+        return "", False
+
+    id_role = legacy_id_role_for(kc, user_sub, user=user)
+    if id_role is None:
+        return "", False
+    try:
+        identifiant = legacy_writer.get_role_identifiant(id_role)
+    except LegacyWriteError:
+        logger.warning("Identifiant historique illisible pour %s", user_sub)
+        return "", False
+
+    # Comparaison insensible à la casse : Keycloak replie les identifiants en
+    # minuscules, et « Amelieptj » devenu « amelieptj » n'a rien à régulariser —
+    # les deux mondes continuent d'authentifier chacun le leur.
+    actuel = str(user.get("username") or "").strip()
+    diverge = (
+        bool(identifiant)
+        and identifiant.lower() != actuel.lower()
+        and not user.get("federationLink")
+    )
+    cache.set(
+        _CLE_ETAT_IDENTIFIANT + user_sub, (identifiant, diverge), _DUREE_ETAT_IDENTIFIANT
+    )
+    return identifiant, diverge
 
 
 def _password_target(kc: KeycloakAdminClient, user_sub: str) -> int:

@@ -1,5 +1,19 @@
 <div class="container">
     <br><br>
+    <!-- Les comptes que l'import a dû renommer portent deux identifiants. Le bandeau
+         disparaît dès que l'usager en choisit un conforme, écrit des deux côtés. -->
+    <div *ngIf="identifiantARegulariser" class="alert alert-warning" role="alert">
+        <strong>Votre identifiant doit être mis à jour.</strong>
+        <p class="mb-2">
+            Le vôtre, <code>{{ identifiantAffiche }}</code>, contient des caractères que la nouvelle
+            authentification RNF n'accepte pas. En attendant que vous en choisissiez un autre, vous pouvez
+            vous connecter ici avec votre adresse e-mail ou avec <code>{{ identifiantKeycloak }}</code>.
+            Vos autres accès RNF continuent de fonctionner avec <code>{{ identifiantAffiche }}</code>.
+        </p>
+        <button type="button" class="btn btn-sm btn-warning" *ngIf="!isEditing" (click)="edit()">
+            Choisir un identifiant
+        </button>
+    </div>
     <h3 class="underlined main-color">Mes informations</h3>
     <div *ngIf="!isEditing">
         <div class="form-group row">
@@ -20,7 +34,10 @@
         </div>
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Identifiant</label>
-            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.username || '-' }}</div>
+            <div class="col-sm-9 col-xl-7 alignement">
+                {{ identifiantAffiche || '-' }}
+                <span *ngIf="identifiantARegulariser" class="badge text-bg-warning ms-2">à mettre à jour</span>
+            </div>
         </div>
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Organisme</label>
@@ -61,13 +78,28 @@
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Identifiant</label>
             <div class="col-sm-9 col-xl-7">
-                <input type="text" class="form-control-plaintext" formControlName="identifiant" />
+                <input type="text" class="form-control" formControlName="identifiant" autocapitalize="off"
+                    spellcheck="false" />
+                <div class="form-text">
+                    Lettres sans accent, chiffres, et les signes . _ - uniquement ; trois caractères au moins.
+                    Il sera enregistré en minuscules et remplacera votre identifiant sur toutes les
+                    plateformes RNF.
+                </div>
+                <div *ngIf="form.get('identifiant')?.touched && form.get('identifiant')?.invalid"
+                    class="text-danger small">
+                    Identifiant non conforme : lettres sans accent, chiffres, ou . _ - ; trois caractères au moins.
+                </div>
             </div>
         </div>
         <div class="form-group row">
             <label class="col-sm-3 col-form-label text-end">Organisme</label>
             <div class="col-sm-9 col-xl-7">
                 <input type="text" class="form-control-plaintext" formControlName="organisme" />
+            </div>
+        </div>
+        <div class="form-group row mt-3" *ngIf="saveError">
+            <div class="col-sm-9 col-xl-7 offset-sm-3">
+                <div class="alert alert-danger mb-0" role="alert">{{ saveError }}</div>
             </div>
         </div>
         <div class="form-group row mt-3">
