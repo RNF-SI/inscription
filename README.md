@@ -223,6 +223,10 @@ Comportement :
 
 ## 5. Séquence de cutover (production)
 
+> Procédure complète, avec les prérequis bloquants, les garde-fous des scripts d'import
+> et le rattrapage des identifiants : `inscription_backend/docs/runbook-cutover.txt`.
+> Ce qui suit n'en est que le squelette.
+
 1. Déployer le backend Django derrière `/api` (sans basculer le trafic utilisateur).
 2. Exécuter `migrate`, `seed_catalog`, puis `migrate_legacy` si applicable.
 3. Migrer les utilisateurs vers Keycloak (`migrate_legacy_users_to_keycloak`).
