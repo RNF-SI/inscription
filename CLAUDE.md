@@ -88,7 +88,10 @@ bien peuplé par le trigger, sans doublon, et que les bases satellites reçoiven
 Autres commandes de gestion : `promote_super --email=…`, `import_application_images`,
 `migrate_legacy`, `migrate_legacy_users_to_keycloak` (voir README.md §4 — destructif, `--dry-run` d'abord),
 `reconcile_legacy_keycloak` (compare base historique et Keycloak ; rapport seul, `--apply`
-se limite à reposer l'attribut `legacy_id_role`).
+se limite à reposer l'attribut `legacy_id_role`), `audit_identifiants` (lecture seule :
+comptes dont l'identifiant Keycloak diffère de l'identifiant historique, `--csv` pour la
+liste complète), `aligner_identifiants_annuaire` (écrit dans `t_roles` l'identifiant
+Keycloak des comptes fédérés — rapport seul, `--apply` pour écrire).
 
 ### Frontend (`frontend/`)
 
@@ -183,10 +186,62 @@ fonctionne, mais coûte une requête de plus et casse si l'adresse change.
 
 L'import rattache les comptes déjà présents dans le realm — les membres de l'équipe,
 fédérés depuis l'annuaire — au lieu d'en créer des doubles :
-`find_existing_keycloak_user()` cherche par identifiant puis par e-mail, et
-`link_existing_keycloak_user()` n'attribue que les droits, sans toucher à
-l'identifiant, au mot de passe ni au profil, gérés par l'annuaire. Les adresses de
-substitution `@legacy-migration.local` ne sont jamais rapprochées.
+`find_existing_keycloak_user()` cherche par `legacy_id_role`, puis par identifiant,
+puis par e-mail, et `link_existing_keycloak_user()` n'attribue que les droits, sans
+toucher à l'identifiant, au mot de passe ni au profil, gérés par l'annuaire. Les
+adresses de substitution `@legacy-migration.local` ne sont jamais rapprochées.
+L'attribut passe en premier parce que c'est le seul lien qui survit au renommage d'un
+identifiant (ci-dessous) : sans lui, un import rejoué créerait un doublon pour chaque
+compte renommé dépourvu d'adresse exploitable.
+
+### Les identifiants qu'UsersHub acceptait et que Keycloak refuse
+
+`utilisateurs.t_roles.identifiant` n'a jamais été contraint : une centaine de comptes
+portent un espace, d'autres un `!` ou un `/`, quelques-uns tiennent en deux lettres.
+Keycloak les refuse, et ces comptes resteraient absents du realm.
+
+`legacy_user_migration.normalize_username()` en dérive donc un identifiant acceptable
+— minuscules, `[a-z0-9._-]`, trois caractères au moins, partie locale seule si
+l'identifiant a la forme d'une adresse — et `_create_with_available_username()`
+suffixe `.2`, `.3`… sur conflit plutôt que de réimplémenter les règles d'unicité de
+Keycloak (un identifiant ne peut pas non plus égaler l'adresse d'un autre compte quand
+la connexion par e-mail est active).
+
+**L'identifiant historique n'est pas touché** : les applications qui lisent
+`t_roles` continuent d'authentifier avec l'ancien nom. Ces comptes portent donc deux
+noms, et le rattrapage tient en trois pièces :
+
+- `--username-report <csv>` sur `migrate_legacy_users_to_keycloak` écrit la liste des
+  comptes renommés (nom, prénom, ancien login, nouveau login, e-mail) pour pouvoir
+  les contacter.
+- `mirror.legacy_username_state()` renvoie l'identifiant historique et dit s'il faut
+  inviter son titulaire à régulariser ; `/api/me/` l'expose en `legacy_username` et
+  `username_diverges`, et « Mon compte » affiche l'ancien, pas celui de Keycloak.
+  **La comparaison est insensible à la casse** : Keycloak replie les identifiants en
+  minuscules, et 280 comptes ne divergent que par là — chaque monde authentifie le
+  sien, il n'y a rien à corriger. Un compte fédéré est exclu : son identifiant
+  appartient à l'annuaire, le bandeau ne disparaîtrait jamais.
+- `audit_identifiants` (lecture seule, `--csv`) donne l'état des lieux ; la liste
+  rétrécit à mesure que les gens régularisent.
+
+Les **comptes d'annuaire** font exception et vont dans l'autre sens. Un compte fédéré
+depuis le LDAP porte l'identifiant que l'annuaire lui donne : la plateforme ne peut pas
+le renommer, le bandeau n'aurait aucun effet. C'est donc `t_roles` qu'on aligne sur
+Keycloak, avec `aligner_identifiants_annuaire` (rapport seul par défaut, `--apply` pour
+écrire, `--legacy-id` pour un essai). Ces comptes sont ceux de l'équipe : leur imposer
+le changement coûte moins que de laisser deux identifiants coexister.
+
+⚠️ **Cet `UPDATE` change leur login sur toutes les applications RNF à la fois**, via la
+chaîne de triggers de `t_roles` (`utilisateurs_saisie`, `utilisateurs_sinp`,
+`site_internet_utilisateurs`). C'est pourquoi l'alignement est une commande à part et
+non une étape de l'import, qui reste en lecture seule côté historique. La commande
+refuse d'écraser un identifiant déjà porté par un autre `id_role`, et un `UPDATE` par
+compte évite qu'un échec annule les alignements déjà propagés.
+
+`MeUpdateSerializer.validate_username` applique la même règle que la normalisation,
+et `_identifiant_deja_pris()` (dans `views.py`) vérifie l'unicité **des deux côtés**
+avant d'écrire : deux comptes partageant un identifiant casseraient la connexion aux
+applications qui le lisent dans `t_roles`.
 
 Ce que la base de production montre, et que les réglages reproduisent :
 
