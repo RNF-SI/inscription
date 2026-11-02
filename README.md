@@ -284,3 +284,76 @@ npm start   # http://localhost:4200
 Tests backend : voir `inscription_backend/inscriptions/tests/README.md`.
 
 Runbook cutover détaillé : `inscription_backend/docs/runbook-cutover.txt`.
+
+---
+
+## 8. Inventaire des dépendances (SBOM) et suivi des vulnérabilités
+
+Les dépendances des deux composants déployés sont inventoriées au format CycloneDX
+et envoyées à l'instance Dependency-Track de RNF
+(`https://dependencytrack.reserves-naturelles.org`), qui les rapproche des CVE
+publiées.
+
+| Projet Dependency-Track | Source |
+|---|---|
+| `inscription-backend` | `inscription_backend/requirements.txt` |
+| `inscription-frontend` | `frontend/package-lock.json` |
+
+L'ancien backend Flask (`backend/`) est **hors périmètre** : il n'est conservé que
+pour rollback et sera supprimé, ses CVE ne seraient que du bruit.
+
+### Régénérer à la main
+
+```bash
+./scripts/generate-sbom.sh                # → sbom/*.cdx.json
+./scripts/generate-sbom.sh --avec-dev     # inclut les dépendances npm de dev
+./scripts/generate-sbom.sh --envoi        # génère puis envoie
+```
+
+L'envoi a besoin d'une clé d'API, lue dans `~/.config/dependency-track/api.key`
+(ou dans `DT_API_KEY`). À renseigner une fois, pour tous les dépôts :
+
+```bash
+mkdir -p -m 700 ~/.config/dependency-track && install -m 600 /dev/null ~/.config/dependency-track/api.key && nano ~/.config/dependency-track/api.key
+```
+
+### Les deux notions de version, qu'on confond vite
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DT_VERSION` | `prod` | version des projets Dependency-Track — **fixe**, c'est l'environnement déployé |
+| `APP_VERSION` | dernier tag Git | version applicative inscrite dans les SBOM |
+
+`DT_VERSION` reste fixe délibérément : une version de projet par release créerait
+deux projets neufs à chaque publication, à re-tagger et re-rattacher à la main. Le
+numéro de release reste tracé par le composant racine du SBOM.
+
+### Pourquoi les plages de `requirements.txt` sont résolues avant
+
+`requirements.txt` déclare des plages (`Django>=4.2,<5.1`), et `cyclonedx-py` ne
+résout rien : il produirait des composants **sans version**, que Dependency-Track ne
+peut rapprocher d'aucune CVE — le projet s'afficherait vert tout en étant aveugle.
+Le script résout donc les plages d'abord, sans rien installer
+(`pip install --dry-run --report`), ce qui donne en prime les dépendances
+transitives : 19 paquets versionnés au lieu de 11 sans version.
+
+Conséquence : **le Python qui exécute le script doit être celui de production**.
+Une autre version mineure peut résoudre un arbre différent, et l'inventaire
+décrirait alors du code que personne ne déploie. C'est la raison du
+`python-version` figé dans `.github/workflows/sbom.yml`.
+
+### Automatisation
+
+`.github/workflows/sbom.yml` génère et envoie à chaque **release publiée** — pas à
+chaque push, on inventorie ce qui est publié. Il demande deux secrets de dépôt :
+
+```bash
+gh secret set DT_URL --repo <owner/repo> --body "https://dependencytrack.reserves-naturelles.org"
+```
+
+```bash
+gh secret set DT_API_KEY --repo <owner/repo>
+```
+
+La seconde forme demande la valeur de façon interactive : la clé ne transite ni par
+l'historique du shell ni par un fichier du dépôt.

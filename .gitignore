@@ -124,3 +124,8 @@ frontend/src/assets/images/socle.png
 frontend/src/assets/images/tourbieres.png
 # Base de dev locale (repli sans DATABASE_URL) : la prod utilise PostgreSQL
 *.sqlite3
+
+# SBOM CycloneDX : se regenerent, et les versionner produit des diffs
+# illisibles a chaque montee de dependance.
+sbom/
+.sbom-tools/
