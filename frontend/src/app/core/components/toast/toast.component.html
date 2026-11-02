@@ -1,0 +1,16 @@
+<div class="rnf-toast__contenu">
+  <mat-icon class="rnf-toast__icone" aria-hidden="true">{{ icone }}</mat-icon>
+
+  <div class="rnf-toast__texte">
+    <strong class="rnf-toast__titre" *ngIf="data.titre">{{ data.titre }}</strong>
+    <span class="rnf-toast__message">{{ data.message }}</span>
+  </div>
+
+  <button type="button"
+          mat-icon-button
+          class="rnf-toast__fermer"
+          aria-label="Fermer la notification"
+          (click)="fermer()">
+    <mat-icon aria-hidden="true">close</mat-icon>
+  </button>
+</div>

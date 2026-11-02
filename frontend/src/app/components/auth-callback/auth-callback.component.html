@@ -1,0 +1,11 @@
+<div class="callback-wrapper">
+  <div *ngIf="!error" class="callback-card callback-loading">
+    <p class="callback-loading-title">Connexion en cours...</p>
+    <app-loading-spinner></app-loading-spinner>
+  </div>
+
+  <div *ngIf="error" class="callback-card callback-error">
+    <p>Impossible de finaliser la connexion.</p>
+    <a routerLink="/">Retour à l’accueil</a>
+  </div>
+</div>

@@ -1,0 +1,25 @@
+// Habillage des toasts applicatifs (MatSnackBar ouvert par ToastService).
+//
+// `panelClass` pose ces classes sur .mat-mdc-snack-bar-container ; les tokens
+// ci-dessous sont lus par la surface Material qu'il contient, donc il n'y a pas
+// à cibler les classes internes du composant.
+.rnf-toast {
+  --mat-snack-bar-supporting-text-color: #fff;
+  --mat-snack-bar-button-color: #fff;
+
+  &.rnf-toast--success {
+    --mat-snack-bar-container-color: var(--custom-primary-700);
+  }
+
+  &.rnf-toast--error {
+    --mat-snack-bar-container-color: #b3261e;
+  }
+
+  &.rnf-toast--warning {
+    --mat-snack-bar-container-color: #8a5000;
+  }
+
+  &.rnf-toast--info {
+    --mat-snack-bar-container-color: #0b5394;
+  }
+}

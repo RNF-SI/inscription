@@ -1,16 +1,20 @@
 import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-import { LoginComponent } from './home-rnf/components/login/login.component';
-import { LogoutComponent } from './home-rnf/components/logout/logout.component';
-import { NavHomeComponent } from './home-rnf/components/nav-home/nav-home.component';
+import { RouterModule, Routes, mapToCanActivate } from '@angular/router';
+import { LoginComponent } from './core/components/login/login.component';
+import { LogoutComponent } from './core/components/logout/logout.component';
+import { NavHomeComponent } from './core/components/nav-home/nav-home.component';
 import { ResetPasswordComponent } from './components/reset-password/reset-password.component';
-import { LazyDialogLoader } from './home-rnf/services/lazy-dialog-loader.service';
-import { LogoutLinkService } from './home-rnf/services/logout-link.service';
+import { LazyDialog } from './core/auth/lazy-dialog-loader.service';
+import { LogoutLinkService } from './core/auth/logout-link.service';
 import { HomeComponent } from './components/home/home.component';
 import { SignUpComponent } from './components/sign-up/sign-up.component';
 import { MoncompteComponent } from './components/moncompte/moncompte.component';
-import { AuthGuardService } from './home-rnf/services/auth-guard.service';
-import { ForgotPasswordComponent } from './home-rnf/components/forgot-password/forgot-password.component';
+import { AuthGuard } from './core/auth/auth-guard.service';
+import { ForgotPasswordComponent } from './core/components/forgot-password/forgot-password.component';
+import { AuthCallbackComponent } from './components/auth-callback/auth-callback.component';
+import { AdminDashboardComponent } from './components/admin-dashboard/admin-dashboard.component';
+import { NotificationsComponent } from './components/notifications/notifications.component';
+import { AdminGuard } from './core/auth/admin-guard.service';
 
 // const routes: Routes = [
 //   {
@@ -39,18 +43,28 @@ const routes: Routes = [
       { 
         path: 'logout', // Ici seulement pour angular, mais toujour redirigé dans le canActivate 
         component: LogoutComponent, 
-        canActivate: [ LogoutLinkService ] 
+        canActivate: mapToCanActivate([LogoutLinkService]),
       }, 
       { 
         path: 'login', 
         component: LoginComponent, 
-        canActivate: [ LazyDialogLoader ] 
+        canActivate: [LazyDialog],
       },
       { 
         path: 'mon-compte', 
         component: MoncompteComponent, 
-        canActivate: [ AuthGuardService]
-      }
+        canActivate: [AuthGuard],
+      },
+      {
+        path: 'notifications',
+        component: NotificationsComponent,
+        canActivate: [AuthGuard],
+      },
+      {
+        path: 'admin',
+        component: AdminDashboardComponent,
+        canActivate: [AdminGuard],
+      },
     ] 
   } ,
   {
@@ -60,7 +74,11 @@ const routes: Routes = [
   {
     path: 'nouveau-mot-de-passe',
     component: ResetPasswordComponent
-  }
+  },
+  {
+    path: 'auth/callback',
+    component: AuthCallbackComponent,
+  },
 ];
 
 @NgModule({

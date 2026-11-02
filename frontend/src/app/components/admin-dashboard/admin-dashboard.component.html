@@ -1,0 +1,1072 @@
+<div class="container p-3">
+  <h3>Administration</h3>
+  <ul class="nav nav-tabs mt-3" *ngIf="visibleTabsCount > 1">
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'requests'"
+        *ngIf="canShowRequestsTab"
+        (click)="setActiveTab('requests')"
+      >
+        Toutes les demandes
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'reserves'"
+        *ngIf="canShowReservesTab"
+        (click)="setActiveTab('reserves')"
+      >
+        Membres des réserves
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'user-access'"
+        *ngIf="canShowUserAccessTab"
+        (click)="setActiveTab('user-access')"
+      >
+        Accès utilisateurs
+      </button>
+    </li>
+    <li class="nav-item">
+      <button
+        type="button"
+        class="nav-link"
+        [class.active]="activeTab === 'applications'"
+        *ngIf="canShowApplicationsTab"
+        (click)="setActiveTab('applications')"
+      >
+        Applications
+      </button>
+    </li>
+  </ul>
+
+  <div class="pt-3" *ngIf="activeTab === 'requests' && canShowRequestsTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('requests')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('requests')">
+    <h4 class="mt-2" *ngIf="isSuperAdmin">Demandes d’inscription</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && pendingRegistrations.length">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Prénom</th>
+          <th>Fonction</th>
+          <th>Organisme</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of pendingRegistrations">
+          <td>{{ r.last_name || '-' }}</td>
+          <td>{{ r.first_name || '-' }}</td>
+          <td>{{ r.fonction || '-' }}</td>
+          <td>{{ r.organisme || '-' }}</td>
+          <td>
+            <button
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
+              *ngIf="r.status === 'pending_super'"
+              (click)="approveReg(r.public_id)"
+              [disabled]="isRegistrationRowLoading(r.public_id)"
+            >
+              <mat-spinner *ngIf="isRegistrationActionLoading(r.public_id, true)" diameter="16"></mat-spinner>
+              <span>{{ isRegistrationActionLoading(r.public_id, true) ? 'Envoi…' : 'Valider' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
+              *ngIf="r.status === 'pending_super'"
+              (click)="rejectReg(r.public_id)"
+              [disabled]="isRegistrationRowLoading(r.public_id)"
+            >
+              <mat-spinner *ngIf="isRegistrationActionLoading(r.public_id, false)" diameter="16"></mat-spinner>
+              <span>{{ isRegistrationActionLoading(r.public_id, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !pendingRegistrations.length">
+      Aucune demande d’inscription en attente.
+    </p>
+
+    <h4 class="mt-4" *ngIf="canValidateApplications">Demandes d’accès en attente</h4>
+    <p class="text-muted mb-2" *ngIf="canValidateApplications">
+      Vous pouvez valider les demandes pour :
+      {{ validationApplicationsLabel }}.
+    </p>
+    <table class="table table-sm" *ngIf="canValidateApplications && pending.length">
+      <thead>
+        <tr>
+          <th>Application</th>
+          <th>Demandeur</th>
+          <th>Justification</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of pending">
+          <td class="align-middle">{{ p.application.nom }}</td>
+          <td class="align-middle">{{ formatApplicantLabel(p) }}</td>
+          <td class="align-middle">{{ p.request_justification || '-' }}</td>
+          <td class="align-middle text-nowrap">
+            <div class="d-inline-flex align-items-center gap-2">
+            <button
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
+              (click)="decide(p.item_id, p.kind, true)"
+              [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+            >
+              <mat-spinner *ngIf="isDecisionLoading(p.item_id, p.kind, true)" diameter="16"></mat-spinner>
+              <span>{{ isDecisionLoading(p.item_id, p.kind, true) ? 'Envoi…' : 'Accorder' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
+              (click)="openRejectionModal(p.item_id, p.kind)"
+              [disabled]="isAnyDecisionLoadingForRow(p.item_id, p.kind)"
+            >
+              <mat-spinner *ngIf="isDecisionLoading(p.item_id, p.kind, false)" diameter="16"></mat-spinner>
+              <span>{{ isDecisionLoading(p.item_id, p.kind, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="canValidateApplications && !pending.length">
+      Aucune demande d’accès à une application en attente.
+    </p>
+
+    <h4 class="mt-4" *ngIf="isSuperAdmin">Demandes de statut référent</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && reserveReferentRequests.length">
+      <thead>
+        <tr>
+          <th>Réserve</th>
+          <th>Demandeur</th>
+          <th>Fonction</th>
+          <th>Motif refus</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let rr of reserveReferentRequests">
+          <td>{{ rr.reserve.area_name }} ({{ rr.reserve.area_code }})</td>
+          <td>{{ rr.user_first_name }} {{ rr.user_last_name }} ({{ rr.user_email }})</td>
+          <td>{{ rr.user_fonction || '-' }}</td>
+          <td>
+            <input
+              class="form-control form-control-sm"
+              [(ngModel)]="reserveReferentNoteById[rr.id]"
+              [name]="'reserve-referent-note-' + rr.id"
+              placeholder="Requis si refus"
+            />
+          </td>
+          <td class="text-nowrap">
+            <button
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
+              (click)="decideReserveReferent(rr.id, true)"
+              [disabled]="isReserveReferentRowLoading(rr.id)"
+            >
+              <mat-spinner *ngIf="isReserveReferentLoading(rr.id, true)" diameter="16"></mat-spinner>
+              <span>{{ isReserveReferentLoading(rr.id, true) ? 'Envoi…' : 'Accorder' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
+              (click)="decideReserveReferent(rr.id, false)"
+              [disabled]="
+                isReserveReferentRowLoading(rr.id) ||
+                !(reserveReferentNoteById[rr.id] || '').trim()
+              "
+            >
+              <mat-spinner *ngIf="isReserveReferentLoading(rr.id, false)" diameter="16"></mat-spinner>
+              <span>{{ isReserveReferentLoading(rr.id, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !reserveReferentRequests.length">
+      Aucune demande de statut référent en attente.
+    </p>
+
+    <h4 class="mt-4" *ngIf="isSuperAdmin">Demandes de retrait de membres (référents)</h4>
+    <table class="table table-sm" *ngIf="isSuperAdmin && reserveRemovalRequests.length">
+      <thead>
+        <tr>
+          <th>Réserve</th>
+          <th>Demandeur</th>
+          <th>Membre ciblé</th>
+          <th>Motif</th>
+          <th>Motif refus</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let rr of reserveRemovalRequests">
+          <td>{{ rr.reserve.area_name }} ({{ rr.reserve.area_code }})</td>
+          <td>{{ rr.requester_name }} ({{ rr.requester_email }})</td>
+          <td>{{ rr.target_first_name }} {{ rr.target_last_name }} ({{ rr.target_email || rr.target_sub }})</td>
+          <td>{{ rr.reason }}</td>
+          <td>
+            <input
+              class="form-control form-control-sm"
+              [(ngModel)]="reserveRemovalNoteById[rr.id]"
+              [name]="'reserve-removal-note-' + rr.id"
+              placeholder="Requis si refus"
+            />
+          </td>
+          <td class="text-nowrap">
+            <button
+              class="btn btn-sm btn-success me-1 btn-with-spinner"
+              (click)="decideReserveRemoval(rr.id, true)"
+              [disabled]="isReserveRemovalRowLoading(rr.id)"
+            >
+              <mat-spinner *ngIf="isReserveRemovalLoading(rr.id, true)" diameter="16"></mat-spinner>
+              <span>{{ isReserveRemovalLoading(rr.id, true) ? 'Envoi…' : 'Accorder' }}</span>
+            </button>
+            <button
+              class="btn btn-sm btn-outline-danger btn-with-spinner"
+              (click)="decideReserveRemoval(rr.id, false)"
+              [disabled]="
+                isReserveRemovalRowLoading(rr.id) ||
+                !(reserveRemovalNoteById[rr.id] || '').trim()
+              "
+            >
+              <mat-spinner *ngIf="isReserveRemovalLoading(rr.id, false)" diameter="16"></mat-spinner>
+              <span>{{ isReserveRemovalLoading(rr.id, false) ? 'Envoi…' : 'Refuser' }}</span>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" *ngIf="isSuperAdmin && !reserveRemovalRequests.length">
+      Aucune demande de retrait de membre en attente.
+    </p>
+    </ng-container>
+  </div>
+
+  <div class="pt-3" *ngIf="activeTab === 'reserves' && canShowReservesTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('reserves')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('reserves')">
+    <div *ngIf="referentReserves.length; else noReserveMembers">
+      <h4 class="mt-2">Membres de vos réserves référentes</h4>
+      <div class="mb-3" *ngIf="useReferentReserveSelector">
+        <label class="form-label">Choisir une réserve</label>
+        <select
+          class="form-select"
+          [(ngModel)]="selectedReferentReserveCode"
+          [ngModelOptions]="{standalone: true}"
+        >
+          <option *ngFor="let row of referentReserves" [value]="row.reserve.area_code">
+            {{ row.reserve.area_name }} ({{ row.reserve.area_code }})
+          </option>
+        </select>
+      </div>
+      <div *ngFor="let row of displayedReferentReserves" class="mt-3">
+        <h6>{{ row.reserve.area_name }} ({{ row.reserve.area_code }})</h6>
+        <div class="d-flex gap-2 mb-2" *ngIf="row.can_direct_add">
+          <input
+            class="form-control form-control-sm"
+            [(ngModel)]="reserveMemberAddEmailByCode[row.reserve.area_code]"
+            [ngModelOptions]="{standalone: true}"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            [attr.list]="'reserve-member-suggestions-' + row.reserve.area_code"
+            (input)="onReserveMemberAddInput(row.reserve.area_code)"
+            placeholder="email de l'utilisateur à lier à cette réserve"
+          />
+          <datalist [id]="'reserve-member-suggestions-' + row.reserve.area_code">
+            <option
+              *ngFor="let s of reserveMemberAddSuggestionsByCode[row.reserve.area_code] || []"
+              [value]="s.email || s.username"
+            >
+              {{ s.label }}
+            </option>
+          </datalist>
+          <button
+            type="button"
+            class="btn btn-sm btn-primary btn-with-spinner"
+            (click)="directAddReserveMember(row.reserve.area_code)"
+            [disabled]="isDirectAddLoading(row.reserve.area_code) || !(reserveMemberAddEmailByCode[row.reserve.area_code] || '').trim()"
+          >
+            <mat-spinner *ngIf="isDirectAddLoading(row.reserve.area_code)" diameter="16"></mat-spinner>
+            <span>{{ isDirectAddLoading(row.reserve.area_code) ? 'Ajout…' : 'Ajouter à la réserve' }}</span>
+          </button>
+        </div>
+        <small class="text-muted d-block mb-2" *ngIf="row.can_direct_add">
+          {{ isReserveMemberSearchLoading(row.reserve.area_code) ? 'Recherche utilisateurs Keycloak…' : 'Commencez à saisir un nom, un email ou un identifiant.' }}
+        </small>
+        <ul class="list-group">
+          <li *ngFor="let m of row.members" class="list-group-item">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <div class="fw-semibold small">
+                {{ m.first_name }} {{ m.last_name }} ({{ m.email || m.username }})
+              </div>
+              <button
+                *ngIf="row.can_direct_remove"
+                type="button"
+                class="btn btn-sm btn-danger btn-with-spinner"
+                (click)="directRemoveReserveMember(row.reserve.area_code, m)"
+                [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+              >
+                <mat-spinner *ngIf="isReferentRemovalSaving(row.reserve.area_code, m.sub)" diameter="16"></mat-spinner>
+                <span>{{ isReferentRemovalSaving(row.reserve.area_code, m.sub) ? 'Retrait…' : 'Retirer directement' }}</span>
+              </button>
+              <button
+                *ngIf="row.can_request_removal && !m.pending_removal_request && canRequestRemovalForMember(m.sub)"
+                type="button"
+                class="btn btn-sm btn-outline-danger btn-with-spinner"
+                (click)="openReferentRemovalModal(row.reserve.area_code, row.reserve.area_name, m)"
+                [disabled]="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+              >
+                <mat-spinner
+                  *ngIf="isReferentRemovalSaving(row.reserve.area_code, m.sub)"
+                  diameter="16"
+                ></mat-spinner>
+                <span>{{ isReferentRemovalSaving(row.reserve.area_code, m.sub) ? 'Envoi…' : 'Demander retrait' }}</span>
+              </button>
+              <span
+                *ngIf="row.can_request_removal && m.pending_removal_request && canRequestRemovalForMember(m.sub)"
+                class="badge text-bg-warning"
+              >
+                Demande en attente
+              </span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <ng-template #noReserveMembers>
+      <p class="text-muted mt-2">Aucune réserve à afficher.</p>
+    </ng-template>
+    </ng-container>
+  </div>
+
+  <div class="pt-3" *ngIf="activeTab === 'user-access' && canShowUserAccessTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('user-access')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('user-access')">
+      <h4 class="mt-2">Droits d'accès aux applications</h4>
+      <p class="text-muted">Recherchez un utilisateur Keycloak, puis modifiez ses accès applicatifs.</p>
+
+      <div class="mb-3" style="max-width: 42rem;">
+        <label class="form-label mb-1">Utilisateur</label>
+        <input
+          class="form-control"
+          [(ngModel)]="userAccessSearchQuery"
+          name="userAccessSearchQuery"
+          placeholder="Nom, email ou identifiant (min. 2 caractères)"
+          (input)="onUserAccessSearchInput()"
+        />
+        <small class="text-muted d-block" *ngIf="userAccessSearchLoading">Recherche…</small>
+        <ul class="list-group mt-1" *ngIf="userAccessSuggestions.length">
+          <li
+            class="list-group-item list-group-item-action py-1"
+            *ngFor="let s of userAccessSuggestions"
+            (click)="selectUserForAccess(s)"
+            style="cursor: pointer;"
+          >
+            {{ s.label }}
+          </li>
+        </ul>
+      </div>
+
+      <p class="text-danger" *ngIf="userAccessLoadError">{{ userAccessLoadError }}</p>
+
+      <div *ngIf="userAccessData">
+        <p class="mb-2">
+          <strong>{{ userAccessData.user.label || userAccessData.user.email }}</strong>
+        </p>
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Application</th>
+              <th>Accès</th>
+              <th>Statut</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of userAccessData.applications">
+              <td>{{ row.application.nom }}</td>
+              <td>
+                <div class="form-check form-switch mb-0">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    [id]="'access-' + row.application.slug"
+                    [checked]="isUserAccessChecked(row)"
+                    [disabled]="!row.editable || userAccessSaving"
+                    (change)="onUserAccessToggle(row.application.slug, $any($event.target).checked)"
+                  />
+                  <label class="form-check-label" [for]="'access-' + row.application.slug">
+                    {{ isUserAccessChecked(row) ? 'Oui' : 'Non' }}
+                  </label>
+                </div>
+              </td>
+              <td>
+                <span class="badge text-bg-secondary" *ngIf="row.auto_granted">Accès automatique</span>
+                <span class="badge text-bg-warning" *ngIf="row.pending_request">Demande en attente</span>
+                <span class="text-muted" *ngIf="!row.auto_granted && !row.pending_request && row.editable">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <button
+          type="button"
+          class="btn btn-primary btn-with-spinner"
+          (click)="saveUserApplicationAccess()"
+          [disabled]="userAccessSaving"
+        >
+          <mat-spinner *ngIf="userAccessSaving" diameter="18"></mat-spinner>
+          <span>{{ userAccessSaving ? 'Enregistrement…' : 'Enregistrer les modifications' }}</span>
+        </button>
+      </div>
+
+      <p class="text-muted mt-3" *ngIf="!selectedUserAccessSub && !userAccessLoadError">
+        Sélectionnez un utilisateur pour afficher ses droits.
+      </p>
+    </ng-container>
+  </div>
+
+  <div class="pt-3" *ngIf="activeTab === 'applications' && canShowApplicationsTab">
+    <div class="d-flex justify-content-center py-4" *ngIf="isTabLoading('applications')">
+      <app-loading-spinner></app-loading-spinner>
+    </div>
+    <ng-container *ngIf="!isTabLoading('applications')">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h4 class="mt-2 mb-0">Catalogue des applications</h4>
+        <div class="d-flex flex-column align-items-end gap-1">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary btn-with-spinner"
+              [disabled]="catalogCountsRefreshing"
+              (click)="refreshCatalogCounts()"
+            >
+              <mat-spinner *ngIf="catalogCountsRefreshing" diameter="16"></mat-spinner>
+              <span>{{ catalogCountsRefreshing ? 'Actualisation…' : 'Actualiser les effectifs' }}</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" (click)="openCatalogModalForNew()">
+              Nouvelle application
+            </button>
+          </div>
+          <span class="text-muted small">
+            Dernière actualisation :
+            <span [class.fst-italic]="catalogCountsUpdatedAtLabel === 'Jamais actualisé'">
+              {{ catalogCountsUpdatedAtLabel }}
+            </span>
+          </span>
+        </div>
+      </div>
+      <p class="text-muted small mb-2" *ngIf="catalogCountsRefreshError">{{ catalogCountsRefreshError }}</p>
+      <p class="text-muted small mb-3">
+        Les effectifs utilisateurs et admins sont enregistrés localement. Cliquez sur « Actualiser les effectifs » pour
+        interroger Keycloak (opération pouvant prendre quelques secondes).
+      </p>
+
+      <table class="table table-sm align-middle" *ngIf="catalogApplications.length">
+        <thead>
+          <tr>
+            <th>Image</th>
+            <th>Nom</th>
+            <th>Slug</th>
+            <th>Gérée SI</th>
+            <th>Demande d'accès</th>
+            <th class="text-end">Admins</th>
+            <th class="text-end">Utilisateurs</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let app of catalogApplications">
+            <td>
+              <img
+                *ngIf="app.image"
+                [src]="applicationImageUrl(app.image)"
+                [alt]="app.nom"
+                class="rounded border"
+                style="width: 48px; height: 48px; object-fit: cover;"
+              />
+              <span *ngIf="!app.image" class="text-muted small">—</span>
+            </td>
+            <td>{{ app.nom }}</td>
+            <td><code>{{ app.slug }}</code></td>
+            <td>{{ app.managed_by_si ? 'Oui' : 'Non' }}</td>
+            <td>{{ app.requires_access_request ? 'Oui' : 'Non' }}</td>
+            <td class="text-end">{{ formatApplicationAdminCount(app) }}</td>
+            <td class="text-end">{{ formatApplicationMemberCount(app) }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex gap-1">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  *ngIf="canManageApplicationMembers(app)"
+                  (click)="openCatalogMembersModal(app)"
+                >
+                  Utilisateurs
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openCatalogModalForEdit(app)">
+                  Modifier
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-muted" *ngIf="!catalogApplications.length">Aucune application enregistrée.</p>
+    </ng-container>
+  </div>
+
+</div>
+
+<div *ngIf="catalogModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ catalogEditingSlug ? 'Modifier l’application' : 'Nouvelle application' }}</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="closeCatalogModal()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-nom">Nom</label>
+            <input id="catalog-nom" class="form-control" [(ngModel)]="catalogForm.nom" name="catalogNom" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-slug">Slug</label>
+            <input
+              id="catalog-slug"
+              class="form-control"
+              [(ngModel)]="catalogForm.slug"
+              name="catalogSlug"
+              [readonly]="!!catalogEditingSlug"
+              placeholder="ex: geonature-saisie"
+            />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Image</label>
+            <div class="d-flex align-items-start gap-3 flex-wrap">
+              <div
+                class="border rounded d-flex align-items-center justify-content-center bg-light"
+                style="width: 120px; height: 120px;"
+              >
+                <img
+                  *ngIf="catalogForm.image"
+                  [src]="applicationImageUrl(catalogForm.image)"
+                  [alt]="catalogForm.nom || 'Image application'"
+                  class="rounded"
+                  style="max-width: 100%; max-height: 100%; object-fit: contain;"
+                />
+                <span *ngIf="!catalogForm.image" class="text-muted small px-2 text-center">Aucune image</span>
+              </div>
+              <div class="d-flex flex-column gap-2">
+                <input
+                  #catalogImageInput
+                  type="file"
+                  class="d-none"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  (change)="onCatalogImageSelected($event)"
+                />
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary btn-with-spinner"
+                  (click)="openCatalogImagePicker()"
+                  [disabled]="!canManageCatalogImage || catalogImageUploading || catalogSaving || catalogCropModalOpen"
+                >
+                  <mat-spinner *ngIf="catalogImageUploading" diameter="16"></mat-spinner>
+                  <span>{{ catalogImageUploading ? 'Import…' : 'Importer une image' }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-danger btn-with-spinner"
+                  (click)="removeCatalogImage()"
+                  [disabled]="!canManageCatalogImage || !catalogForm.image || catalogImageUploading || catalogSaving || catalogCropModalOpen"
+                >
+                  <mat-spinner *ngIf="catalogImageUploading" diameter="16"></mat-spinner>
+                  <span>{{ catalogImageUploading ? 'Suppression…' : 'Supprimer l\'image' }}</span>
+                </button>
+                <small class="text-muted">
+                  Format {{ applicationImageWidth }}×{{ applicationImageHeight }} px (recadrage automatique).
+                </small>
+                <small class="text-muted" *ngIf="!canManageCatalogImage">
+                  Enregistrez l'application pour pouvoir importer une image.
+                </small>
+              </div>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="catalog-url">URL</label>
+            <input id="catalog-url" class="form-control" [(ngModel)]="catalogForm.url" name="catalogUrl" />
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="catalog-description">Description</label>
+            <textarea id="catalog-description" class="form-control" rows="2" [(ngModel)]="catalogForm.description" name="catalogDescription"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="catalog-keycloak-client">Client Keycloak (optionnel)</label>
+            <input id="catalog-keycloak-client" class="form-control" [(ngModel)]="catalogForm.keycloak_client_id" name="catalogKeycloakClient" />
+          </div>
+          <div class="col-md-3">
+            <div class="form-check mt-4">
+              <input
+                id="catalog-managed-by-si"
+                class="form-check-input"
+                type="checkbox"
+                [(ngModel)]="catalogForm.managed_by_si"
+                name="catalogManagedBySi"
+              />
+              <label class="form-check-label" for="catalog-managed-by-si">Gérée par le SI</label>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="form-check mt-4">
+              <input
+                id="catalog-requires-access"
+                class="form-check-input"
+                type="checkbox"
+                [(ngModel)]="catalogForm.requires_access_request"
+                name="catalogRequiresAccess"
+              />
+              <label class="form-check-label" for="catalog-requires-access">Demande d'accès requise</label>
+            </div>
+          </div>
+          <div class="col-12" *ngIf="canManageCatalogAdmins">
+            <hr class="my-2" />
+            <label class="form-label mb-2">Administrateurs de l'application</label>
+            <p class="text-muted small mb-2">
+              Les administrateurs peuvent valider les demandes d'accès pour cette application. Plusieurs admins sont possibles.
+            </p>
+            <div class="catalog-admin-chips" *ngIf="catalogAdminDraft.length">
+              <span *ngFor="let admin of catalogAdminDraft" class="catalog-admin-chip">
+                <span class="catalog-admin-chip__label">{{ formatCatalogAdminLabel(admin) }}</span>
+                <button
+                  type="button"
+                  class="catalog-admin-chip__remove"
+                  (click)="removeCatalogAdmin(admin.keycloak_sub)"
+                  [disabled]="catalogSaving"
+                  [attr.aria-label]="'Retirer ' + formatCatalogAdminLabel(admin)"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+            <div *ngIf="!catalogAdminDraft.length" class="text-muted small mb-2">Aucun administrateur défini.</div>
+            <div class="mb-2" style="max-width: 36rem;">
+              <input
+                class="form-control form-control-sm"
+                [(ngModel)]="catalogAdminSearchQuery"
+                name="catalogAdminSearchQuery"
+                placeholder="Rechercher un utilisateur Keycloak (min. 2 caractères)"
+                (input)="onCatalogAdminSearchInput()"
+                [disabled]="catalogSaving"
+              />
+              <small class="text-muted d-block" *ngIf="catalogAdminSearchLoading">Recherche…</small>
+              <small class="text-muted d-block">
+                Les administrateurs seront enregistrés lors de la validation du formulaire.
+              </small>
+              <ul class="list-group mt-1" *ngIf="catalogAdminSuggestions.length">
+                <li
+                  class="list-group-item list-group-item-action py-1"
+                  *ngFor="let suggestion of catalogAdminSuggestions"
+                  (click)="addCatalogAdminFromSuggestion(suggestion)"
+                  style="cursor: pointer;"
+                >
+                  {{ suggestion.label }}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <p class="text-danger mt-3 mb-0" *ngIf="catalogFormError">{{ catalogFormError }}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="closeCatalogModal()" [disabled]="catalogSaving">
+          Annuler
+        </button>
+        <button type="button" class="btn btn-primary btn-with-spinner" (click)="saveCatalogApplication()" [disabled]="catalogSaving || catalogImageUploading">
+          <mat-spinner *ngIf="catalogSaving" diameter="18"></mat-spinner>
+          <span>{{ catalogSaving ? 'Enregistrement…' : 'Enregistrer' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="catalogModalOpen" class="modal-backdrop fade show"></div>
+
+<div
+  *ngIf="catalogCropModalOpen"
+  class="modal fade show d-block"
+  tabindex="-1"
+  role="dialog"
+  aria-modal="true"
+  style="z-index: 1060;"
+>
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Recadrer l'image</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="cancelCatalogImageCrop()" [disabled]="catalogImageUploading"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Ajustez le cadrage. L'image sera exportée en {{ applicationImageWidth }}×{{ applicationImageHeight }} px.
+        </p>
+        <div class="catalog-cropper-wrap" *ngIf="catalogCropImageFile">
+          <image-cropper
+            [imageFile]="catalogCropImageFile"
+            [maintainAspectRatio]="true"
+            [aspectRatio]="applicationImageAspectRatio"
+            [resizeToWidth]="applicationImageWidth"
+            output="blob"
+            format="png"
+            [autoCrop]="true"
+            (imageCropped)="onCatalogImageCropped($event)"
+            (loadImageFailed)="onCatalogCropImageFailed()"
+          ></image-cropper>
+        </div>
+        <p class="text-danger small mb-0" *ngIf="catalogCropLoadError">{{ catalogCropLoadError }}</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelCatalogImageCrop()" [disabled]="catalogImageUploading">
+          Annuler
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-with-spinner"
+          (click)="confirmCatalogImageCrop()"
+          [disabled]="catalogImageUploading || !catalogCroppedFile"
+        >
+          <mat-spinner *ngIf="catalogImageUploading" diameter="18"></mat-spinner>
+          <span>{{ catalogImageUploading ? 'Import…' : 'Valider et importer' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="catalogCropModalOpen" class="modal-backdrop fade show" style="z-index: 1055;"></div>
+
+<div *ngIf="rejectionModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Motif du refus</h5>
+        <button type="button" class="btn-close" aria-label="Close" (click)="cancelRejectionModal()" [disabled]="rejectionModalSubmitting"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Merci de saisir la justification qui sera transmise au demandeur.</p>
+        <textarea
+          class="form-control"
+          rows="4"
+          [(ngModel)]="rejectionReason"
+          name="rejectionReason"
+          placeholder="Ex: La demande ne correspond pas aux critères d'accès."
+          [disabled]="rejectionModalSubmitting"
+        ></textarea>
+        <small class="text-danger" *ngIf="!rejectionReason.trim()">La justification est obligatoire.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" (click)="cancelRejectionModal()" [disabled]="rejectionModalSubmitting">Annuler</button>
+        <button
+          type="button"
+          class="btn btn-danger btn-with-spinner"
+          (click)="confirmRejectionModal()"
+          [disabled]="!rejectionReason.trim() || rejectionModalSubmitting"
+        >
+          <mat-spinner *ngIf="rejectionModalSubmitting" diameter="18"></mat-spinner>
+          <span>{{ rejectionModalSubmitting ? 'Envoi…' : 'Confirmer le refus' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="rejectionModalOpen" class="modal-backdrop fade show"></div>
+
+<div *ngIf="referentRemovalModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Demande de retrait d’un membre</h5>
+        <button
+          type="button"
+          class="btn-close"
+          aria-label="Close"
+          (click)="cancelReferentRemovalModal()"
+          [disabled]="isReferentRemovalModalSubmitting()"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">
+          Réserve : <strong>{{ referentRemovalTarget?.reserveName }}</strong>
+        </p>
+        <p class="mb-2">
+          Membre : <strong>{{ referentRemovalTarget?.member?.first_name }} {{ referentRemovalTarget?.member?.last_name }}</strong>
+          ({{ referentRemovalTarget?.member?.email || referentRemovalTarget?.member?.sub }})
+        </p>
+        <textarea
+          class="form-control"
+          rows="4"
+          [(ngModel)]="referentRemovalReason"
+          [ngModelOptions]="{standalone: true}"
+          placeholder="Motif de la demande de retrait"
+          [disabled]="isReferentRemovalModalSubmitting()"
+        ></textarea>
+        <small class="text-danger" *ngIf="!referentRemovalReason.trim()">Le motif est obligatoire.</small>
+      </div>
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          (click)="cancelReferentRemovalModal()"
+          [disabled]="isReferentRemovalModalSubmitting()"
+        >
+          Annuler
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger btn-with-spinner"
+          (click)="confirmReferentRemovalModal()"
+          [disabled]="!referentRemovalReason.trim() || isReferentRemovalModalSubmitting()"
+        >
+          <mat-spinner *ngIf="isReferentRemovalModalSubmitting()" diameter="18"></mat-spinner>
+          <span>{{ isReferentRemovalModalSubmitting() ? 'Envoi…' : 'Envoyer la demande' }}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="referentRemovalModalOpen" class="modal-backdrop fade show"></div>
+
+<div *ngIf="catalogMembersModalOpen" class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Utilisateurs — {{ catalogMembersApp?.nom }}</h5>
+        <button type="button" class="btn-close" aria-label="Fermer" (click)="closeCatalogMembersModal()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-danger" *ngIf="catalogMembersError">{{ catalogMembersError }}</p>
+        <p class="text-muted small mb-3" *ngIf="!catalogMembersDataLoading">
+          Les déplacements entre les listes sont locaux. Cliquez sur <strong>Enregistrer</strong> pour appliquer les changements dans Keycloak.
+        </p>
+
+        <div class="d-flex justify-content-center py-4" *ngIf="catalogMembersDataLoading">
+          <app-loading-spinner></app-loading-spinner>
+        </div>
+
+        <div class="dual-listbox row g-3 align-items-stretch" *ngIf="!catalogMembersDataLoading">
+          <div class="col-lg-5">
+            <div class="dual-listbox-panel h-100">
+              <h6 class="mb-2">Hors du groupe</h6>
+              <div class="mb-2">
+                <input
+                  class="form-control form-control-sm"
+                  [(ngModel)]="catalogAvailableSearchQuery"
+                  name="catalogAvailableSearchQuery"
+                  placeholder="Recherche"
+                  (input)="onCatalogAvailableSearchInput()"
+                />
+              </div>
+
+              <div class="table-responsive dual-listbox-table-wrap">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th style="width: 2.5rem;">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          [checked]="isAllAvailableSelected"
+                          (change)="toggleCatalogAvailableSelectAll($any($event.target).checked)"
+                        />
+                      </th>
+                      <th>Nom</th>
+                      <th>Email</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      *ngFor="let member of catalogAvailableMembers"
+                      [class.table-primary]="catalogAvailableSelected[member.keycloak_sub]"
+                    >
+                      <td>
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          [(ngModel)]="catalogAvailableSelected[member.keycloak_sub]"
+                          [name]="'available-' + member.keycloak_sub"
+                        />
+                      </td>
+                      <td>{{ member.first_name }} {{ member.last_name }}</td>
+                      <td class="small">{{ member.email || member.username }}</td>
+                    </tr>
+                    <tr *ngIf="!catalogAvailableMembers.length">
+                      <td colspan="3" class="text-muted small">Aucun utilisateur disponible.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
+                <small class="text-muted">
+                  Affiche la page {{ catalogAvailablePage || 1 }}
+                  sur {{ catalogAvailableTotalPages || 1 }}
+                  ({{ catalogAvailableTotal }} utilisateur(s))
+                </small>
+                <div class="btn-group btn-group-sm">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="goCatalogAvailablePage(catalogAvailablePage - 1)"
+                    [disabled]="catalogAvailablePage <= 1"
+                  >
+                    Précédente
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="goCatalogAvailablePage(catalogAvailablePage + 1)"
+                    [disabled]="catalogAvailablePage >= catalogAvailableTotalPages"
+                  >
+                    Suivante
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-2 d-flex flex-column justify-content-center align-items-center gap-2 dual-listbox-actions">
+            <button
+              type="button"
+              class="btn btn-outline-primary"
+              title="Ajouter au groupe"
+              (click)="transferAvailableToMembers()"
+              [disabled]="!selectedAvailableCount || catalogMembersSaving"
+            >
+              &gt;
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-primary"
+              title="Retirer du groupe"
+              (click)="transferMembersToAvailable()"
+              [disabled]="!selectedMembersCount || catalogMembersSaving"
+            >
+              &lt;
+            </button>
+          </div>
+
+          <div class="col-lg-5">
+            <div class="dual-listbox-panel h-100">
+              <h6 class="mb-2">Dans le groupe</h6>
+              <div class="mb-2">
+                <input
+                  class="form-control form-control-sm"
+                  [(ngModel)]="catalogMembersSearchQuery"
+                  name="catalogMembersSearchQuery"
+                  placeholder="Recherche"
+                  (input)="onCatalogMembersSearchInput()"
+                />
+              </div>
+
+              <div class="table-responsive dual-listbox-table-wrap">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th style="width: 2.5rem;">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          [checked]="isAllMembersSelected"
+                          (change)="toggleCatalogMembersSelectAll($any($event.target).checked)"
+                        />
+                      </th>
+                      <th>Nom</th>
+                      <th>Email</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      *ngFor="let member of catalogMembers"
+                      [class.table-primary]="catalogMembersSelected[member.keycloak_sub]"
+                    >
+                      <td>
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          [(ngModel)]="catalogMembersSelected[member.keycloak_sub]"
+                          [name]="'member-' + member.keycloak_sub"
+                        />
+                      </td>
+                      <td>{{ member.first_name }} {{ member.last_name }}</td>
+                      <td class="small">{{ member.email || member.username }}</td>
+                    </tr>
+                    <tr *ngIf="!catalogMembers.length">
+                      <td colspan="3" class="text-muted small">Aucun utilisateur dans le groupe.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
+                <small class="text-muted">
+                  Affiche la page {{ catalogMembersPage || 1 }}
+                  sur {{ catalogMembersTotalPages || 1 }}
+                  ({{ catalogMembersTotal }} utilisateur(s))
+                </small>
+                <div class="btn-group btn-group-sm">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="goCatalogMembersPage(catalogMembersPage - 1)"
+                    [disabled]="catalogMembersPage <= 1"
+                  >
+                    Précédente
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    (click)="goCatalogMembersPage(catalogMembersPage + 1)"
+                    [disabled]="catalogMembersPage >= catalogMembersTotalPages"
+                  >
+                    Suivante
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <small class="text-warning" *ngIf="hasCatalogMembersPendingChanges">
+          Modifications en attente ({{ catalogMembersPendingSummary }})
+        </small>
+        <span *ngIf="!hasCatalogMembersPendingChanges"></span>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary" (click)="closeCatalogMembersModal()" [disabled]="catalogMembersSaving">
+            Fermer
+          </button>
+          <button
+            type="button"
+            class="btn btn-success catalog-members-save-btn d-inline-flex align-items-center gap-2"
+            (click)="saveCatalogMembers()"
+            [disabled]="!hasCatalogMembersPendingChanges || catalogMembersSaving || catalogMembersDataLoading"
+          >
+            <mat-spinner *ngIf="catalogMembersSaving" diameter="18"></mat-spinner>
+            <span>{{ catalogMembersSaving ? 'Enregistrement…' : 'Enregistrer' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div *ngIf="catalogMembersModalOpen" class="modal-backdrop fade show"></div>

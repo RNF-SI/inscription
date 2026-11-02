@@ -1,0 +1,35 @@
+// La couleur du texte et des icônes vient du conteneur Material
+// (--mat-snack-bar-supporting-text-color), d'où le currentColor implicite.
+.rnf-toast__contenu {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.rnf-toast__icone {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.rnf-toast__texte {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rnf-toast__titre {
+  font-weight: 500;
+}
+
+.rnf-toast__message {
+  // Les messages d'erreur backend peuvent contenir de longs identifiants.
+  overflow-wrap: anywhere;
+}
+
+.rnf-toast__fermer {
+  flex: 0 0 auto;
+  margin: -8px -8px 0 0;
+}

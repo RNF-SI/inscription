@@ -1,111 +1,110 @@
-import { throwError, Observable } from 'rxjs';
-import { catchError } from 'rxjs/operators';
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, NgZone } from '@angular/core';
 import {
+  HttpEvent,
+  HttpHandler,
   HttpInterceptor,
   HttpRequest,
-  HttpHandler,
-  HttpEvent,
-  HttpErrorResponse,
 } from '@angular/common/http';
-import { ToastrService } from 'ngx-toastr';
-import { ActivatedRoute } from '@angular/router';
-// import { ConfigService } from './config.service';
+import { Observable, of, throwError } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
+import { AuthService } from '../core/auth/auth-service.service';
 
 @Injectable()
 export class MyCustomInterceptor implements HttpInterceptor {
-  constructor(
-    public inj: Injector,
-    public route: ActivatedRoute,
-    private _toastrService: ToastrService,
-    // public config: ConfigService
-  ) {}
+  constructor(private authService: AuthService, private ngZone: NgZone) {}
 
-//   private handleError(error: any) {
-//     let errTitle: string;
-//     let errMsg: string;
-//     let enableHtml: boolean = false;
-//     if (error instanceof HttpErrorResponse) {
-//       if ([401, 404].includes(error.status)) return;
-//       if (error.status == 502) {
-//         errTitle = 'Timeout';
-//         errMsg = 'La requête n’a pas abouti dans le temps imparti';
-//       } else if (
-//         typeof error.error === 'object' &&
-//         'name' in error.error &&
-//         'description' in error.error
-//       ) {
-//         errTitle = error.error.name;
-//         errMsg = error.error.description;
-//         enableHtml = true;
-//         if ('request_id' in error.error) {
-//           errMsg += `<br><b>Requête :</b> ${error.error.request_id}`;
-//         }
-//       } else {
-//         errTitle = error.name;
-//         errMsg = error.message;
-//       }
-//     } else {
-//       errTitle = 'Erreur';
-//       errMsg = 'Une erreur inconnue est survenue.';
-//     }
-//     this._toastrService.error(errMsg, errTitle, {
-//       disableTimeOut: true,
-//       tapToDismiss: false,
-//       closeButton: true,
-//       easeTime: 0,
-//       enableHtml: enableHtml,
-//     });
-//   }
-
-  intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // set withCredential = true to send and accept cookie from the API
-    // if (
-    //   this.config.API_ENDPOINT &&
-    //   this.extractHostname(this.config.API_ENDPOINT) == this.extractHostname(request.url)
-    // ) {
-       
-      request = request.clone({
-        withCredentials: true
+  /** Réponses HttpClient (fetch) hors zone.js → forcer la détection de changements. */
+  private runInZone<T>(source: Observable<T>): Observable<T> {
+    return new Observable((observer) => {
+      const subscription = source.subscribe({
+        next: (value) => this.ngZone.run(() => observer.next(value)),
+        error: (error) => this.ngZone.run(() => observer.error(error)),
+        complete: () => this.ngZone.run(() => observer.complete()),
       });
-
-      const idToken = localStorage.getItem('tk_id_token');
-      if (idToken) {
-        
-        request = request.clone({
-          headers: request.headers.set('Authorization', 'Bearer ' + idToken),
-        });
-      }
-    // }
-
-    // pass on the modified request object
-    // and intercept error
-    return next.handle(request)
-    // .pipe(
-    //   catchError((err) => {
-    //     if (!request.headers.get('not-to-handle')) {
-    //       this.handleError(err);
-    //     }
-    //     return throwError(err);
-    //   })
-    // );
+      return () => subscription.unsubscribe();
+    });
   }
 
-//   private extractHostname(url) {
-//     var hostname;
-//     //find & remove protocol (http, ftp, etc.) and get hostname
+  private unauthorizedError(): { status: number } {
+    return { status: 401 };
+  }
 
-//     if (url.indexOf('//') > -1) {
-//       hostname = url.split('/')[2];
-//     } else {
-//       hostname = url.split('/')[0];
-//     }
+  /** Endpoints accessibles sans session (AllowAny côté API). */
+  private isPublicApiRequest(url: string): boolean {
+    const path = url.split('?')[0];
+    if (path.includes('/auth/keycloak-config')) {
+      return true;
+    }
+    if (path.endsWith('/register') || path.endsWith('/register/')) {
+      return true;
+    }
+    // Mot de passe oublié : par définition, l'usager n'a pas de session.
+    if (path.includes('/password-reset')) {
+      return true;
+    }
+    // Formulaire de contact : accessible aux visiteurs anonymes.
+    if (path.endsWith('/contact') || path.endsWith('/contact/')) {
+      return true;
+    }
+    if (path.endsWith('/organismes') || path.endsWith('/organismes/')) {
+      return true;
+    }
+    if (/\/organisme\/\d+\/?$/.test(path)) {
+      return true;
+    }
+    if ((path.endsWith('/applications') || path.endsWith('/applications/')) && !path.includes('/admin/')) {
+      return true;
+    }
+    return false;
+  }
 
-//     //find & remove port number
-//     hostname = hostname.split(':')[0];
-//     //find & remove "?"
-//     hostname = hostname.split('?')[0];
+  intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    const isAuthEndpoint =
+      request.url.includes('/auth/token/') ||
+      request.url.includes('/auth/refresh/') ||
+      request.url.includes('/auth/keycloak-config/');
 
-//     return hostname;
-//   }
+    const addBearer = (req: HttpRequest<unknown>): HttpRequest<unknown> => {
+      const access = localStorage.getItem('access_token');
+      const idToken = localStorage.getItem('tk_id_token');
+      // L'API Django valide l'access_token ; l'id_token peut être expiré plus tôt.
+      const bearer = access || idToken;
+      let r = req.clone({ withCredentials: true });
+      if (bearer) {
+        r = r.clone({ headers: r.headers.set('Authorization', 'Bearer ' + bearer) });
+      }
+      return r;
+    };
+
+    if (isAuthEndpoint || this.isPublicApiRequest(request.url)) {
+      return this.runInZone(next.handle(addBearer(request)));
+    }
+
+    const tokenRefresh$ = this.authService.ensureFreshToken();
+
+    return this.runInZone(
+      tokenRefresh$.pipe(
+        switchMap((ok) => {
+          if (!ok) {
+            return throwError(() => this.unauthorizedError());
+          }
+          return next.handle(addBearer(request));
+        }),
+        catchError((err: unknown) => {
+          const status = (err as { status?: number })?.status;
+          if (status === 401 && this.authService.hasRefreshTokenValid()) {
+            return this.authService.refreshAccessToken().pipe(
+              switchMap((refreshed) => {
+                if (!refreshed) {
+                  return throwError(() => err);
+                }
+                return next.handle(addBearer(request));
+              }),
+            );
+          }
+          return throwError(() => err);
+        }),
+      ),
+    );
+  }
 }

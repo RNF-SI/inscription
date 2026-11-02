@@ -1,158 +1,226 @@
-
 <div class="container">
     <br><br>
-
-      <h3 class="underlined main-color">Mes informations</h3>
-
-  
-      <form [formGroup]="form">
-        <div>
-          <div class="form-group row">
-            <label for="nom_role" class="col-sm-3 col-form-label text-end">Nom</label>
-            <div class="col-sm-9 col-xl-7">
-              <input
-                type="text"
-                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
-                id="nom_role"
-                placeholder="Nom"
-                formControlName="nom_role"
-              />
-            </div>
-          </div>
-          <div class="form-group row">
-            <label for="prenom_role" class="col-sm-3 col-form-label text-end">Prenom</label>
-            <div class="col-sm-9 col-xl-7">
-              <input
-                type="text"
-                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
-                id="prenom_role"
-                placeholder="Prenom"
-                formControlName="prenom_role"
-              />
-            </div>
-          </div>
-          <div class="form-group row">
-            <label for="organisme" class="col-sm-3 col-form-label text-end">Organisme <fa-icon *ngIf="!form.disabled"
-                [icon]="['fas', 'circle-info']" matTooltip="Vous ne pouvez pas modifier l'organisme vous même. Contactez l'administrateur."></fa-icon></label>
-            <div class="col-sm-9 col-xl-7">
-              <input
-                type="text"
-                [ngClass]="'form-control-plaintext'"
-                id="organisme"
-                placeholder="Organisme"
-                formControlName="organisme"
-              />
-            </div>
-          </div>
-          <div class="form-group row">
-            <label for="email" class="col-sm-3 col-form-label text-end">Adresse mail</label>
-            <div class="col-sm-9 col-xl-7">
-              <input
-                type="text"
-                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
-                id="email"
-                placeholder="Email"
-                formControlName="email"
-              />
-            </div>
-          </div>
-        </div>
-  
-          <div class="form-group row">
-            <label for="identifiant" class="col-sm-3 col-form-label text-end">Login</label>
-            <div class="col-sm-9 col-xl-7">
-              <input
-                type="text"
-                [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
-                id="identifiant"
-                placeholder="Login"
-                formControlName="identifiant"
-              />
-            </div>
-          </div>
-  
-        <!-- <div class="text-center" *ngIf="form.disabled">
-          <a routerLink="password" mat-raised-button color="primary">Changer de mot de passe</a>
-        </div> -->
-  
+    <!-- Les comptes que l'import a dû renommer portent deux identifiants. Le bandeau
+         disparaît dès que l'usager en choisit un conforme, écrit des deux côtés. -->
+    <div *ngIf="identifiantARegulariser" class="alert alert-warning" role="alert">
+        <strong>Votre identifiant doit être mis à jour.</strong>
+        <p class="mb-2">
+            Le vôtre, <code>{{ identifiantAffiche }}</code>, contient des caractères que la nouvelle
+            authentification RNF n'accepte pas. En attendant que vous en choisissiez un autre, vous pouvez
+            vous connecter ici avec votre adresse e-mail ou avec <code>{{ identifiantKeycloak }}</code>.
+            Vos autres accès RNF continuent de fonctionner avec <code>{{ identifiantAffiche }}</code>.
+        </p>
+        <button type="button" class="btn btn-sm btn-warning" *ngIf="!isEditing" (click)="edit()">
+            Choisir un identifiant
+        </button>
+    </div>
+    <h3 class="underlined main-color">Mes informations</h3>
+    <div *ngIf="!isEditing">
         <div class="form-group row">
-          <label for="remarques" class="col-sm-3 col-form-label text-end"> Fonction </label>
-          <div class="col-sm-9 col-xl-7">
-            <input
-              type="text"
-              id="remarques"
-              [ngClass]="form.disabled ? 'form-control-plaintext' : 'form-control'"
-              placeholder="Fonction"
-              formControlName="remarques"
-            >
-          </div>
+            <label class="col-sm-3 col-form-label text-end">Nom</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.last_name || '-' }}</div>
         </div>
         <div class="form-group row">
-            <label class="col-md-3 col-form-label text-end">{user.rns?.length, plural, =1 {Réserve} other {Réserves}}</label>
-            <div class="col-md-9 col-xl-7" *ngIf="!form.disabled && user.organisme.rns.length > 0">
-            <ng-multiselect-dropdown formControlName="reserves" [settings]="reservesSelectSettings" [placeholder]='selectText'
-              [data]="options">
-            </ng-multiselect-dropdown>
-            <p>Le·la référent·e des réserves sélectionnées sera notifié·e de votre sélection.</p>
-            </div>
-            <div class="col-md-9 col-xl-7" *ngIf="!form.disabled && user.organisme.rns.length == 0">
-                <div class="alignement">Votre organisme ne gère aucune réserve</div>
-            </div>
-            <div class="col-md-9 col-xl-7" *ngIf="form.disabled">               
-                <div *ngFor="let rn of user.rns" class="alignement">{{rn.rn.area_name}} <span *ngIf="rn.referent && rn.referent_valid">(dont vous êtes référent·e)</span><span *ngIf="rn.referent && !rn.referent_valid">(dont vous avez déclaré être référent·e - en cours de validation)</span> </div>
-                <div *ngIf="user.rns?.length == 0" class="alignement">Aucune</div>
-            </div>
-            
+            <label class="col-sm-3 col-form-label text-end">Prénom</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.first_name || '-' }}</div>
         </div>
-        <div class="form-group row" *ngIf="form.get('reserves')?.value.length>0 && !form.disabled">
-            <label class="col-md-3 col-form-label text-end">Réserves sur lesquelles vous indiquez être référent</label>
-            <div class="col-md-9 col-xl-7">
-            <ng-multiselect-dropdown formControlName="reserves_referent" [settings]="reservesSelectSettings" [placeholder]='selectText'
-              [data]="form.get('reserves')?.value">
-            </ng-multiselect-dropdown>
-            
-            <p>Un·e référent·e doit être désigné·e par réserve, le plus souvent le·la conservateur·trice.</p>
-            <p>Ce statut sera modéré par l'administrateur.</p>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Email</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.email || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Fonction</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.fonction || '-' }}</div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Identifiant</label>
+            <div class="col-sm-9 col-xl-7 alignement">
+                {{ identifiantAffiche || '-' }}
+                <span *ngIf="identifiantARegulariser" class="badge text-bg-warning ms-2">à mettre à jour</span>
             </div>
-        
         </div>
-  
-        <div class="float-end">
-          <ng-container *ngIf="form.disabled; else validation">
-            <button
-              type="button"
-              mat-raised-button
-              color="primary"
-              matTooltip="Editer ces informations"
-              matTooltipPosition="left"
-              (click)="form.enable()"
-            >
-              Editer
-              <mat-icon>edit</mat-icon>
-            </button>
-          </ng-container>
-          <ng-template #validation>
-            <button
-              mat-raised-button
-              color="warn"
-              class="bouttons"
-              matTooltip="Annuler modifications"
-              (click)="cancel()"
-            >
-              Annuler
-            </button>
-            <button
-              mat-raised-button
-              type="button"
-              class="button-success ml-1 bouttons"
-              matTooltip="Enregistrer modifications"
-              (click)="save()"
-            >
-              Enregistrer
-              <mat-icon>save</mat-icon>
-            </button>
-          </ng-template>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Organisme</label>
+            <div class="col-sm-9 col-xl-7 alignement">{{ me?.profile?.organisme || '-' }}</div>
         </div>
-      </form>
-      <br><br>
+        <div class="form-group row mt-3">
+            <div class="col-sm-9 col-xl-7 offset-sm-3">
+                <button type="button" class="btn btn-outline-primary" (click)="edit()">Éditer mes infos</button>
+            </div>
+        </div>
+    </div>
+
+    <form [formGroup]="form" *ngIf="isEditing">
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Nom</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control" formControlName="nom_role" />
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Prénom</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control" formControlName="prenom_role" />
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Email</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="email" class="form-control" formControlName="email" />
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Fonction</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control" formControlName="fonction" />
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Identifiant</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control" formControlName="identifiant" autocapitalize="off"
+                    spellcheck="false" />
+                <div class="form-text">
+                    Lettres sans accent, chiffres, et les signes . _ - uniquement ; trois caractères au moins.
+                    Il sera enregistré en minuscules et remplacera votre identifiant sur toutes les
+                    plateformes RNF.
+                </div>
+                <div *ngIf="form.get('identifiant')?.touched && form.get('identifiant')?.invalid"
+                    class="text-danger small">
+                    Identifiant non conforme : lettres sans accent, chiffres, ou . _ - ; trois caractères au moins.
+                </div>
+            </div>
+        </div>
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Organisme</label>
+            <div class="col-sm-9 col-xl-7">
+                <input type="text" class="form-control-plaintext" formControlName="organisme" />
+            </div>
+        </div>
+        <div class="form-group row mt-3" *ngIf="saveError">
+            <div class="col-sm-9 col-xl-7 offset-sm-3">
+                <div class="alert alert-danger mb-0" role="alert">{{ saveError }}</div>
+            </div>
+        </div>
+        <div class="form-group row mt-3">
+            <div class="col-sm-9 col-xl-7 offset-sm-3 d-flex gap-2">
+                <button type="button" class="btn btn-primary btn-with-spinner" (click)="save()" [disabled]="saving">
+                    <mat-spinner *ngIf="saving" diameter="18"></mat-spinner>
+                    <span>{{ saving ? 'Enregistrement…' : 'Enregistrer' }}</span>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="saving">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <h4 class="mt-4">Réserves liées</h4>
+    <div class="reserves-section">
+        <div *ngIf="currentReserves.length; else noReserveState" class="reserve-list">
+            <div class="reserve-card" *ngFor="let r of currentReserves">
+                <div class="reserve-main">
+                    <div class="reserve-title">{{ r.area_name }}</div>
+                    <div class="reserve-code">{{ r.area_code }}</div>
+                    <div class="reserve-badges">
+                        <span *ngIf="r.referent" class="reserve-chip reserve-chip-success">Référent de cette réserve</span>
+                        <span *ngIf="!r.referent && r.referent_pending" class="badge text-bg-warning">Demande en attente</span>
+                    </div>
+                </div>
+                <div class="reserve-actions">
+                    <button
+                        *ngIf="!r.referent && !r.referent_pending"
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary btn-with-spinner"
+                        (click)="requestReferent(r.area_code)"
+                        [disabled]="addingReserve || !!referentSavingCode || !!removingReserveCode"
+                    >
+                        <mat-spinner *ngIf="referentSavingCode === r.area_code" diameter="16"></mat-spinner>
+                        <span>{{ referentSavingCode === r.area_code ? 'Envoi…' : 'Demander statut référent' }}</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-outline-danger btn-with-spinner"
+                        (click)="removeReserve(r.area_code)"
+                        [disabled]="addingReserve || !!referentSavingCode || !!removingReserveCode"
+                    >
+                        <mat-spinner *ngIf="removingReserveCode === r.area_code" diameter="16"></mat-spinner>
+                        <span>{{ removingReserveCode === r.area_code ? 'Retrait…' : 'Retirer' }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <ng-template #noReserveState>
+            <p class="text-muted mb-0">Aucune réserve enregistrée pour le moment.</p>
+        </ng-template>
+
+        <div class="reserve-add-box mt-3">
+            <label class="form-label mb-2">Ajouter une réserve liée à votre organisme</label>
+            <div class="reserve-add-row">
+                <select class="form-select" [(ngModel)]="selectedReserveToAdd" [ngModelOptions]="{standalone: true}">
+                    <option value="">Sélectionner une réserve</option>
+                    <option *ngFor="let r of availableReserveOptions" [value]="r.area_code">
+                        {{ r.area_name }} ({{ r.area_code }})
+                    </option>
+                </select>
+                <button
+                    type="button"
+                    class="btn btn-primary btn-with-spinner"
+                    (click)="addReserve()"
+                    [disabled]="addingReserve || !!removingReserveCode || !!referentSavingCode || !selectedReserveToAdd"
+                >
+                    <mat-spinner *ngIf="addingReserve" diameter="18"></mat-spinner>
+                    <span>{{ addingReserve ? 'Ajout…' : 'Ajouter' }}</span>
+                </button>
+            </div>
+            <small class="text-muted" *ngIf="!availableReserveOptions.length && !reserveOptions.length">
+                Aucune réserve n'est associée à votre organisme pour le moment.
+            </small>
+            <small class="text-muted" *ngIf="!availableReserveOptions.length && reserveOptions.length">
+                Toutes les réserves de votre organisme sont déjà associées à votre compte.
+            </small>
+        </div>
+    </div>
+
+    <h3 class="underlined main-color mt-5">Mot de passe</h3>
+    <p class="text-muted">
+        C'est le seul endroit qui met votre mot de passe à jour pour l'ensemble des
+        plateformes RNF.
+    </p>
+    <form [formGroup]="passwordForm" (ngSubmit)="changePassword()">
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label text-end">Mot de passe actuel</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="current_password"
+                       autocomplete="current-password">
+            </div>
+        </div>
+        <div class="form-group row mt-2">
+            <label class="col-sm-3 col-form-label text-end">Nouveau mot de passe</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="new_password"
+                       autocomplete="new-password">
+                <small class="text-muted">Huit caractères au minimum.</small>
+            </div>
+        </div>
+        <div class="form-group row mt-2">
+            <label class="col-sm-3 col-form-label text-end">Confirmation</label>
+            <div class="col-sm-6">
+                <input type="password" class="form-control" formControlName="new_password_confirmation"
+                       autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-group row mt-3">
+            <div class="col-sm-6 offset-sm-3">
+                <div class="alert alert-danger py-2" *ngIf="passwordError">{{ passwordError }}</div>
+                <button type="submit" class="btn btn-success"
+                        [disabled]="changingPassword || passwordForm.invalid">
+                    <span *ngIf="!changingPassword">Modifier le mot de passe</span>
+                    <span *ngIf="changingPassword">Modification…</span>
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <br><br>
 </div>

@@ -19,19 +19,26 @@ export class RegisterService {
   signupUser(data: any): Observable<any> {
     const options = data;
     
-    return this._http.post<any>(`${environment.apiUrl}/inscription`, options);
+    return this._http.post<any>(`${environment.apiUrl}/register/`, options);
   }
 
   getOrganismes() {
     return this._http.get<any>(
-      `${environment.apiUrl}/organismes`,
+      `${environment.apiUrl}/organismes/`,
+      this.httpOptions
+    );
+  }
+
+  getApplications() {
+    return this._http.get<any>(
+      `${environment.apiUrl}/applications/`,
       this.httpOptions
     );
   }
 
   getOrganisme(id : any) {
     return this._http.get<any>(
-      `${environment.apiUrl}/organisme/`+id,
+      `${environment.apiUrl}/organisme/${id}/`,
       this.httpOptions
     );
   }

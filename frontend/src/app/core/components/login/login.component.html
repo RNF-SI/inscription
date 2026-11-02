@@ -1,0 +1,86 @@
+<div class="container">
+
+  <!-- TITLE -->
+  <h1 *ngIf="!login_or_pass_recovery" mat-dialog-title class="mat-title">Connectez-vous avec votre Identifiant</h1>
+  <h1 *ngIf="login_or_pass_recovery" mat-dialog-title class="mat-title">Mot de passe oublié</h1>
+
+  <!-- ERROR MESSAGE -->
+  <mat-error *ngIf="errorCode" class="error-message">{{ errorCode | inputError }}</mat-error>
+
+  <ng-container>
+    <form [formGroup]="form" fxLayout="column" fxLayoutAlign="space-around stretch" fxLayoutGap="10px"
+      (ngSubmit)="signIn()">
+
+      <!-- IDENTIFIANT-->
+      <mat-form-field class="form-field" appearance="fill">
+        <mat-label>Identifiant</mat-label>
+        <input matInput formControlName="identifiant">
+        <mat-error *ngIf="form.controls['identifiant'].errors?.['required']">
+          Donnez votre Identifiant ici
+        </mat-error>
+      </mat-form-field>
+
+
+      <!-- PASSWORD -->
+      <mat-form-field class="form-field" appearance="fill">
+        <mat-label>Mot de passe</mat-label>
+        <input matInput [type]="showPassword ? 'text' : 'password'" formControlName="password">
+        <mat-error *ngIf="form.controls['password'].errors?.['required']">
+          Donnez votre mot de passe ici
+        </mat-error>
+
+        <button type="button" class="pwd" mat-icon-button matSuffix (click)="showPassword = !showPassword"
+          [attr.aria-label]="'Cacher le mot de passe'" [attr.aria-pressed]="!showPassword">
+          <!-- <mat-icon>{{showPassword ? 'visibility' : 'visibility_off'}}</mat-icon> -->
+          <fa-icon [icon]="['fas', 'eye-slash']" *ngIf="showPassword"></fa-icon>
+          <fa-icon [icon]="['fas', 'eye']" *ngIf="!showPassword"></fa-icon>
+        </button>
+      </mat-form-field>
+      <!-- ACTION BUTTON -->
+      <button mat-stroked-button color="primary" type="submit" [disabled]="!form.valid" class="btn">
+        Se connecter
+      </button>
+      <br>
+      <br>
+      <div class="forgot" (click)="clikonforgot()">
+        Mot de passe oublié
+      </div>
+      <br>
+      <br>
+      <p>Pas encore inscrit au SI de RNF ? <a href="http://plateformes.reserves-naturelles.org/inscription"
+          target="_blank">Faites une demande de création de compte</a></p>
+      <mat-progress-bar *ngIf="progress" mode="indeterminate" color="accent"></mat-progress-bar>
+    </form>
+  </ng-container>
+  <!-- <ng-template #logPwdRecoBlock>
+    <ng-container *ngIf="login_or_pass_recovery">
+      <div>
+        <small>Veuillez renseigner votre adresse email utilisée lors de votre
+          inscription.
+        </small>
+        <br />
+        <small>Un message y sera envoyé avec votre identifiant et la possibilité de
+          renouveler
+          votre votre mot de passe.</small>
+      <br>
+      <br>
+      </div>
+      <form [formGroup]="formNoPwd" fxLayout="column" fxLayoutAlign="space-around stretch" fxLayoutGap="10px"
+      (ngSubmit)="resetPwdRequest()">
+      <mat-form-field class="form-field" appearance="fill">
+        <mat-label>Adresse email</mat-label>
+        <input matInput formControlName="email"
+        class="form-input-field">
+      </mat-form-field>
+      <mat-error *ngIf="formNoPwd.get('email')!.hasError('email')"
+        >Entrer une adresse email valide
+      </mat-error>
+      <button mat-stroked-button color="primary" type="submit" [disabled]="!formNoPwd.valid" class="btn">
+        Envoyer
+      </button>
+      </form>
+    </ng-container>
+  </ng-template> -->
+</div>
+
+<!-- create form for login -->

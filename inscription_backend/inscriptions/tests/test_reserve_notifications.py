@@ -1,0 +1,166 @@
+from unittest.mock import patch
+
+from django.core import mail
+from django.test import TestCase, override_settings
+
+from inscriptions.models import Notification
+from inscriptions.services import email_templates as tpl
+from inscriptions.services import reserve_notifications as reserve_notify
+from inscriptions.tests.helpers import make_profile, make_reserve
+from inscriptions.user_identity import UserInfo
+
+
+def _info(profile) -> UserInfo:
+    return UserInfo(
+        sub=profile.keycloak_sub,
+        email=profile.email,
+        username=profile.username,
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+    )
+
+
+class ReserveEmailTemplateTests(TestCase):
+    def test_referent_request_superadmin_email(self):
+        applicant = _info(make_profile(first_name="Jean", last_name="Dupont", email="jean@test.local"))
+        reserve = make_reserve(area_code="RNN01", area_name="Réserve test")
+        subject, html, _plain = tpl.reserve_referent_request_superadmin_email(applicant=applicant, reserve=reserve)
+        self.assertIn("référent", subject.lower())
+        self.assertIn("RNN01", html)
+        self.assertIn("/admin", html)
+
+    def test_member_removal_superadmin_email(self):
+        requester = _info(make_profile(first_name="Paul", last_name="Martin", email="paul@test.local"))
+        target = _info(make_profile(first_name="Alice", last_name="Durand", email="alice@test.local"))
+        target = UserInfo(
+            sub=target.sub,
+            email=target.email,
+            username=target.username,
+            first_name=target.first_name,
+            last_name=target.last_name,
+            organisme="Réserves Naturelles de France",
+        )
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        subject, html, _plain = tpl.reserve_member_removal_superadmin_email(
+            requester=requester,
+            reserve=reserve,
+            target=target,
+            reason="Ne fait plus partie de la réserve",
+        )
+        self.assertIn("retrait", subject.lower())
+        self.assertIn("RNN41", html)
+        self.assertIn("admin?tab=requests", html)
+        self.assertIn("Réserves Naturelles de France", html)
+
+    def test_member_removal_rejected_requester_email(self):
+        requester = _info(make_profile(first_name="Paul", last_name="Martin", email="paul@test.local"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        subject, html, _plain = tpl.reserve_member_removal_rejected_requester_email(
+            requester=requester,
+            reserve=reserve,
+            target_first_name="Alice",
+            target_last_name="Durand",
+            target_email="alice@test.local",
+            note="Informations insuffisantes",
+        )
+        self.assertIn("refusée", subject.lower())
+        self.assertIn("RNN41", html)
+        self.assertIn("Informations insuffisantes", html)
+
+    def test_new_member_referent_email(self):
+        member = _info(make_profile(first_name="Marie", last_name="Martin", email="marie@test.local"))
+        reserve = make_reserve(area_code="RNN02", area_name="Réserve deux")
+        subject, html, _plain = tpl.reserve_new_member_referent_email(
+            reserve=reserve,
+            member=member,
+            referent_first_name="Paul",
+        )
+        self.assertIn("membre", subject.lower())
+        self.assertIn("marie@test.local", html)
+        self.assertIn("/admin", html)
+
+
+@override_settings(SUPERADMIN_NOTIFY_EMAILS=["admin@test.local"], KEYCLOAK_SYNC_ENABLED=False)
+class ReserveNotificationServiceTests(TestCase):
+    def setUp(self):
+        mail.outbox = []
+
+    @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
+    def test_notify_referent_request_created_notifies_super_admins(self, list_super):
+        list_super.return_value = ["super-sub"]
+        applicant = _info(make_profile(sub="user-sub", email="user@test.local", first_name="Alice"))
+        reserve = make_reserve()
+        reserve_notify.notify_referent_request_created(applicant, reserve)
+        self.assertTrue(Notification.objects.filter(user_sub="super-sub", title__icontains="référent").exists())
+        self.assertEqual(len(mail.outbox), 1)
+
+    @patch("inscriptions.services.reserve_notifications._referent_group_members")
+    def test_notify_referents_new_member(self, members_mock):
+        referent_sub = "ref-sub"
+        member = _info(make_profile(sub="member-sub", email="member@test.local", first_name="Bob"))
+        reserve = make_reserve()
+        members_mock.return_value = [
+            {"id": referent_sub, "email": "referent@test.local", "firstName": "Rémi"},
+        ]
+        with override_settings(RESERVE_NEW_MEMBER_NOTIFY_ENABLED=True):
+            reserve_notify.notify_referents_new_member(member, reserve)
+        notif = Notification.objects.get(user_sub=referent_sub)
+        self.assertEqual(notif.admin_tab, "reserves")
+        self.assertEqual(len(mail.outbox), 1)
+
+    @patch("inscriptions.services.reserve_notifications._referent_group_members")
+    def test_notify_referents_new_member_coupe_par_defaut(self, members_mock):
+        """Le réglage est à False le temps de la bascule : chaque compte repris
+        rejoint ses réserves, et les référents recevraient la pile d'un coup.
+
+        Le garde doit précéder toute résolution : aucun appel Keycloak ne doit
+        partir pour une notification qui ne sera pas envoyée.
+        """
+        member = _info(make_profile(sub="member-sub", email="member@test.local", first_name="Bob"))
+        reserve = make_reserve()
+        members_mock.return_value = [
+            {"id": "ref-sub", "email": "referent@test.local", "firstName": "Rémi"},
+        ]
+
+        reserve_notify.notify_referents_new_member(member, reserve)
+
+        self.assertFalse(Notification.objects.filter(user_sub="ref-sub").exists())
+        self.assertEqual(mail.outbox, [])
+        members_mock.assert_not_called()
+
+    @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
+    def test_notify_reserve_member_removal_request(self, list_super):
+        list_super.return_value = ["super-sub"]
+        requester = _info(make_profile(sub="ref-sub", email="ref@test.local", first_name="Rémi"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        with override_settings(SUPERADMIN_NOTIFY_EMAILS=["admin@test.local"]):
+            reserve_notify.notify_reserve_member_removal_request(
+                requester=requester,
+                reserve=reserve,
+                target_first_name="Alice",
+                target_last_name="Durand",
+                target_email="alice@test.local",
+                target_sub="target-sub",
+                reason="Ne fait plus partie de la réserve",
+            )
+        notif = Notification.objects.get(user_sub="super-sub")
+        self.assertIn("retrait", notif.title.lower())
+        self.assertEqual(notif.admin_tab, "requests")
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_notify_reserve_member_removal_decided_rejected_sends_mail(self):
+        requester = _info(make_profile(sub="ref-sub", email="ref@test.local", first_name="Rémi"))
+        reserve = make_reserve(area_code="RNN41", area_name="Réserve 41")
+        reserve_notify.notify_reserve_member_removal_decided(
+            requester=requester,
+            reserve=reserve,
+            target_first_name="Alice",
+            target_last_name="Durand",
+            target_email="alice@test.local",
+            approve=False,
+            note="Motif de refus",
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("ref@test.local", mail.outbox[0].to)
+        notif = Notification.objects.get(user_sub="ref-sub")
+        self.assertIn("refusée", notif.body.lower())

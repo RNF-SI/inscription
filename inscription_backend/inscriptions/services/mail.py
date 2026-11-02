@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+import logging
+from email.mime.image import MIMEImage
+
+from django.conf import settings
+from django.core.mail import EmailMessage, EmailMultiAlternatives
+
+from inscriptions.models import Application, RegistrationRequest, Reserve
+from inscriptions.services import email_templates as tpl
+from inscriptions.user_identity import UserInfo
+
+logger = logging.getLogger(__name__)
+
+
+def _attach_logo(message: EmailMultiAlternatives) -> None:
+    if not tpl.LOGO_PATH.is_file():
+        logger.warning("Logo e-mail introuvable: %s", tpl.LOGO_PATH)
+        return
+    logo = MIMEImage(tpl.LOGO_PATH.read_bytes(), _subtype="png")
+    logo.add_header("Content-ID", f"<{tpl.LOGO_CID}>")
+    logo.add_header("Content-Disposition", "inline", filename="embleme.png")
+    message.attach(logo)
+
+
+def send_html_email(
+    recipients: list[str],
+    subject: str,
+    html_body: str,
+    text_body: str,
+    *,
+    attach_logo: bool = True,
+    reply_to: str = "",
+    raise_on_error: bool = False,
+) -> None:
+    """Envoi best-effort par défaut (une notification perdue ne doit pas casser un
+    workflow). `raise_on_error` sert aux appels synchrones où l'utilisateur attend
+    une confirmation, comme le formulaire de contact."""
+    cleaned = [email.strip() for email in recipients if (email or "").strip()]
+    if not cleaned:
+        return
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=cleaned,
+        reply_to=[reply_to.strip()] if (reply_to or "").strip() else None,
+    )
+    message.attach_alternative(html_body, "text/html")
+    if attach_logo:
+        _attach_logo(message)
+    try:
+        message.send(fail_silently=False)
+    except Exception:
+        logger.exception("Échec d'envoi e-mail à %s", ", ".join(cleaned))
+        if raise_on_error:
+            raise
+
+
+def send_plain_email(
+    recipients: list[str],
+    subject: str,
+    text_body: str,
+    *,
+    reply_to: str = "",
+    extra_headers: dict[str, str] | None = None,
+    raise_on_error: bool = False,
+) -> None:
+    """Message texte brut, sans habillage HTML ni logo (boîte de ticketing)."""
+    cleaned = [email.strip() for email in recipients if (email or "").strip()]
+    if not cleaned:
+        return
+    message = EmailMessage(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=cleaned,
+        reply_to=[reply_to.strip()] if (reply_to or "").strip() else None,
+        headers={k: v for k, v in (extra_headers or {}).items() if v},
+    )
+    try:
+        message.send(fail_silently=False)
+    except Exception:
+        logger.exception("Échec d'envoi e-mail à %s", ", ".join(cleaned))
+        if raise_on_error:
+            raise
+
+
+def notify_superadmins_registration(registration: RegistrationRequest) -> None:
+    recipients = settings.SUPERADMIN_NOTIFY_EMAILS
+    if not recipients:
+        return
+    subject, html_body, text_body = tpl.registration_submitted_admin_email(registration)
+    send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_password_reset_mail(*, email: str, token: str, ttl) -> None:
+    subject, html_body, text_body = tpl.password_reset_email(
+        token=token, ttl_minutes=int(ttl.total_seconds() // 60)
+    )
+    send_html_email([email], subject, html_body, text_body)
+
+
+def send_registration_submitted_user_mail(registration: RegistrationRequest) -> None:
+    subject, html_body, text_body = tpl.registration_submitted_user_email(registration)
+    send_html_email([registration.email], subject, html_body, text_body)
+
+
+def send_registration_approved_user_mail(registration: RegistrationRequest) -> None:
+    subject, html_body, text_body = tpl.registration_approved_user_email(registration)
+    send_html_email([registration.email], subject, html_body, text_body)
+
+
+def send_registration_rejected_user_mail(registration: RegistrationRequest, note: str = "") -> None:
+    subject, html_body, text_body = tpl.registration_rejected_user_email(registration, note=note)
+    send_html_email([registration.email], subject, html_body, text_body)
+
+
+def send_app_access_request_admin_mail(
+    *,
+    admins: list[dict],
+    applicant: UserInfo,
+    application: Application,
+    justification: str,
+) -> None:
+    recipients = sorted({(admin.get("email") or "").strip() for admin in admins if (admin.get("email") or "").strip()})
+    if not recipients:
+        return
+    subject, html_body, text_body = tpl.app_access_request_admin_email(
+        applicant=applicant,
+        application=application,
+        justification=justification,
+    )
+    send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_app_access_granted_user_mail(*, user: UserInfo, application: Application) -> None:
+    if not (user.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.app_access_granted_user_email(
+        first_name=user.first_name or user.username or "utilisateur",
+        application=application,
+    )
+    send_html_email([user.email], subject, html_body, text_body)
+
+
+def send_app_access_rejected_user_mail(*, user: UserInfo, application: Application, note: str) -> None:
+    if not (user.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.app_access_rejected_user_email(
+        first_name=user.first_name or user.username or "utilisateur",
+        application=application,
+        note=note,
+    )
+    send_html_email([user.email], subject, html_body, text_body)
+
+
+def send_reserve_referent_request_superadmin_mail(*, applicant: UserInfo, reserve: Reserve) -> None:
+    recipients = list(settings.SUPERADMIN_NOTIFY_EMAILS or [])
+    subject, html_body, text_body = tpl.reserve_referent_request_superadmin_email(
+        applicant=applicant,
+        reserve=reserve,
+    )
+    if recipients:
+        send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_reserve_member_removal_superadmin_mail(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target: UserInfo,
+    reason: str,
+) -> None:
+    recipients = list(settings.SUPERADMIN_NOTIFY_EMAILS or [])
+    subject, html_body, text_body = tpl.reserve_member_removal_superadmin_email(
+        requester=requester,
+        reserve=reserve,
+        target=target,
+        reason=reason,
+    )
+    if recipients:
+        send_html_email(recipients, subject, html_body, text_body)
+
+
+def send_reserve_member_removal_rejected_requester_mail(
+    *,
+    requester: UserInfo,
+    reserve: Reserve,
+    target_first_name: str,
+    target_last_name: str,
+    target_email: str,
+    note: str,
+) -> None:
+    if not (requester.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.reserve_member_removal_rejected_requester_email(
+        requester=requester,
+        reserve=reserve,
+        target_first_name=target_first_name,
+        target_last_name=target_last_name,
+        target_email=target_email,
+        note=note,
+    )
+    send_html_email([requester.email], subject, html_body, text_body)
+
+
+def send_reserve_referent_approved_user_mail(*, user: UserInfo, reserve: Reserve) -> None:
+    if not (user.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.reserve_referent_approved_user_email(user=user, reserve=reserve)
+    send_html_email([user.email], subject, html_body, text_body)
+
+
+def send_reserve_referent_rejected_user_mail(*, user: UserInfo, reserve: Reserve, note: str) -> None:
+    if not (user.email or "").strip():
+        return
+    subject, html_body, text_body = tpl.reserve_referent_rejected_user_email(user=user, reserve=reserve, note=note)
+    send_html_email([user.email], subject, html_body, text_body)
+
+
+def send_reserve_new_member_referent_mail(
+    *,
+    reserve: Reserve,
+    member: UserInfo,
+    recipient_emails: list[str],
+    recipient_first_names: dict[str, str] | None = None,
+) -> None:
+    if not recipient_emails:
+        return
+    names = recipient_first_names or {}
+    for email in recipient_emails:
+        first_name = names.get(email.lower(), "référent")
+        subject, html_body, text_body = tpl.reserve_new_member_referent_email(
+            reserve=reserve,
+            member=member,
+            referent_first_name=first_name,
+        )
+        send_html_email([email], subject, html_body, text_body)
