@@ -451,7 +451,9 @@ class KeycloakAdminClient:
         if r.status_code not in (200, 201):
             detail = self._create_user_error_detail(r)
             logger.error("create_user %s: %s", r.status_code, r.text[:500])
-            raise KeycloakAdminError("create_user_failed", detail)
+            # Le statut fait partie du code : un 409 se rattrape par un autre
+            # identifiant, les autres non.
+            raise KeycloakAdminError(f"create_user_failed:{r.status_code}", detail)
         loc = r.headers.get("Location", "")
         uid = loc.rstrip("/").split("/")[-1] if loc else ""
         if not uid:
@@ -480,6 +482,29 @@ class KeycloakAdminClient:
         if not arr:
             return None
         return arr[0].get("id")
+
+    def find_user_by_attribute(self, name: str, value: str) -> str | None:
+        """Retrouve un compte par un attribut exact (``q=clé:valeur``).
+
+        C'est la seule résolution stable pour un compte que l'import a renommé :
+        ni l'identifiant ni l'adresse ne permettent de le retrouver, mais
+        ``legacy_id_role`` ne change jamais.
+        """
+        cleaned = (value or "").strip()
+        if not cleaned:
+            return None
+        requete = requests.utils.quote(f"{name}:{cleaned}")
+        r = self._get(f"/users?q={requete}&exact=true")
+        if r.status_code != 200:
+            return None
+        for u in r.json() or []:
+            attrs = u.get("attributes") or {}
+            brut = attrs.get(name)
+            if isinstance(brut, list):
+                brut = brut[0] if brut else None
+            if str(brut or "").strip() == cleaned and u.get("id"):
+                return u["id"]
+        return None
 
     def find_user_by_email(self, email: str) -> str | None:
         """Retrouve un compte par e-mail exact, insensible à la casse.

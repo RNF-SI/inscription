@@ -78,6 +78,11 @@ class Command(BaseCommand):
             help="Autorise explicitement un mot de passe commun de secours.",
         )
         parser.add_argument(
+            "--username-report",
+            default="",
+            help="Fichier CSV des identifiants renommés (pour relancer les personnes concernées).",
+        )
+        parser.add_argument(
             "--password-report",
             default="",
             help="Fichier CSV pour les mots de passe générés (comptes sans hash legacy).",
@@ -93,6 +98,7 @@ class Command(BaseCommand):
         shared_password = (options["shared_password"] or os.environ.get("MIGRATION_TEMP_PASSWORD") or "").strip()
         allow_shared = bool(options["allow_shared_password"])
         password_report = (options["password_report"] or "").strip()
+        username_report = (options["username_report"] or "").strip()
 
         if shared_password and not allow_shared:
             raise CommandError(
@@ -154,6 +160,7 @@ class Command(BaseCommand):
         generated_passwords = 0
         batch_tag = uuid.uuid4().hex[:8]
         generated_rows: list[dict[str, str]] = []
+        renamed_rows: list[dict[str, str]] = []
 
         for index, user in enumerate(users, start=1):
             if index % 10 == 1 and index > 1 and not dry_run:
@@ -177,7 +184,7 @@ class Command(BaseCommand):
                     time.sleep(0.05)
                     continue
 
-                user_id, password_mode, generated_plain = migrate_legacy_user_to_keycloak(
+                user_id, password_mode, generated_plain, username_utilise = migrate_legacy_user_to_keycloak(
                     kc,
                     user,
                     fallback_password=shared_password or None,
@@ -185,6 +192,19 @@ class Command(BaseCommand):
                     dry_run=dry_run,
                 )
                 created += 1
+                if username_utilise != user.username:
+                    # L'identifiant historique reste dans t_roles : seul celui de
+                    # Keycloak change. La liste sert à prévenir les intéressés.
+                    renamed_rows.append(
+                        {
+                            "nom": user.last_name,
+                            "prenom": user.first_name,
+                            "ancien_login": user.username,
+                            "nouveau_login": username_utilise,
+                            "email": user.email,
+                            "legacy_id_role": str(user.id_role),
+                        }
+                    )
                 if password_mode in ("legacy-bcrypt", "legacy-md5"):
                     legacy_passwords += 1
                 elif password_mode == "generated":
@@ -199,8 +219,9 @@ class Command(BaseCommand):
                         }
                     )
 
+                renomme = "" if username_utilise == user.username else f" RENOMMÉ en {username_utilise} |"
                 self.stdout.write(
-                    f"[{index}/{len(users)}] {user.username} ({user.email}) → {user_id} | "
+                    f"[{index}/{len(users)}] {user.username} ({user.email}) → {user_id} |{renomme} "
                     f"mdp={password_mode} | org={user.id_organisme or '-'} | "
                     f"réserves={len(user.reserve_codes)} | référents={len(user.referent_valid_codes)} | "
                     f"apps={len(user.app_member_slugs)} | admins={len(user.app_admin_slugs)} | "
@@ -216,6 +237,23 @@ class Command(BaseCommand):
             except KeycloakAdminError as exc:
                 errors += 1
                 self.stderr.write(self.style.ERROR(f"Échec {user.username} (id_role={user.id_role}): {exc}"))
+
+        if renamed_rows:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{len(renamed_rows)} identifiant(s) renommé(s) : Keycloak refuse les espaces, "
+                    "les caractères spéciaux et les identifiants de moins de trois caractères. "
+                    "L'identifiant historique est inchangé dans utilisateurs.t_roles."
+                )
+            )
+            if username_report:
+                with open(username_report, "w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=list(renamed_rows[0].keys()))
+                    writer.writeheader()
+                    writer.writerows(renamed_rows)
+                self.stdout.write(self.style.WARNING(f"Liste détaillée dans {username_report}"))
+            else:
+                self.stdout.write("  (--username-report <fichier> pour en obtenir la liste)")
 
         if generated_rows and password_report and not dry_run:
             with open(password_report, "w", encoding="utf-8", newline="") as handle:

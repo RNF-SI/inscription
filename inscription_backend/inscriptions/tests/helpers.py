@@ -25,6 +25,7 @@ from inscriptions.models import (
     ReserveReferentRequest,
 )
 from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin, is_app_admin
+from inscriptions.services.legacy_user_migration import LegacyUserRow
 from inscriptions.roles import application_admin_group_paths, super_admin_group_paths
 from inscriptions.serializers import AdminApplicationWriteSerializer, SignupSerializer
 from inscriptions.services import application_access as app_access_svc
@@ -195,3 +196,19 @@ class BaseApiTestCase(TestCase):
         super().setUp()
         self.client = APIClient()
         mail.outbox = []
+
+
+def legacy_user_row(
+    username: str, *, first_name: str = "Jean", last_name: str = "Dupont", id_role: int = 42
+) -> LegacyUserRow:
+    """Ligne ``t_roles`` minimale, pour les tests d'identifiant."""
+    return LegacyUserRow(
+        id_role=id_role,
+        username=username,
+        email=f"compte{id_role}@example.org",
+        first_name=first_name,
+        last_name=last_name,
+        fonction="",
+        id_organisme=None,
+        password_bcrypt=None,
+    )

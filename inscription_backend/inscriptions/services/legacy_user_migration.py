@@ -14,6 +14,7 @@ from django.utils.text import slugify
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
 from inscriptions.models import Application, Organisme
 from inscriptions.services import provisioning as prov
+from inscriptions.services.mirror import LEGACY_ID_ROLE_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,52 @@ class LegacyUserRow:
 def _normalize_token(value: str) -> str:
     raw = unicodedata.normalize("NFKD", (value or "").strip().lower())
     return "".join(ch for ch in raw if not unicodedata.combining(ch))
+
+
+#: Jeu de caractères qu'accepte Keycloak pour un identifiant, et que valide déjà
+#: MeUpdateSerializer côté API.
+_IDENTIFIANT_INTERDIT = re.compile(r"[^a-z0-9._-]+")
+#: En deçà, Keycloak refuse l'identifiant.
+LONGUEUR_IDENTIFIANT_MINIMALE = 3
+
+
+def normalize_username(user: LegacyUserRow) -> str:
+    """Rend un identifiant historique acceptable par Keycloak.
+
+    Les identifiants d'UsersHub n'ont jamais été contraints : 109 comptes portent un
+    espace, d'autres un « ! » ou un « / », quatre tiennent en deux lettres. Keycloak
+    les refuse tous, et ces comptes resteraient absents du realm.
+
+    L'identifiant historique, lui, n'est pas touché : les applications qui lisent
+    ``utilisateurs.t_roles`` continuent d'authentifier avec l'ancien nom.
+
+    Un identifiant en forme d'adresse est réduit à sa partie locale : conserver le
+    domaine entrerait en conflit avec l'adresse d'un autre compte, la connexion par
+    e-mail rendant les deux indistinguables pour Keycloak.
+    """
+    brut = _normalize_token(user.username)
+    if "@" in brut:
+        brut = brut.split("@", 1)[0]
+    candidat = _IDENTIFIANT_INTERDIT.sub(".", brut)
+    # Replie toute suite de séparateurs autour d'un point en un point unique. Sans
+    # cela, « Réserve de Monteneuf - Océane » donnerait « ...monteneuf.-.oceane » :
+    # le tiret entouré d'espaces survit à la substitution. Un tiret interne, lui,
+    # n'est pas collé à un point et reste intact (« lou-anne.viricel »).
+    candidat = re.sub(r"[.-]*\.[.-]*", ".", candidat).strip("._-")
+
+    if len(candidat) < LONGUEUR_IDENTIFIANT_MINIMALE:
+        # « OV », « ER »… : un identifiant de deux lettres n'apprend rien à personne,
+        # le prénom et le nom donnent quelque chose d'utilisable.
+        depuis_etat_civil = _IDENTIFIANT_INTERDIT.sub(
+            ".", _normalize_token(f"{user.first_name}.{user.last_name}")
+        )
+        depuis_etat_civil = re.sub(r"[.-]*\.[.-]*", ".", depuis_etat_civil).strip("._-")
+        if len(depuis_etat_civil) >= LONGUEUR_IDENTIFIANT_MINIMALE:
+            candidat = depuis_etat_civil
+
+    if len(candidat) < LONGUEUR_IDENTIFIANT_MINIMALE:
+        candidat = f"compte.{user.id_role}"
+    return candidat
 
 
 def _legacy_cursor():
@@ -494,7 +541,14 @@ def find_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow) ->
 
     Les e-mails de substitution (@legacy-migration.local), fabriqués pour les comptes
     historiques sans adresse, ne peuvent correspondre à personne : on les ignore.
+
+    L'attribut ``legacy_id_role`` passe en premier : c'est le seul lien qui survit au
+    renommage d'un identifiant, et sans lui un import rejoué créerait un doublon pour
+    chaque compte renommé dépourvu d'adresse exploitable.
     """
+    by_attribute = kc.find_user_by_attribute(LEGACY_ID_ROLE_ATTRIBUTE, str(user.id_role))
+    if by_attribute:
+        return by_attribute, "legacy_id_role"
     by_username = kc.find_user_by_username(user.username)
     if by_username:
         return by_username, "identifiant"
@@ -562,7 +616,7 @@ def link_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow, us
     l'attribution des droits, qui vivent côté Keycloak.
     """
     try:
-        kc.set_user_attribute(user_id, "legacy_id_role", str(user.id_role))
+        kc.set_user_attribute(user_id, LEGACY_ID_ROLE_ATTRIBUTE, str(user.id_role))
     except KeycloakAdminError as exc:
         logger.info(
             "Attribut legacy_id_role non posé sur %s (compte fédéré en lecture seule ?) : %s",
@@ -583,7 +637,7 @@ def migrate_legacy_user_to_keycloak(
     """Retourne (user_id, password_mode, generated_password)."""
     if dry_run:
         mode = "legacy-bcrypt" if user.password_bcrypt else "legacy-md5" if user.password_md5 else "generated"
-        return f"dry-run-{user.id_role}", mode, None
+        return f"dry-run-{user.id_role}", mode, None, normalize_username(user)
 
     imported = build_keycloak_password_credential(
         password_bcrypt=user.password_bcrypt,
@@ -610,23 +664,58 @@ def migrate_legacy_user_to_keycloak(
         password_mode = "generated"
         credential = None
 
-    user_id = kc.create_user(
-        username=user.username,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
+    user_id, username_utilise = _create_with_available_username(
+        kc,
+        user,
         password=plain_password,
         temporary_password=temporary_password,
-        imported_password_credential=credential,
-        require_verify_email=False,
-        email_verified=True,
-        function_value=user.fonction,
-        extra_attributes={"legacy_id_role": [str(user.id_role)]},
+        credential=credential,
     )
 
     assign_legacy_groups(kc, user, user_id)
 
-    return user_id, password_mode, generated_plain
+    return user_id, password_mode, generated_plain, username_utilise
+
+
+def _create_with_available_username(
+    kc: KeycloakAdminClient,
+    user: LegacyUserRow,
+    *,
+    password: str | None,
+    temporary_password: bool,
+    credential: dict | None,
+) -> tuple[str, str]:
+    """Crée le compte en trouvant un identifiant libre. Renvoie (id, identifiant).
+
+    Plutôt que de réimplémenter les règles d'unicité de Keycloak — un identifiant ne
+    peut pas non plus égaler l'adresse d'un autre compte quand la connexion par
+    e-mail est active — on tente et on suffixe sur conflit. C'est exactement ce qui
+    s'est produit pour « valentin.demets@forestallia.com », dont l'adresse appartient
+    à un autre compte du même homonyme.
+    """
+    base = normalize_username(user)
+    for tentative in range(1, 8):
+        candidat = base if tentative == 1 else f"{base}.{tentative}"
+        try:
+            user_id = kc.create_user(
+                username=candidat,
+                email=user.email,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                password=password,
+                temporary_password=temporary_password,
+                imported_password_credential=credential,
+                require_verify_email=False,
+                email_verified=True,
+                function_value=user.fonction,
+                extra_attributes={LEGACY_ID_ROLE_ATTRIBUTE: [str(user.id_role)]},
+            )
+            return user_id, candidat
+        except KeycloakAdminError as exc:
+            if not str(exc.code).endswith(":409"):
+                raise
+            logger.info("Identifiant %r déjà pris, nouvelle tentative", candidat)
+    raise KeycloakAdminError("create_user_no_available_username", base)
 
 
 def realm_is_safe_for_migration(realm: str) -> bool:
