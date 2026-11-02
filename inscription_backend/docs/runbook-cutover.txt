@@ -336,7 +336,26 @@ partout.
   étape, celle qu'on peut encore décider de ne pas faire.
 
 
-8. Diagnostic
+8. Après la bascule, quand le parcours est éprouvé
+--------------------------------------------------
+
+Une seule chose est volontairement éteinte pour la bascule et doit être rallumée
+ensuite :
+
+    RESERVE_NEW_MEMBER_NOTIFY_ENABLED=1
+
+Elle prévient les référents d'une réserve qu'un membre vient de la rejoindre
+(notification in-app et e-mail). Coupée par défaut parce que chaque compte repris
+de la base historique rejoint ses réserves : le référent d'une réserve très
+peuplée recevrait la pile d'un coup, pour des arrivées qui n'en sont pas.
+
+À rallumer quand les notifications ne concerneront plus que de vraies arrivées,
+c'est-à-dire une fois l'import terminé et le rattrapage des identifiants (§ 4)
+bien avancé. Vérifier ensuite sur une réserve à soi, en s'y ajoutant : le
+référent doit recevoir un e-mail et une notification, et une seule.
+
+
+9. Diagnostic
 --------------
 
 - ``KEYCLOAK_SYNC_ENABLED=0`` : lire et diagnostiquer sans écrire dans Keycloak.

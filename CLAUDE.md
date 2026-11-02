@@ -346,6 +346,15 @@ avec `origin=additional` (`create_additional_access_request`), sans `Registratio
 Chaque transition émet notification in-app (`services/notifications.py`) + e-mail
 (`services/mail.py` avec `services/email_templates.py`) et une trace `AuditLog`.
 
+Une exception : prévenir les référents d'une réserve qu'un membre vient de la
+rejoindre (`reserve_notifications.notify_referents_new_member`, appelée à l'inscription
+validée, à l'ajout par un admin et à l'ajout par soi-même) est **coupé par défaut**
+via `RESERVE_NEW_MEMBER_NOTIFY_ENABLED`. Pendant la bascule, chaque compte repris de
+la base historique rejoint ses réserves : le référent d'une réserve très peuplée
+recevrait la pile d'un coup. Le garde est posé en tête de la fonction, avant toute
+résolution, pour qu'aucun appel Keycloak ne parte pour une notification qui ne sera
+pas envoyée. À rallumer une fois le parcours éprouvé.
+
 ### Route de contact mutualisée
 
 `POST /api/contact/` sert le formulaire « Contacter le support » de **toutes** les applications

@@ -139,6 +139,13 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@localhost")
 SUPERADMIN_NOTIFY_EMAILS = env.list("SUPERADMIN_NOTIFY_EMAILS", default=[])
 
+# Prévenir les référents d'une réserve qu'un membre vient de la rejoindre (notification
+# in-app + e-mail). Coupé par défaut le temps de la bascule : chaque compte repris de
+# la base historique rejoint ses réserves, et un référent de réserve très peuplée
+# recevrait la pile d'un coup. À rallumer quand le parcours sera éprouvé — le jour où
+# ces notifications ne concerneront plus que de vraies arrivées.
+RESERVE_NEW_MEMBER_NOTIFY_ENABLED = env.bool("RESERVE_NEW_MEMBER_NOTIFY_ENABLED", default=False)
+
 # Formulaire de contact mutualisé (toutes les apps home-rnf).
 # Liste blanche des destinataires acceptés : le client indique l'adresse voulue
 # (boîtes Zammad), mais une adresse hors de cette liste est refusée — sans quoi

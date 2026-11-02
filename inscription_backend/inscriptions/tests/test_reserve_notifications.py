@@ -102,10 +102,31 @@ class ReserveNotificationServiceTests(TestCase):
         members_mock.return_value = [
             {"id": referent_sub, "email": "referent@test.local", "firstName": "Rémi"},
         ]
-        reserve_notify.notify_referents_new_member(member, reserve)
+        with override_settings(RESERVE_NEW_MEMBER_NOTIFY_ENABLED=True):
+            reserve_notify.notify_referents_new_member(member, reserve)
         notif = Notification.objects.get(user_sub=referent_sub)
         self.assertEqual(notif.admin_tab, "reserves")
         self.assertEqual(len(mail.outbox), 1)
+
+    @patch("inscriptions.services.reserve_notifications._referent_group_members")
+    def test_notify_referents_new_member_coupe_par_defaut(self, members_mock):
+        """Le réglage est à False le temps de la bascule : chaque compte repris
+        rejoint ses réserves, et les référents recevraient la pile d'un coup.
+
+        Le garde doit précéder toute résolution : aucun appel Keycloak ne doit
+        partir pour une notification qui ne sera pas envoyée.
+        """
+        member = _info(make_profile(sub="member-sub", email="member@test.local", first_name="Bob"))
+        reserve = make_reserve()
+        members_mock.return_value = [
+            {"id": "ref-sub", "email": "referent@test.local", "firstName": "Rémi"},
+        ]
+
+        reserve_notify.notify_referents_new_member(member, reserve)
+
+        self.assertFalse(Notification.objects.filter(user_sub="ref-sub").exists())
+        self.assertEqual(mail.outbox, [])
+        members_mock.assert_not_called()
 
     @patch("inscriptions.services.reserve_notifications.list_super_admin_subs")
     def test_notify_reserve_member_removal_request(self, list_super):

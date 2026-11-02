@@ -188,6 +188,18 @@ def notify_referent_request_decided(
 
 
 def notify_referents_new_member(member: UserInfo, reserve: Reserve) -> None:
+    """Prévient les référents d'une réserve qu'un membre vient de la rejoindre.
+
+    Coupé par défaut (``RESERVE_NEW_MEMBER_NOTIFY_ENABLED``) : pendant la bascule,
+    chaque compte repris de la base historique rejoint ses réserves, et le référent
+    d'une réserve très peuplée recevrait la pile d'un coup. Le garde est posé ici,
+    avant toute résolution, pour qu'aucun appel Keycloak ne soit fait pour rien —
+    les trois appelants (inscription validée, ajout par un admin, ajout par soi)
+    passent tous par cette fonction.
+    """
+    if not getattr(settings, "RESERVE_NEW_MEMBER_NOTIFY_ENABLED", False):
+        return
+
     member = _user_with_organisme(member)
     member_sub = (member.sub or "").strip()
     referent_subs = [sub for sub in _referent_subs(reserve) if sub != member_sub]
