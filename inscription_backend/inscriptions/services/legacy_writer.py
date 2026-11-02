@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from typing import NamedTuple
 
 import bcrypt
 from django.conf import settings
@@ -124,6 +125,19 @@ def set_password(id_role: int, plain: str) -> None:
 # --- Comptes -------------------------------------------------------------------
 
 
+class NouveauRole(NamedTuple):
+    """Ce que la base historique attribue au compte à l'INSERT.
+
+    ``uuid_role`` sert d'identifiant au compte Keycloak : le ``sub`` des jetons
+    devient alors la clé de jointure vers ``utilisateurs.t_roles``, sans attribut
+    ni requête supplémentaire. C'est PostgreSQL qui le génère
+    (``uuid_generate_v4()``), d'où sa remontée par ``RETURNING``.
+    """
+
+    id_role: int
+    uuid_role: str
+
+
 def create_role(
     *,
     identifiant: str,
@@ -134,8 +148,8 @@ def create_role(
     id_organisme: int | None = None,
     password: str | None = None,
     champs_addi: dict | None = None,
-) -> int:
-    """Crée la ligne ``utilisateurs.t_roles`` et renvoie son ``id_role``.
+) -> NouveauRole:
+    """Crée la ligne ``utilisateurs.t_roles`` et renvoie ses deux identifiants.
 
     ``champs_addi`` doit déjà porter ``reserves`` et ``reserves_referent`` : c'est le
     trigger ``after_insert_user_function`` qui en déduira les lignes ``cor_role_rn``.
@@ -147,7 +161,7 @@ def create_role(
             (identifiant, nom_role, prenom_role, email, remarques,
              id_organisme, pass_plus, "pass", champs_addi)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-        RETURNING id_role
+        RETURNING id_role, uuid_role
         """,
         [
             identifiant,
@@ -162,7 +176,7 @@ def create_role(
         ],
         fetch="one",
     )
-    return int(row[0])
+    return NouveauRole(int(row[0]), str(row[1]))
 
 
 # Colonnes que l'ancien PUT /role acceptait de modifier. Tout le reste (organisme,

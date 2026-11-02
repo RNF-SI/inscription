@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 #: Attribut Keycloak portant l'identifiant du compte dans la base historique.
 LEGACY_ID_ROLE_ATTRIBUTE = "legacy_id_role"
 
+#: Porté en attribut sur les seuls comptes dont l'identifiant Keycloak ne peut pas
+#: être l'uuid_role : ceux qui existaient déjà dans le realm, comptes d'annuaire
+#: compris. Keycloak n'autorise pas la modification de l'id d'un compte ; le
+#: réécrire supposerait un partialImport en OVERWRITE, qui supprime et recrée.
+#: Comme legacy_id_role, l'attribut doit être déclaré dans le profil utilisateur
+#: du realm, sinon Keycloak le jette silencieusement.
+UUID_ROLE_ATTRIBUTE = "uuid_role"
+
 def _inscription_app_id() -> int:
     """Application « inscription » côté UsersHub, dont la validation accordait le droit.
 
@@ -163,7 +171,9 @@ def referent_codes_from_registration(registration: RegistrationRequest) -> list[
     return codes
 
 
-def create_legacy_role(registration: RegistrationRequest, plain_password: str) -> int | None:
+def create_legacy_role(
+    registration: RegistrationRequest, plain_password: str
+) -> legacy_writer.NouveauRole | None:
     """Crée la ligne ``t_roles`` correspondant à une demande validée.
 
     ``champs_addi`` est normalisé avant l'INSERT : c'est le trigger
@@ -184,7 +194,7 @@ def create_legacy_role(registration: RegistrationRequest, plain_password: str) -
         codes, referent_codes
     )
 
-    id_role = legacy_writer.create_role(
+    role = legacy_writer.create_role(
         identifiant=registration.username,
         nom_role=registration.last_name,
         prenom_role=registration.first_name,
@@ -198,12 +208,12 @@ def create_legacy_role(registration: RegistrationRequest, plain_password: str) -
     # l'installation RNF) : sans cela, l'inscrit n'a pas ce que ce groupe confère.
     default_groups = getattr(settings, "LEGACY_DEFAULT_GROUP_IDS", []) or []
     if default_groups:
-        legacy_writer.add_to_groups(id_role, default_groups)
+        legacy_writer.add_to_groups(role.id_role, default_groups)
 
     app_id = _inscription_app_id()
     if app_id:
-        legacy_writer.grant_application(id_role, id_application=app_id)
-    return id_role
+        legacy_writer.grant_application(role.id_role, id_application=app_id)
+    return role
 
 
 # --- Opérations sur un compte existant ------------------------------------------

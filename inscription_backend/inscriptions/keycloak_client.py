@@ -425,7 +425,16 @@ class KeycloakAdminClient:
         email_verified: bool = False,
         extra_attributes: dict[str, list[str]] | None = None,
         imported_password_credential: dict | None = None,
+        user_id: str | None = None,
     ) -> str:
+        """Crée un compte Keycloak et renvoie son identifiant interne.
+
+        ``user_id`` impose l'identifiant du compte — en pratique l'``uuid_role``
+        historique, pour que le ``sub`` des jetons soit la clé de jointure vers
+        ``utilisateurs.t_roles``. ``POST /users`` ignore le champ ``id`` qu'on lui
+        donne (vérifié sur Keycloak 26.3) ; seul le ``partialImport`` le respecte,
+        d'où les deux chemins. Sans ``user_id``, rien ne change.
+        """
         body = {
             "username": username,
             "email": email,
@@ -447,6 +456,8 @@ class KeycloakAdminClient:
             attrs["function"] = [str(function_value).strip()]
         if attrs:
             body["attributes"] = attrs
+        if user_id:
+            return self._create_user_with_id(user_id, body)
         r = self._post("/users", json=body)
         if r.status_code not in (200, 201):
             detail = self._create_user_error_detail(r)
@@ -461,6 +472,45 @@ class KeycloakAdminClient:
         if not uid:
             raise KeycloakAdminError("create_user_no_id")
         return uid
+
+    def _create_user_with_id(self, user_id: str, body: dict) -> str:
+        """Crée le compte par ``partialImport``, seul chemin qui respecte l'``id``.
+
+        ``ifResourceExists`` reste à ``FAIL`` : un identifiant déjà pris doit
+        ressortir en 409 comme avec ``POST /users``, pour que l'appelant retente
+        sous un autre nom au lieu d'écraser un compte. ``OVERWRITE`` supprime et
+        recrée, en perdant tout ce que la charge utile ne redonne pas — mots de
+        passe et appartenances aux groupes comprises.
+
+        Attention : ce chemin ne passe pas les validateurs d'identifiant du realm
+        (un espace y est accepté, puis replié en minuscules), mais il applique bien
+        la déclaration des attributs du profil utilisateur — un attribut non déclaré
+        est jeté silencieusement, comme ailleurs.
+        """
+        payload = {"ifResourceExists": "FAIL", "users": [{**body, "id": user_id}]}
+        r = self._post("/partialImport", json=payload)
+        if r.status_code == 409:
+            logger.info("partialImport 409 pour %r", body.get("username"))
+            raise KeycloakAdminError("create_user_failed:409", "Identifiant déjà utilisé.")
+        if r.status_code != 200:
+            detail = self._create_user_error_detail(r)
+            logger.error("partialImport %s: %s", r.status_code, r.text[:500])
+            raise KeycloakAdminError(f"create_user_failed:{r.status_code}", detail)
+        try:
+            rapport = r.json()
+        except ValueError:
+            raise KeycloakAdminError("create_user_no_id") from None
+        # Un 200 ne suffit pas : le rapport dit ce qui a réellement été fait.
+        if int(rapport.get("added") or 0) != 1:
+            logger.error("partialImport sans création : %s", r.text[:500])
+            raise KeycloakAdminError("create_user_failed:200", self._create_user_error_detail(r))
+        obtenu = str((rapport.get("results") or [{}])[0].get("id") or "")
+        if obtenu != user_id:
+            # Ne devrait pas arriver, mais un id différent de celui demandé ruinerait
+            # la jointure : mieux vaut échouer que créer un compte mal identifié.
+            logger.error("partialImport a rendu l'id %r au lieu de %r", obtenu, user_id)
+            raise KeycloakAdminError("create_user_id_mismatch")
+        return obtenu
 
     def delete_user(self, user_id: str) -> None:
         """Supprime un compte Keycloak.

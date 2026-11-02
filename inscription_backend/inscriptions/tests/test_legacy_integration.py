@@ -118,8 +118,18 @@ class LegacyIntegrationTests(TestCase):
         payload.update(overrides)
         return legacy_writer.create_role(**payload)
 
+    def test_create_role_returns_the_row_uuid(self):
+        """L'uuid_role remonté devient l'identifiant du compte Keycloak : s'il ne
+        correspondait pas à la ligne, le « sub » des jetons ne joindrait rien."""
+        role = self._create()
+        rows = self._query(
+            "SELECT uuid_role::text FROM utilisateurs.t_roles WHERE id_role = %s",
+            [role.id_role],
+        )
+        self.assertEqual(rows, [(role.uuid_role,)])
+
     def test_create_role_fills_expected_columns(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         rows = self._query(
             "SELECT identifiant, nom_role, prenom_role, remarques, id_organisme, "
             "active, groupe, pass_plus, uuid_role IS NOT NULL, date_insert IS NOT NULL "
@@ -139,7 +149,7 @@ class LegacyIntegrationTests(TestCase):
 
     def test_trigger_creates_reserve_links_without_duplicates(self):
         """Le piège principal : cor_role_rn vient du trigger, pas de la plateforme."""
-        id_role = self._create()
+        id_role = self._create().id_role
         rows = self._query(
             "SELECT rn_id, referent FROM complement_rnf.cor_role_rn WHERE role_id = %s "
             "ORDER BY rn_id",
@@ -148,7 +158,7 @@ class LegacyIntegrationTests(TestCase):
         self.assertEqual(rows, [("RNN41", True)])
 
     def test_downstream_triggers_receive_the_account(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         for table in ("utilisateurs_saisie.t_roles", "utilisateurs_sinp.t_roles"):
             rows = self._query(f"SELECT count(*) FROM {table} WHERE id_role = %s", [id_role])
             self.assertEqual(rows[0][0], 1, table)
@@ -160,7 +170,7 @@ class LegacyIntegrationTests(TestCase):
         self.assertTrue(site[0][0].startswith("$2b$12$"))
 
     def test_sync_reserves_reconciles_without_touching_validated_referent(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         # La réserve existe déjà via le trigger ; on la valide comme référent.
         legacy_writer.set_referent_valid(id_role, "RNN41", True)
         legacy_writer.sync_reserves(id_role, {"RNN41", "RNN99"}, {"RNN41"})
@@ -181,14 +191,14 @@ class LegacyIntegrationTests(TestCase):
         self.assertEqual(remaining, {"RNN99"})
 
     def test_sync_reserves_preserves_other_champs_addi_keys(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         legacy_writer.sync_reserves(id_role, {"RNN99"}, set())
         champs = legacy_writer.get_champs_addi(id_role)
         self.assertTrue(champs["ancrage"])
         self.assertEqual(champs["reserves"], [{"id": "RNN99", "name": "Camargue"}])
 
     def test_application_rights_and_group(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         legacy_writer.grant_application(id_role, id_application=6, id_profil=1)
         rows = self._query(
             "SELECT id_application, id_profil, is_default_group_for_app "
@@ -204,7 +214,7 @@ class LegacyIntegrationTests(TestCase):
         self.assertEqual(legacy_writer.list_application_ids(id_role), set())
 
     def test_update_profile_and_password(self):
-        id_role = self._create()
+        id_role = self._create().id_role
         legacy_writer.update_role_profile(id_role, email="neuf@example.org", nom_role="Durand")
         legacy_writer.set_password(id_role, "nouveau-mdp")
         rows = self._query(

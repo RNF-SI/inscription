@@ -177,6 +177,39 @@ Le lien entre les deux mondes est l'attribut Keycloak `legacy_id_role`, posé à
 création et par l'import. `mirror.legacy_id_role_for()` le lit, avec repli sur l'e-mail
 puis l'identifiant.
 
+**L'identifiant du compte Keycloak est l'`uuid_role` de sa ligne `t_roles`.** Le `sub`
+des jetons est donc directement la clé de jointure vers la base historique : pas
+d'attribut à lire, pas de requête supplémentaire, et la correspondance survit au
+changement d'adresse comme d'identifiant. `create_role()` renvoie les deux clés
+(`NouveauRole`), et c'est pour cela que l'écriture historique précède l'appel Keycloak :
+l'`uuid_role` est généré par PostgreSQL (`uuid_generate_v4()`), il faut que la ligne
+existe pour le connaître.
+
+Keycloak ne l'accepte que par un chemin particulier. `POST /users` **ignore** le champ
+`id` qu'on lui donne et en génère un autre ; `PUT /users/{id}` ne permet pas de le
+changer. Seul `POST /admin/realms/<realm>/partialImport` respecte l'`id` fourni, d'où
+`KeycloakAdminClient._create_user_with_id()`, emprunté dès que `create_user(user_id=…)`
+est appelé. Il emporte le mot de passe (en clair, qu'il hache, ou en hash importé), les
+groupes, les attributs, `requiredActions` et `emailVerified`. Trois particularités :
+
+- `ifResourceExists` reste à **`FAIL`**. `OVERWRITE` réécrit bien l'`id` d'un compte
+  existant, mais en supprimant et recréant : tout ce que la charge utile ne redonne pas
+  est perdu — mot de passe, attributs, appartenances aux groupes. Un identifiant déjà
+  pris doit ressortir en 409, pour que la boucle de suffixe de l'import retente.
+- Un 200 ne vaut pas succès : c'est le rapport (`added`, `results[].id`) qui dit ce qui
+  a été fait. Un `id` rendu différent de celui demandé est refusé, un compte mal
+  identifié ruinerait la jointure.
+- Ce chemin **ne passe pas les validateurs d'identifiant du realm** (un espace y est
+  accepté, replié en minuscules) mais applique bien la déclaration des attributs du
+  profil utilisateur.
+
+Les comptes qui existaient déjà dans le realm — l'équipe, fédérée depuis l'annuaire —
+ne peuvent pas être réidentifiés : leur `id` est antérieur. Ils portent donc
+l'`uuid_role` en attribut (`mirror.UUID_ROLE_ATTRIBUTE`), posé par
+`link_existing_keycloak_user()`, pour que la jointure reste possible dans les deux cas.
+Comme `legacy_id_role`, **cet attribut doit être déclaré dans le profil utilisateur du
+realm**, sinon il est silencieusement jeté.
+
 ⚠️ **Cet attribut n'est conservé que si le realm l'accepte.** Le profil utilisateur de
 Keycloak ne déclare par défaut que `username`, `email`, `firstName`, `lastName` et
 `function` : tout autre attribut est accepté par l'API puis **silencieusement jeté**.

@@ -26,13 +26,20 @@ bloquants.
     sortie, l'ouvrir ou passer par un relais interne. Sans cela la panne
     reviendra, à un moment qu'on ne choisira pas.
 
-0.2 — Déclarer ``legacy_id_role`` dans le profil utilisateur du realm de prod.
+0.2 — Déclarer ``legacy_id_role`` ET ``uuid_role`` dans le profil utilisateur du
+      realm de prod.
     *Realm settings → User profile → Create attribute*, comme ``function`` l'est
     déjà. Keycloak accepte tout attribut non déclaré puis **le jette
     silencieusement** : sans cette déclaration, l'import pose l'attribut, il
     disparaît, et toute résolution retombe sur la recherche par e-mail — ce qui
     fonctionne mais casse si l'adresse change, et fait créer un doublon à chaque
     import rejoué sur un compte renommé. À faire **avant** l'import, pas après.
+
+    ``uuid_role`` ne concerne que les comptes qui existaient déjà dans le realm,
+    comptes d'annuaire compris : eux seuls le portent en attribut, parce que leur
+    ``id`` est antérieur à nous et que Keycloak ne permet pas de le changer. Les
+    comptes que la plateforme crée ont l'``uuid_role`` **pour identifiant** (§ 3.1),
+    il n'y a rien à déclarer pour eux.
 
     Vérification après coup, sur un compte au hasard :
 
@@ -165,6 +172,22 @@ Contrôle avant d'aller plus loin :
 
 L'import est **en lecture seule côté base historique** : il ne touche qu'à
 Keycloak. Rien de ce qu'il fait ne peut casser les applications existantes.
+
+3.1 — L'identifiant des comptes créés est leur ``uuid_role``.
+
+    Le compte Keycloak prend pour ``id`` l'``uuid_role`` de sa ligne ``t_roles``,
+    si bien que le ``sub`` des jetons est directement la clé de jointure vers la
+    base historique. C'est pourquoi l'import doit tourner **sur un realm où ces
+    comptes n'existent pas encore** : l'``id`` d'un compte Keycloak ne se change
+    pas après coup (seul un ``partialImport`` en ``OVERWRITE`` le ferait, en
+    supprimant et recréant le compte, donc en perdant mot de passe, attributs et
+    groupes). En production le realm ne contient que les comptes d'annuaire, la
+    question ne se pose donc que si l'import est rejoué.
+
+    Contrôle, sur un compte importé :
+
+        SELECT uuid_role FROM utilisateurs.t_roles WHERE id_role = <id>;
+        GET /admin/realms/<realm>/users/<cet uuid>      -- doit répondre 200
 
 Deux garde-fous à connaître :
 

@@ -199,7 +199,12 @@ class BaseApiTestCase(TestCase):
 
 
 def legacy_user_row(
-    username: str, *, first_name: str = "Jean", last_name: str = "Dupont", id_role: int = 42
+    username: str,
+    *,
+    first_name: str = "Jean",
+    last_name: str = "Dupont",
+    id_role: int = 42,
+    uuid_role: str = "",
 ) -> LegacyUserRow:
     """Ligne ``t_roles`` minimale, pour les tests d'identifiant."""
     return LegacyUserRow(
@@ -210,5 +215,6 @@ def legacy_user_row(
         last_name=last_name,
         fonction="",
         id_organisme=None,
+        uuid_role=uuid_role,
         password_bcrypt=None,
     )

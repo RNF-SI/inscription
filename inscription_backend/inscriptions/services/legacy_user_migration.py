@@ -14,7 +14,7 @@ from django.utils.text import slugify
 from inscriptions.keycloak_client import KeycloakAdminClient, KeycloakAdminError
 from inscriptions.models import Application, Organisme
 from inscriptions.services import provisioning as prov
-from inscriptions.services.mirror import LEGACY_ID_ROLE_ATTRIBUTE
+from inscriptions.services.mirror import LEGACY_ID_ROLE_ATTRIBUTE, UUID_ROLE_ATTRIBUTE
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,9 @@ class LegacyUserRow:
     last_name: str
     fonction: str
     id_organisme: int | None
+    # uuid_role devient l'identifiant du compte Keycloak : le « sub » des jetons est
+    # alors directement la clé de jointure vers utilisateurs.t_roles.
+    uuid_role: str = ""
     password_bcrypt: str | None = None
     password_md5: str | None = None
     reserve_codes: list[str] = field(default_factory=list)
@@ -415,7 +418,7 @@ def load_legacy_users(
         cursor.execute(
             f"""
             SELECT u.id_role, u.identifiant, u.nom_role, u.prenom_role, u.email, u.id_organisme, u.remarques,
-                   u.pass_plus, u.pass
+                   u.pass_plus, u.pass, u.uuid_role
             FROM utilisateurs.t_roles u
             WHERE {where_sql}
             ORDER BY u.id_role
@@ -426,7 +429,7 @@ def load_legacy_users(
         rows = cursor.fetchall()
 
     users: list[LegacyUserRow] = []
-    for id_role, identifiant, nom, prenom, email, id_organisme, remarques, pass_plus, pass_md5 in rows:
+    for id_role, identifiant, nom, prenom, email, id_organisme, remarques, pass_plus, pass_md5, uuid_role in rows:
         username = str(identifiant or "").strip()
         if not username:
             continue
@@ -455,6 +458,7 @@ def load_legacy_users(
                 last_name=str(nom or "").strip(),
                 fonction=str(remarques or "").strip(),
                 id_organisme=int(id_organisme) if id_organisme is not None else None,
+                uuid_role=str(uuid_role or "").strip(),
                 password_bcrypt=str(pass_plus or "").strip() or None,
                 password_md5=str(pass_md5 or "").strip() or None,
                 reserve_codes=reserve_codes,
@@ -609,20 +613,30 @@ def assign_legacy_groups(kc: KeycloakAdminClient, user: LegacyUserRow, user_id: 
 
 
 def link_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow, user_id: str) -> None:
-    """Rattache un compte existant : droits, et mémorisation de l'id_role historique.
+    """Rattache un compte existant : droits, et mémorisation des clés historiques.
 
-    L'écriture de l'attribut est tolérante à l'échec : un compte fédéré en lecture
+    Les comptes créés par la plateforme portent l'``uuid_role`` comme identifiant
+    Keycloak. Celui-ci ne peut pas l'être : son id existait avant nous et Keycloak
+    ne permet pas de le changer. L'``uuid_role`` est donc posé en attribut, pour que
+    la jointure reste possible dans les deux cas.
+
+    L'écriture des attributs est tolérante à l'échec : un compte fédéré en lecture
     seule depuis l'annuaire refuse les modifications, ce qui ne doit pas empêcher
     l'attribution des droits, qui vivent côté Keycloak.
     """
-    try:
-        kc.set_user_attribute(user_id, LEGACY_ID_ROLE_ATTRIBUTE, str(user.id_role))
-    except KeycloakAdminError as exc:
-        logger.info(
-            "Attribut legacy_id_role non posé sur %s (compte fédéré en lecture seule ?) : %s",
-            user.username,
-            exc,
-        )
+    attributs = {LEGACY_ID_ROLE_ATTRIBUTE: str(user.id_role)}
+    if user.uuid_role:
+        attributs[UUID_ROLE_ATTRIBUTE] = user.uuid_role
+    for nom, valeur in attributs.items():
+        try:
+            kc.set_user_attribute(user_id, nom, valeur)
+        except KeycloakAdminError as exc:
+            logger.info(
+                "Attribut %s non posé sur %s (compte fédéré en lecture seule ?) : %s",
+                nom,
+                user.username,
+                exc,
+            )
     assign_legacy_groups(kc, user, user_id)
 
 
@@ -709,6 +723,8 @@ def _create_with_available_username(
                 email_verified=True,
                 function_value=user.fonction,
                 extra_attributes={LEGACY_ID_ROLE_ATTRIBUTE: [str(user.id_role)]},
+                # L'uuid_role historique devient l'identifiant Keycloak du compte.
+                user_id=user.uuid_role or None,
             )
             return user_id, candidat
         except KeycloakAdminError as exc:

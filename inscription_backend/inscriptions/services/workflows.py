@@ -112,7 +112,8 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
     with mirror.atomic_mirror() as undo:
         # La ligne t_roles d'abord : son id_role part dans les attributs Keycloak.
         # Le trigger after_insert_user_function en déduit les liens cor_role_rn.
-        legacy_id_role = mirror.create_legacy_role(registration, plain_password)
+        role_legacy = mirror.create_legacy_role(registration, plain_password)
+        legacy_id_role = role_legacy.id_role if role_legacy else None
 
         keycloak_user_id = ""
         if settings.KEYCLOAK_SYNC_ENABLED:
@@ -130,6 +131,11 @@ def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> No
                     require_verify_email=True,
                     function_value=(registration.remarks or "").strip(),
                     extra_attributes=extra_attributes,
+                    # Le compte Keycloak prend pour identifiant l'uuid_role que
+                    # PostgreSQL vient de générer : le « sub » des jetons est alors
+                    # la clé de jointure vers utilisateurs.t_roles. Sans base
+                    # historique, Keycloak génère le sien comme avant.
+                    user_id=role_legacy.uuid_role if role_legacy else None,
                 )
             except KeycloakAdminError as exc:
                 logger.exception("Keycloak create_user: %s", exc)

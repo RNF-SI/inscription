@@ -88,8 +88,8 @@ class DisabledByDefaultTests(SimpleTestCase):
 
 class CreateRoleSqlTests(TestCase):
     def test_insert_columns_and_values(self):
-        with fake_legacy(results=[(4242,)]) as cursor:
-            id_role = legacy_writer.create_role(
+        with fake_legacy(results=[(4242, "8e3b0e1c-0f2a-4b4e-9c7d-2a1f6b5d4c30")]) as cursor:
+            role = legacy_writer.create_role(
                 identifiant="jdupont",
                 nom_role="Dupont",
                 prenom_role="Jean",
@@ -100,10 +100,13 @@ class CreateRoleSqlTests(TestCase):
                 champs_addi={"reserves": [{"id": "RNN41", "name": "Grand Lieu"}]},
             )
 
-        self.assertEqual(id_role, 4242)
+        self.assertEqual(role.id_role, 4242)
+        # L'uuid_role remonte par RETURNING : il sert d'identifiant au compte
+        # Keycloak, le « sub » des jetons devient donc la clé de jointure.
+        self.assertEqual(role.uuid_role, "8e3b0e1c-0f2a-4b4e-9c7d-2a1f6b5d4c30")
         sql, params = cursor.calls[0]
         self.assertIn("INSERT INTO utilisateurs.t_roles", sql)
-        self.assertIn("RETURNING id_role", sql)
+        self.assertIn("RETURNING id_role, uuid_role", sql)
         # Les colonnes à valeur par défaut ou gérées par trigger ne sont pas écrites.
         for forbidden in ("id_role,", "uuid_role", "active", "groupe", "date_insert", "date_update"):
             self.assertNotIn(forbidden, sql.split("VALUES")[0])
