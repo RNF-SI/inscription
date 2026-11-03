@@ -29,7 +29,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.7   Canal Zammad « trusted »                               à vérifier
  0.8   Tolérance d'horloge à la validation des jetons         réglé
  0.9   Node 22 sur le conteneur applicatif                   À FAIRE
- 0.10  ``redirect_uri`` de prod sur ``inscription-spa``      À FAIRE
+ 0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
 ===== ===================================================== ==============
 
 Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
@@ -277,25 +277,40 @@ leurs droits.
     Place disque : 4,0 Go libres sur 7,8 Go. ``node_modules`` pèse 411 Mo
     mesurés, plus ~17 Mo de cache Angular — c'est large.
 
-0.10 — ``redirect_uri`` de production sur le client ``inscription-spa``. À FAIRE.
-    Mesuré le 2026-11-03 sur le realm ``si-rnf``, sans aucun identifiant, par
-    l'``authorization endpoint`` :
+0.10 — ``redirect_uri`` de production sur ``inscription-spa``. ✅ fait le 2026-11-03.
+    **Constat initial**, mesuré sur le realm ``si-rnf`` sans aucun identifiant,
+    par l'``authorization endpoint`` :
 
     - ``redirect_uri=http://localhost:4200/auth/callback`` → **200**, le
       formulaire de connexion s'affiche ;
     - ``redirect_uri=https://plateformes.reserves-naturelles.org/auth/callback``
       → **400, « Paramètre invalide : redirect_uri »**.
 
-    Le client existe donc bien dans le realm de production, mais **il n'est
-    déclaré que pour le développement local**. En l'état, la connexion échoue au
-    tout premier saut après la bascule, avec un message qui ne désigne pas la
-    cause côté application.
+    Le client existait donc bien dans le realm de production, mais **n'y était
+    déclaré que pour le développement local**. En l'état, la connexion aurait
+    échoué au tout premier saut après la bascule, avec un message que rien côté
+    application ne relie à la cause.
 
-    À ajouter dans *Clients → inscription-spa* : l'URI de redirection de
-    production dans *Valid redirect URIs*, et l'origine du front dans
-    *Web origins* (§ 1). Et à **retirer** l'URI ``localhost`` d'un client de
-    production : sur un client public, elle permet à qui fait suivre une URL
-    d'autorisation forgée de récupérer un code sur la machine de la victime.
+    **Corrigé**, et revérifié par le même sondage :
+
+    - l'URI de production renvoie désormais **200** et le formulaire de connexion ;
+    - l'URI ``localhost`` a été **retirée** et renvoie 400 — c'est voulu : sur un
+      client public, elle permet à qui fait suivre une URL d'autorisation forgée
+      de récupérer un code d'autorisation sur la machine de la victime ;
+    - ``https://<front>/nimporte-quoi`` renvoie 400, donc **aucun joker** du type
+      ``https://<front>/*`` n'a été posé. Ce troisième contrôle vaut la peine :
+      un joker aurait rendu le premier test vert tout en ouvrant la même brèche
+      que l'URI ``localhost``.
+
+    Contrôle, reproductible sans aucun identifiant ::
+
+        curl -s -o /dev/null -w '%{http_code}\n' \
+          "<keycloak>/realms/<realm>/protocol/openid-connect/auth?client_id=inscription-spa\
+    &response_type=code&scope=openid&redirect_uri=<uri encodée>"
+
+    200 = URI acceptée (le formulaire s'affiche), 400 = refusée. Un client
+    inexistant répond 400 aussi, mais sans le message « Paramètre invalide :
+    redirect_uri » : les deux cas se distinguent.
 
     Le client de service ``inscription-admin`` existe lui aussi : une demande
     ``client_credentials`` avec un secret volontairement faux renvoie
