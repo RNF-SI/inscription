@@ -194,14 +194,15 @@ leurs droits.
     repose que l'attribut ``legacy_id_role``. Toute validation faite à la main
     dans UsersHub après l'import devrait être rejouée à la main ici.
 
-    ⚠️ **Conséquence immédiate : les demandes en attente dans
-    ``utilisateurs.temp_users`` ne seront plus traitées par personne.** La copie
-    du 2026-11-02 en portait quatre, datées des 28 et 29 octobre — des demandes
-    vivantes, pas du résidu. ``temp_users`` n'est pas reprise par l'import, qui
-    ne lit que ``t_roles`` : ces personnes doivent soit être validées dans
-    UsersHub avant la bascule, soit refaire leur demande sur la nouvelle
-    plateforme, et dans ce cas être prévenues. Recenser l'état réel avant de
-    commencer ::
+    ⚠️ **Les demandes restées dans ``utilisateurs.temp_users`` ne seront plus
+    traitées par personne**, et ``temp_users`` n'est pas reprise par l'import,
+    qui ne lit que ``t_roles``. Une demande qui y dort au moment de la bascule
+    est donc perdue : son auteur doit la refaire sur la nouvelle plateforme, et
+    être prévenu.
+
+    Au 2026-11-03 la file de production est vide — les quatre demandes des 28 et
+    29 octobre ont été validées. À revérifier juste avant d'ouvrir la fenêtre,
+    puisque plus personne ne surveille cette file ::
 
         SELECT date_insert::date, identifiant, prenom_role, nom_role
         FROM utilisateurs.temp_users ORDER BY date_insert;
