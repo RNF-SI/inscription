@@ -28,7 +28,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.6   Correspondance applications → base historique          décidé : vide
  0.7   Canal Zammad « trusted »                               à vérifier
  0.8   Tolérance d'horloge à la validation des jetons         réglé
- 0.9   Node 22 sur le conteneur applicatif                   À FAIRE
+ 0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
 ===== ===================================================== ==============
 
@@ -262,17 +262,34 @@ leurs droits.
     jetons lui paraissant seulement plus vieux.
 
 
-0.9 — Node 22 sur le conteneur applicatif. À FAIRE.
+0.9 — Node 22 sur le conteneur applicatif. ✅ fait le 2026-11-03.
     Relevé le 2026-11-03 sur le conteneur : **Node v20.19.2**, npm 9.2.0. Or
     ``frontend/.nvmrc`` demande 22 et ``package.json`` déclare
     ``engines.node ^22.22.3 || ^24.15.0 || >=26.0.0`` : le CLI Angular refuse
     de démarrer et le ``npm run build`` du § 5 échoue avant de compiler.
 
-    À régler **avant** la fenêtre, pas pendant. Le plus propre sur ce conteneur,
-    qui n'héberge que cette application, est ``nvm`` sous l'utilisateur
-    ``plateforme`` : rien de système n'est touché, et ``nvm use`` lit déjà le
-    ``.nvmrc``. L'installation par le dépôt NodeSource marcherait aussi mais
-    remplace le Node du système.
+    Réglé **avant** la fenêtre, et sans toucher au Node du système : l'archive
+    officielle, vérifiée par empreinte, dépliée dans le home de ``plateforme``.
+    ``nvm`` n'était pas installé, et le script d'installation de nvm comme le
+    dépôt NodeSource en demandaient plus que nécessaire ::
+
+        case "$(uname -m)" in x86_64) A=x64 ;; aarch64) A=arm64 ;; esac
+        V=v22.23.4
+        cd "$(mktemp -d)"
+        curl -fsSLO "https://nodejs.org/dist/$V/node-$V-linux-$A.tar.xz"
+        curl -fsSLO "https://nodejs.org/dist/$V/SHASUMS256.txt"
+        grep " node-$V-linux-$A.tar.xz$" SHASUMS256.txt | sha256sum -c -
+        tar -xJf "node-$V-linux-$A.tar.xz" -C "$HOME/.local"
+        ln -sfn "$HOME/.local/node-$V-linux-$A" "$HOME/.local/node22"
+
+    Résultat : ``node v22.23.4``, ``npm 10.9.9``, le Node du système (v20.19.2)
+    laissé en place. Le ``sha256sum -c`` fait échouer la suite si l'archive ne
+    correspond pas. Ce contrôle garantit l'intégrité du téléchargement, pas une
+    signature indépendante — ``SHASUMS256.txt`` vient du même serveur, c'est la
+    confiance TLS en ``nodejs.org`` qui porte le reste.
+
+    Le binaire s'appelle par son chemin (``~/.local/node22/bin``) ou s'ajoute au
+    ``PATH`` du seul utilisateur ``plateforme``.
 
     Place disque : 4,0 Go libres sur 7,8 Go. ``node_modules`` pèse 411 Mo
     mesurés, plus ~17 Mo de cache Angular — c'est large.
