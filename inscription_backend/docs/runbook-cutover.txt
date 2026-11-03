@@ -425,6 +425,72 @@ l'ancienne jusqu'à vidage.
 6. Bascule et vérifications
 ----------------------------
 
+6.1 — Page de maintenance pendant la fenêtre, avec exception pour l'opérateur
+
+Les plateformes RNF sont servies par un reverse proxy Apache (hôte ``Proxy``,
+43 vhosts, dont Keycloak et Zammad). **Cette configuration ne vit pas dans ce
+dépôt** : elle n'existe que sur le serveur, dans
+``/etc/apache2/sites-available/<plateforme>.conf``, et n'y est pas versionnée.
+
+Chaque vhost porte le même bloc, et la maintenance se bascule par la seule
+présence d'un fichier drapeau — sans recharger Apache :
+
+    sudo touch /etc/apache2/maintenance/flags/<plateforme>.flag   # maintenance
+    sudo rm    /etc/apache2/maintenance/flags/<plateforme>.flag   # retour
+
+Pour juger du rendu sans couper l'accès aux autres — ou, pendant la bascule,
+pour garder un chemin d'administration ouvert — ajouter une condition négative
+sur l'adresse du client avant la règle de réécriture :
+
+    RewriteCond expr "! -R '<adresse mesurée>'"
+    RewriteCond expr "! -R '10.0.50.0/24'"
+
+**L'adresse ne se devine pas, elle se mesure.** Vérifié le 2026-11-03 sur
+``plateformes`` : l'adresse du tunnel WireGuard (``10.0.50.3``) n'est *pas*
+celle que voit Apache. ``wg0`` ne fournit aucun DNS, le nom public résout donc
+en adresse publique et le trafic sort par la connexion internet du poste :
+Apache voyait l'adresse publique de cette connexion. La mesure se fait en
+chargeant le site avec un marqueur dans l'URL, puis en lisant le premier champ
+du journal — l'adresse relevée reste sur le serveur, dans le commentaire de la
+règle, et n'a pas à être consignée ici (ce dépôt est public) :
+
+    sudo grep "<marqueur>" /var/log/apache2/<plateforme>-access.log
+
+Ni ``remoteip`` ni ``rpaf`` ne sont chargés, et pfSense ne NATe pas la source
+en entrée : ``%{REMOTE_ADDR}`` est le vrai client, et il n'y a pas à recourir à
+``X-Forwarded-For`` — qui serait fourni par le client, donc falsifiable. Le
+``/24`` du tunnel est autorisé en plus de l'adresse mesurée parce que chaque
+pair WireGuard reçoit une adresse différente dans cette plage, et parce qu'une
+adresse FAI est dynamique : l'exception se périmera sans prévenir.
+
+Vérifier des deux côtés, drapeau posé, sans se contenter d'un observateur :
+
+    # témoin NON exempté depuis le Proxy : attendu 302, puis la page locale
+    # (sa taille prouve que ``ProxyPass /maintenance/ !`` évite le backend)
+    curl -sL -o /dev/null -w "%{http_code} %{url_effective} %{size_download}\n" \
+      --resolve <nom>:443:127.0.0.1 "https://<nom>/?test"
+
+    # poste exempté : le site normal. Appareil hors réseau : la maintenance.
+
+Deux pièges :
+
+- Le ``R=302`` est une redirection que les navigateurs conservent parfois,
+  bien qu'un 302 sans en-tête de cache ne doive pas l'être : après retrait du
+  drapeau, retester en navigation privée. Un ``503`` servi en place
+  (``ErrorDocument`` + ``[R=503]``) serait plus correct pour les robots
+  d'indexation, qui y lisent une indisponibilité temporaire ; le mécanisme
+  existant n'a pas été changé.
+- La règle porte sur ``^.*$`` : elle attrape aussi les appels d'API de
+  l'application proxyfiée, qui recevront du HTML là où ils attendent du JSON.
+  C'est voulu pendant une maintenance, et donc pendant la bascule.
+
+Le processus Apache étant partagé par les 43 vhosts : ``sudo apachectl
+configtest`` avant tout rechargement, puis ``sudo systemctl reload apache2``
+(graceful), jamais un ``restart``.
+
+
+6.2 — Bascule du trafic et vérifications
+
 Bascule du DNS / reverse-proxy, puis, avec un compte migré réel :
 
     1. GET /api/auth/keycloak-config/ renvoie realm et clientId attendus
