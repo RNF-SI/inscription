@@ -31,7 +31,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
  0.11  CrowdSec : conteneur en liste blanche                 fait
- 0.12  Fournisseur bcrypt sur Keycloak                       solution validée
+ 0.12  Fournisseur bcrypt sur Keycloak                       fait
 ===== ===================================================== ==============
 
 État au 2026-11-03, après une tentative de bascule arrêtée au § 0.12 :
@@ -43,11 +43,13 @@ Aucun de ces points ne se règle pendant la bascule.
   ``127.0.0.1:8000`` **sans recevoir de trafic** ;
 - le vhost pointe toujours vers l'ancien Flask en ``:5000``, la maintenance a
   été retirée, et l'ancienne plateforme sert normalement ;
-- **aucun compte n'a été importé** : le § 0.12 l'interdit tant qu'il n'est pas
-  levé.
+- le § 0.12 **a été levé le même jour** : le fournisseur bcrypt est déployé et
+  vérifié sur la production ;
+- **aucun compte n'a encore été importé**.
 
-Reprendre une fenêtre, une fois le § 0.12 réglé, commence donc au § 3 — en
-revérifiant d'abord ``temp_users`` (§ 0.5), que plus personne ne surveille.
+Une reprise commence donc au § 3, et non au § 2 — en revérifiant d'abord
+``temp_users`` (§ 0.5), que plus personne ne surveille, et en reposant le
+drapeau de maintenance (§ 6.1).
 
 L'import des comptes suppose ``migrate``, ``seed_catalog`` et ``migrate_legacy``
 déjà passés — sans eux les comptes importés n'auraient ni organisme ni réserve à
@@ -424,7 +426,7 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     l'adresse interne, et un certificat présenté par Keycloak lui-même.
 
 
-0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ⚠️ À DÉPLOYER.
+0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ✅ fait le 2026-11-03.
     **La bascule du 2026-11-03 a été arrêtée ici**, après la pose du drapeau de
     maintenance et avant l'import. Aucun compte n'avait été créé.
 
@@ -522,7 +524,25 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     Java 25 ne se manifesterait qu'au premier redémarrage, c'est-à-dire ce
     jour-là. Java 21 est la version attendue.
 
-    Contrôle après déploiement, avant de reprendre l'import ::
+    **Déployé et vérifié sur la production le 2026-11-03.** ``kc.sh build`` a
+    journalisé l'avertissement de SPI interne — c'est lui qui atteste le
+    chargement —, Keycloak est reparti en 4,5 s, et les sessions ont été
+    conservées (Keycloak 26 les persiste en base par défaut : personne n'a été
+    déconnecté du parc).
+
+    Le même essai qui échouait le matin donne désormais, sur ``si-rnf`` ::
+
+        bon mot de passe            → HTTP 200, jeton obtenu
+        mauvais mot de passe        → HTTP 401, invalid_user_credentials
+        algorithme après connexion  → argon2
+
+    Les trois lignes comptent, et la deuxième autant que la première.
+
+    ⚠️ ``providers/`` contenait déjà ``client-access-guard.jar``. **Deux**
+    extensions sont donc à revalider à chaque montée de version de Keycloak, pas
+    une seule.
+
+    Contrôle à refaire après toute montée de version ::
 
         GET /admin/serverinfo → providers["password-hashing"] contient "bcrypt"
 
