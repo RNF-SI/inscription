@@ -572,6 +572,51 @@ Dans ce realm :
 - Mapper de groupes sur le client SPA pour inclure ``groups`` dans le JWT. Le
   repli par Admin API existe, mais coûte un appel par requête.
 - Attribut ``legacy_id_role`` déclaré (§ 0.2).
+- **``Edit username`` activé** (*Realm settings → Login*). Il vaut ``false`` par
+  défaut, et l'identifiant devient alors immuable **y compris par l'API Admin** :
+  ``update_user_profile`` renvoie
+  ``{"field":"username","errorMessage":"error-user-attribute-read-only"}``. Sans
+  ce réglage, tout le § 4.1 est inopérant — les 265 personnes dont le login a été
+  réécrit ne peuvent pas le régulariser, et le bandeau ne disparaît jamais.
+- **``Forgot password`` désactivé** (*Realm settings → Login*). Le parcours de
+  Keycloak n'écrirait que dans Keycloak : l'usager garderait son ancien mot de
+  passe sur toutes les applications qui lisent ``t_roles``. La plateforme a le
+  sien, ``POST /api/password-reset/``, qui écrit des deux côtés. Même raison que
+  pour ``manage-account`` ci-dessus : fermer une porte en laissant l'autre
+  ouverte ne ferme rien.
+
+⚠️ **Les comptes créés par la plateforme n'ont aucun rôle par défaut.**
+Imposer l'``uuid_role`` comme identifiant Keycloak oblige à passer par
+``partialImport`` (§ 3.1), et ce chemin — contrairement à ``POST /users`` —
+**n'attribue pas ``default-roles-<realm>``**. Ce n'est pas propre à l'import :
+``workflows.py`` crée de la même façon le compte de chaque inscription validée.
+
+Deux conséquences, toutes deux rencontrées en production le 2026-11-03 :
+
+- **Aucune audience dans leurs jetons.** Keycloak n'émet ``aud`` que si le compte
+  a un rôle sur un autre client ; sans les rôles du client ``account``, il n'y en
+  a pas. ``/api/me/`` refusait ces comptes en 403 (« Token is missing the "aud"
+  claim ») pendant que les comptes d'annuaire passaient. Corrigé dans
+  ``authentication.py``, qui replie sur ``azp`` — le contrôle du client émetteur
+  reste assuré.
+- **Le garde d'accès les refusait.** Le realm porte un authentificateur script
+  ``Client Access Guard`` (JAR dans ``providers/``) qui exige du compte un rôle
+  ``access`` sur le client visé. Ce rôle est dans ``default-roles-<realm>``, donc
+  les comptes d'annuaire l'ont et les nôtres non. ``inscription-spa`` a été
+  ajouté à ses ``EXCLUDED_CLIENTS`` : la plateforme où l'on vient *demander* ses
+  accès ne peut pas en exiger un pour entrer.
+
+  Ce garde avait de surcroît un défaut d'affichage — ``setError(String)`` ne
+  correspond à aucune signature depuis le moteur de script — qui lui faisait
+  rendre un « identifiant ou mot de passe invalide » générique au lieu de son
+  motif. Corrigé en passant ``[]`` comme second argument. Sans le journal de
+  Keycloak (``error="client_role_missing"``), le symptôme envoyait chercher du
+  côté du mot de passe, où tout allait bien.
+
+L'autre voie — accorder ``default-roles-<realm>`` à chaque compte créé — aurait
+réglé les deux d'un coup, mais demande de l'attribuer à **chaque** création, dans
+l'import comme dans ``workflows.py``. C'est de l'état à maintenir ; les deux
+correctifs ci-dessus n'en demandent aucun.
 - **Retirer ``manage-account`` des rôles par défaut du realm.** La console de
   compte Keycloak n'écrirait que dans Keycloak : l'usager garderait son ancien
   mot de passe sur toutes les applications qui lisent la base historique. Le
