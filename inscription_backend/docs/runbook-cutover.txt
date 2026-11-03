@@ -31,7 +31,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
  0.11  CrowdSec : conteneur en liste blanche                 fait
- 0.12  Fournisseur bcrypt sur Keycloak                       BLOQUANT
+ 0.12  Fournisseur bcrypt sur Keycloak                       solution validée
 ===== ===================================================== ==============
 
 État au 2026-11-03, après une tentative de bascule arrêtée au § 0.12 :
@@ -424,7 +424,7 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     l'adresse interne, et un certificat présenté par Keycloak lui-même.
 
 
-0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ⛔ BLOQUANT.
+0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ⚠️ À DÉPLOYER.
     **La bascule du 2026-11-03 a été arrêtée ici**, après la pose du drapeau de
     maintenance et avant l'import. Aucun compte n'avait été créé.
 
@@ -466,21 +466,67 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     ``partialImport`` respecte bien l'identifiant demandé : ce mécanisme-là
     fonctionne.
 
-    Pistes, par ordre de préférence :
-
-    1. **Déployer un fournisseur ``bcrypt``** (JAR dans ``providers/``,
-       ``kc.sh build``, redémarrage). ⚠️ C'est le serveur d'authentification de
-       production, et le § 0.1 note qu'un **redémarrage complet de cette VM n'a
-       jamais été testé** depuis le correctif NTP. À faire sur une fenêtre à
-       part, avec le § 0.1 relu, et non pendant une bascule.
-    2. **Renoncer à reprendre les mots de passe** et faire passer tout le monde
-       par ``POST /api/password-reset/``. 942 courriels, et quatre comptes sans
-       adresse — contraire à l'objectif tenu jusqu'ici, mais sans dépendance.
-    3. **Un SPI qui vérifie contre la base historique** à la première connexion,
-       puis réencode. Le plus propre à terme, le plus long à écrire.
-
     Le repli md5 de la même fonction souffre du même défaut, et ne sauverait
     rien : au 2026-11-03, **aucun** des 942 comptes n'a un md5 sans bcrypt.
+
+    **Solution validée sur maquette le 2026-11-03.**
+    ``leroyguillaume/keycloak-bcrypt`` v1.7.0 (JAR publié le 2025-11-19,
+    SHA-256 ``b32a7557…4c9f28``). Répétition sur un Keycloak **26.3.3** local,
+    même archive que la production, JAR déposé dans ``providers/`` :
+
+    - le fournisseur est **chargé** : ``serverinfo`` liste désormais
+      ``argon2, bcrypt, pbkdf2, pbkdf2-sha256, pbkdf2-sha512``. Le JAR est
+      construit contre 26.4.5 et fonctionne sur 26.3.3 ;
+    - un credential bcrypt importé **se vérifie** : jeton obtenu, et un mauvais
+      mot de passe reste refusé en 401 — le témoin négatif compte autant que le
+      positif, un fournisseur qui accepterait tout passerait sinon pour un
+      succès ;
+    - après la connexion réussie, Keycloak a **ré-encodé le credential en
+      argon2** de lui-même. La dépendance s'éteint donc à l'usage : chaque
+      personne qui se connecte quitte bcrypt définitivement.
+
+    ⚠️ **Ne pas suivre le README du provider sur ce point** : il fait poser une
+    politique de mot de passe ``hashing algorithm = bcrypt``. Ce serait un
+    contresens ici. La vérification se fait d'après l'algorithme inscrit dans le
+    credential, pas d'après la politique ; celle-ci ne gouverne que les
+    **nouveaux** hachages. La laisser sur le défaut du realm est ce qui permet
+    le ré-encodage ci-dessus. Poser la politique figerait tout le monde en
+    bcrypt et rendrait le fournisseur indispensable pour toujours.
+
+    ⚠️ Keycloak journalise au démarrage que ``password-hashing`` est une **SPI
+    interne, susceptible de changer sans préavis**. Le JAR est donc à revalider
+    à chaque montée de version de Keycloak, par la même maquette : elle tient en
+    un ``tar -xzf``, un ``cp`` dans ``providers/`` et le script d'essai.
+
+    Et le filet, si le fournisseur venait à échouer : **personne n'est enfermé
+    dehors**. Le parcours « mot de passe oublié » de la plateforme ne dépend pas
+    de bcrypt — il pose un mot de passe en clair que Keycloak hache avec sa
+    propre politique.
+
+    Déploiement en production — l'installation est une distribution Quarkus
+    dans ``/opt/keycloak-26.3.3``, lancée par systemd sous l'utilisateur
+    ``keycloak`` ::
+
+        sudo install -o keycloak -g keycloak -m 644 keycloak-bcrypt-1.7.0.jar \
+             /opt/keycloak-26.3.3/providers/
+        sudo -u keycloak /opt/keycloak-26.3.3/bin/kc.sh build
+        sudo systemctl restart keycloak
+
+    C'est un redémarrage de **service**, pas de VM : la réserve du § 0.1 sur le
+    redémarrage jamais testé de cette machine ne s'applique pas.
+
+    ⚠️ **Vérifier d'abord la version de Java de la VM.** Keycloak 26.3.3 refuse
+    de démarrer sur Java 25 — « Java 25 (69) is not supported by the current
+    version of Byte Buddy » — un message qui ne nomme ni Keycloak ni la cause.
+    Le service tourne tant qu'on ne le redémarre pas : une montée du système en
+    Java 25 ne se manifesterait qu'au premier redémarrage, c'est-à-dire ce
+    jour-là. Java 21 est la version attendue.
+
+    Contrôle après déploiement, avant de reprendre l'import ::
+
+        GET /admin/serverinfo → providers["password-hashing"] contient "bcrypt"
+
+    puis l'import d'un seul compte (§ 3) **suivi d'une connexion réelle**.
 
 
 1. Keycloak — realm de production
