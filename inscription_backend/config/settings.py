@@ -123,6 +123,13 @@ KEYCLOAK_SYNC_ENABLED = env.bool("KEYCLOAK_SYNC_ENABLED", default=bool(KEYCLOAK_
 # Délai des appels HTTP vers Keycloak, sur le chemin synchrone des requêtes API.
 KEYCLOAK_HTTP_TIMEOUT = env.int("KEYCLOAK_HTTP_TIMEOUT", default=10)
 
+# Tolérance d'écart d'horloge à la validation des jetons, en secondes. Le défaut
+# doit rester celui d'authentication.DEFAULT_KEYCLOAK_LEEWAY (60 s), qui porte
+# l'arbitrage et sert de repli ; c'est aussi celui de RADIS, qui valide les mêmes
+# jetons. Lu sans env.int() : une valeur illisible ne doit pas empêcher Django de
+# démarrer, get_keycloak_leeway() retombe sur le défaut.
+KEYCLOAK_LEEWAY = env("KEYCLOAK_LEEWAY", default=60)
+
 FRONTEND_PUBLIC_URL = env("FRONTEND_PUBLIC_URL", default="http://localhost:4200")
 
 # Durée de validité d'un lien de réinitialisation de mot de passe.

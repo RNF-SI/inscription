@@ -166,30 +166,40 @@ bloquants.
     « trusted » accepte ces en-têtes de *tout* expéditeur : préférer une adresse
     d'arrivée dédiée à la plateforme plutôt que la boîte support publique.
 
-0.8 — Tolérance d'horloge nulle à la validation des jetons.
-    Non bloquant, mais c'est ce qui a transformé une dérive d'horloge en panne
-    totale. ``inscriptions/authentication.py`` appelle ``jwt.decode()`` sans
-    ``leeway`` : PyJWT applique alors zéro tolérance, et ``_validate_iat`` lève
-    ``ImmatureSignatureError`` dès que ``iat > now``. Si l'horloge de Keycloak
-    passe devant celle du serveur Django **d'une seule seconde**, *tous* les
-    jetons sont refusés, avec un message qui ne désigne pas la cause.
+0.8 — Tolérance d'horloge à la validation des jetons. RÉGLÉ.
+    ``KEYCLOAK_LEEWAY``, défaut **60 s**, passé aux deux appels ``jwt.decode()``
+    de ``inscriptions/authentication.py``. Rien à faire pour la bascule : le
+    défaut convient, la variable n'est là que pour élargir la marge en urgence
+    sans redéployer. Même nom et même défaut que RADIS, qui valide les mêmes
+    jetons — deux validateurs réglés pareil.
 
-    Synchroniser les horloges (§ 0.1) est nécessaire mais ne supprime pas cette
-    falaise : elle la rend seulement moins probable. Un ``leeway`` explicite la
-    remplacerait par une pente — la RFC 7519 § 4.1.4 prévoit justement une
-    petite marge, « usually no more than a few minutes », pour l'asynchronisme
-    d'horloge entre émetteur et validateur. À traiter dans une PR à part.
+    C'est cette tolérance nulle qui avait transformé la dérive du § 0.1 en panne
+    totale : PyJWT n'accordait aucune marge, ``_validate_iat`` levait
+    ``ImmatureSignatureError`` dès que ``iat > now``, et une seule seconde
+    d'avance de Keycloak sur Django suffisait à refuser *tous* les jetons, avec
+    un message qui ne désignait pas la cause. La RFC 7519 § 4.1.4 prévoit
+    justement cette marge, « usually no more than a few minutes ».
 
-    Conséquence pratique tant que ce n'est pas fait : **ne jamais synchroniser
-    Keycloak seul**. Si le serveur Django retarde lui aussi, les deux horloges
-    s'accordent et tout fonctionne ; remettre Keycloak à l'heure le ferait
-    passer devant, et déclencherait la panne que la correction visait à
-    prévenir. Synchroniser d'abord le validateur, ensuite Keycloak : avancer
-    l'horloge de Django va dans la direction clémente, les jetons lui
-    paraissant seulement plus vieux.
+    **Ce que 60 s ne font pas.** Absorber un décrochage de plusieurs minutes —
+    les 4 min 06 s du serveur RADIS ce jour-là restent refusées, délibérément :
+    un tel écart doit rester visible et faire chercher l'horloge. Le leeway
+    remplace une falaise par une pente, il ne remplace pas NTP. Deux effets de
+    bord à connaître avant d'augmenter la valeur : PyJWT applique le même leeway
+    à toutes les dates sans permettre de régler ``iat`` et ``exp`` séparément, un
+    jeton vit donc 60 s de plus que son ``exp`` ne le dit ; et une valeur
+    illisible ou négative retombe sur le défaut au lieu de planter.
 
-    Au 2026-11-02 la question ne se pose pas : le backend tourne en conteneur
-    LXC, donc à l'heure de l'hôte, et Keycloak le rejoint par le haut.
+    **Le log nomme désormais l'écart.** Un refus pour cette cause sort en
+    ``WARNING`` avec les écarts mesurés sur ``iat``/``nbf``/``exp`` — « iat
+    +246 s » — la tolérance en vigueur et l'invitation à vérifier NTP. C'est ce
+    qui manquait le 2 novembre : le symptôme ne désignait jamais la cause. Un
+    jeton invalide pour une autre raison reste en ``INFO``, inchangé.
+
+    L'ordre de synchronisation garde son importance, même avec la tolérance :
+    **ne jamais remettre Keycloak à l'heure seul** s'il a plus de 60 s d'avance à
+    gagner sur le validateur. Synchroniser d'abord le serveur qui valide, ensuite
+    Keycloak : avancer l'horloge de Django va dans la direction clémente, les
+    jetons lui paraissant seulement plus vieux.
 
 
 1. Keycloak — realm de production
