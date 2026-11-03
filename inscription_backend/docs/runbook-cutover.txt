@@ -30,6 +30,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.8   Tolérance d'horloge à la validation des jetons         réglé
  0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
+ 0.11  CrowdSec : conteneur en liste blanche                 fait
 ===== ===================================================== ==============
 
 Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
@@ -335,6 +336,75 @@ leurs droits.
     ``invalid_client``. Reste à vérifier dans la console que son *service
     account* est activé et porte les rôles ``realm-management`` du § 1 — cela
     ne se lit pas de l'extérieur.
+
+
+0.11 — CrowdSec : exempter le conteneur applicatif. ✅ fait le 2026-11-03.
+    **Découvert en préparant la bascule, par un bannissement d'un mois.**
+
+    Le conteneur ne joint pas Keycloak par le VLAN ``IAM`` : il sort vers
+    l'adresse publique et rentre par le reverse proxy. Ses appels à l'API Admin
+    traversent donc Apache sur ``Proxy``, dont CrowdSec lit les journaux — et
+    comme pfSense ne NATe pas la source, le journal porte ``10.0.20.23`` en
+    clair. Les chemins de cette API commencent tous par ``/admin/`` :
+
+        GET /admin/realms/<realm>/users/count
+        GET /admin/realms/<realm>/users/profile
+        GET /admin/realms/<realm>/groups
+
+    Trois requêtes ont suffi à déclencher
+    ``crowdsecurity/http-admin-interface-probing``, et la décision a été
+    appliquée **au pare-feu** par le bouncer pfSense : blocage réseau dans les
+    deux sens, pour un mois. Le conteneur ne sortait plus, et ``Proxy`` ne
+    l'atteignait plus — la plateforme en service est tombée.
+
+    Symptômes, parce qu'aucun ne nomme la cause :
+
+    - depuis le conteneur, ``ConnectTimeout`` vers Keycloak (paquets jetés, pas
+      de refus), enveloppé en ``KeycloakAdminError("keycloak_unreachable")`` ;
+    - de l'extérieur, ``plateformes`` négocie le TLS avec le bon certificat puis
+      **expire sans un octet** : Apache attend son backend ;
+    - Keycloak, lui, répond normalement — ce qui égare vers la mauvaise piste.
+
+    Le moteur CrowdSec est sur ``Proxy`` (``/etc/crowdsec``, disposition
+    Debian), pas sur pfSense, qui n'en porte que la remédiation pare-feu.
+    ``cscli`` y demande ``sudo``.
+
+        sudo cscli decisions list --ip 10.0.20.23
+        sudo cscli decisions delete --ip 10.0.20.23
+
+    Exemption, dans ``/etc/crowdsec/parsers/s02-enrich/rnf-hotes-internes.yaml`` ::
+
+        name: rnf/hotes-internes-confiance
+        description: "Hôtes internes RNF dont le trafic légitime ne doit pas produire de décision"
+        whitelist:
+          reason: "conteneur applicatif 10.0.20.23 : appels normaux à l'API Admin de Keycloak"
+          ip:
+            - "10.0.20.23"
+
+    puis ``sudo systemctl restart crowdsec`` — et **vérifier le ``status``** :
+    un YAML mal formé empêche le moteur de démarrer, et les 43 vhosts se
+    retrouveraient sans protection sans qu'aucune alerte ne le signale.
+
+    Contrôle : seize appels Admin d'affilée depuis le conteneur, sans décision.
+
+    ⚠️ **Ce n'est pas seulement un prérequis d'import.** L'application appelle
+    l'API Admin en fonctionnement normal — repli sur les groupes quand le mapper
+    n'est pas configuré, résolution ``sub`` ↔ e-mail, gestion des groupes à
+    chaque validation. Sans l'exemption, la plateforme serait rebannie en
+    continu après la bascule. L'import, lui, aurait été coupé en quelques
+    secondes, à mi-chemin.
+
+    Ce que l'exemption coûte : plus aucune décision CrowdSec sur le trafic
+    venant de cet hôte. Exempter le seul scénario, ou sortir le vhost Keycloak
+    de l'acquisition, serait plus fin — et plus fragile.
+
+    **La cause de fond reste** : deux machines de la même infrastructure, à deux
+    VLAN d'écart, se parlent par l'internet public et par un proxy qui inspecte
+    leur trafic. Un chemin interne la supprimerait. Ce n'est pas une étape de
+    bascule : changer ``KEYCLOAK_BASE_URL`` pour une adresse interne casserait
+    l'``iss`` des jetons, que la SPA et les autres applications connaissent sous
+    le nom public. Il faut un DNS interne qui résolve le nom public vers
+    l'adresse interne, et un certificat présenté par Keycloak lui-même.
 
 
 1. Keycloak — realm de production
