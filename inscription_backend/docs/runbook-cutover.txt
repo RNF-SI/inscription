@@ -456,10 +456,51 @@ Deux garde-fous à connaître :
       --username-report /var/lib/inscription/identifiants-renommes.csv \
       --password-report /var/lib/inscription/comptes-sans-hash.csv
 
-Attendu, à l'échelle de la base actuelle : de l'ordre de 937 comptes traités,
-une centaine créés avec un identifiant réécrit, le reste rattaché aux comptes
-déjà présents dans le realm, **0 erreur**. Un chiffre d'erreurs non nul se
-diagnostique avant la bascule, pas après.
+Combien de comptes, au juste. ``SELECT count(*) FROM utilisateurs.t_roles``
+donnait 998 au 2026-11-03, mais ce n'est **pas** le nombre que l'import traite :
+sa clause est ``COALESCE(groupe,false)=false AND COALESCE(active,true)=true``
+— ``t_roles`` porte aussi les groupes et les comptes désactivés — puis
+``load_legacy_users()`` saute en silence les lignes dont l'``identifiant`` est
+vide (``if not username: continue``). Le chiffre à comparer se mesure donc avec
+la même clause ::
+
+    SELECT count(*) FILTER (WHERE COALESCE(groupe,false)=false
+                              AND COALESCE(active,true)=true
+                              AND COALESCE(trim(identifiant),'') <> '') AS traites,
+           count(*) FILTER (WHERE COALESCE(groupe,false)=true)          AS groupes,
+           count(*) FILTER (WHERE COALESCE(active,true)=false)          AS inactifs,
+           count(*)                                                     AS total
+    FROM utilisateurs.t_roles;
+
+⚠️ **La simulation ne dit pas ce que l'import réel fera des comptes déjà
+présents.** ``--dry-run`` force ``existant = None`` sans interroger Keycloak
+(``migrate_legacy_users_to_keycloak.py``, dans la boucle) : elle annonce donc
+tout en « créé » et ``rattachés = 0``, même si le realm contient déjà ces
+personnes. Au 2026-11-03 le realm ``si-rnf`` comptait **105 comptes**, l'équipe
+fédérée depuis l'annuaire.
+
+Ce que la simulation établit vraiment :
+
+- le nombre de lignes retenues, à comparer au ``traites`` ci-dessus ;
+- les identifiants réécrits — la population du ``--username-report`` ;
+- la répartition des mots de passe (bcrypt reprisé, md5 reprisé, généré), donc
+  la taille du ``--password-report``.
+
+Ce qu'elle ne peut pas établir : la part créée et la part rattachée. Seul
+l'import réel la donne, et c'est à ce moment-là que le total des deux doit
+retomber sur ``traites``, avec **0 erreur**. Un chiffre d'erreurs non nul se
+diagnostique avant d'aller plus loin.
+
+L'import dure. Il temporise 0,05 s par compte rattaché, renouvelle son jeton
+tous les dix comptes et fait plusieurs appels Admin par compte : compter de
+l'ordre du quart d'heure pour un millier. **Le lancer sous ``tmux`` ou
+``screen``** — une session SSH qui tombe au milieu laisserait l'import à
+mi-chemin.
+
+Un import interrompu se reprend en le relançant : ``find_existing_keycloak_user``
+retrouve les comptes déjà créés par l'attribut ``legacy_id_role`` et les
+rattache au lieu de les recréer, sans toucher ni à leur identifiant ni à leur
+mot de passe. C'est précisément ce que cet attribut sert à garantir (§ 0.2).
 
 Ce que produisent les deux CSV :
 
