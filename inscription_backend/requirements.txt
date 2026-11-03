@@ -6,6 +6,11 @@ requests>=2.31,<3
 PyJWT[crypto]>=2.8,<3
 cryptography>=41,<44
 Pillow>=9.0
+
+# Serveur WSGI de production. Le runbook (§ 2) s'en sert pour servir
+# config.wsgi:application ; sans cette ligne le venv n'a pas de gunicorn et
+# l'unité systemd échoue sur « status=203/EXEC », qui ne nomme pas sa cause.
+gunicorn>=23,<27
 # Hachage des mots de passe pour la base historique : pypnusershub lit un
 # bcrypt $2b$ de coût 12 dans utilisateurs.t_roles.pass_plus.
 bcrypt>=4.0,<5
