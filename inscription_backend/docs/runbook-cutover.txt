@@ -473,6 +473,34 @@ Base et catalogue :
     python manage.py seed_catalog
     python manage.py migrate_legacy      # organismes, réserves, liens
 
+``migrate_legacy`` annonce des « liens **lus** », pas des liens créés, et l'écart
+est normal. Sa boucle saute en silence (``continue``) tout lien dont l'organisme
+est introuvable par ``uuid_organisme`` ou la réserve par ``area_code``. Relevé du
+2026-11-03 : 465 lus, **451 créés**. Les 14 écarts se répartissent ainsi, et
+aucun n'appelle d'action :
+
+- neuf portent des codes de test (``12345``, ``77777``, ``99999``…) ou
+  l'organisme « testi » ;
+- deux visent de vraies réserves (``RNR278``, ``RNR352``) dont l'organisme est
+  absent de ``bib_organismes`` — les réserves, elles, sont bien au catalogue ;
+- trois visent ``RNR338`` et ``RNR339``, **absentes de ``ref_geo.l_areas``** :
+  ``cor_rn_og`` référence des réserves disparues.
+
+Ces liens n'alimentent que ``/api/me/reserve-options/``, la liste des réserves
+proposées d'après l'organisme. **Ce ne sont pas des droits** — ceux-là viennent
+des groupes Keycloak ``/reserves/<code>``. Un lien manquant ne retire donc
+aucun accès.
+
+Le contrôle qui compte vraiment est que le filtre ``id_type IN ('5','6','18')``
+ne laisse aucune réserve de côté ::
+
+    SELECT id_type::text, count(*) FROM ref_geo.l_areas
+    WHERE area_code::text LIKE 'RN%' GROUP BY 1;
+
+Au 2026-11-03 : 196 + 173 + 7 = **376**, soit exactement le nombre importé. Si
+ce total dépassait un jour le nombre de ``Reserve`` en base, des réserves
+manqueraient au catalogue et personne ne pourrait s'y rattacher.
+
 Puis le WSGI, derrière le proxy mais **sans trafic utilisateur** :
 
     gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 120
