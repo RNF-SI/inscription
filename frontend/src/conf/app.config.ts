@@ -1,3 +1,5 @@
+import { environment } from 'src/environments/environment';
+
 export type NavMenuItem = {
     nom: string;
     classFa: 'fas' | 'fab';
@@ -19,8 +21,11 @@ export const AppConfig = {
         "adminMenuLink": "admin"
     },
     "contact": {
-        // Route mutualisée du backend inscription (voir core/services/contact.service.ts)
-        "apiUrl": "http://localhost:8000/api/contact/",
+        // Route mutualisée du backend inscription (voir core/services/contact.service.ts).
+        // Dérivée d'environment.apiUrl : ce fichier n'est pas remplacé au build
+        // (angular.json ne substitue qu'environment.ts), une URL écrite en dur ici
+        // partirait telle quelle en production.
+        "apiUrl": `${environment.apiUrl}/contact/`,
         "recipientEmail": "support@reserves-naturelles.org"
     },
     "menu": [

@@ -262,7 +262,14 @@ leurs droits.
 1. Keycloak — realm de production
 ----------------------------------
 
-Realm dédié (ex. ``rnf``), et dedans :
+Le realm de production est ``si-rnf``, sur ``https://keycloak.reserves-naturelles.org``.
+Vérifié le 2026-11-03 : le realm ``rnf`` que ce document donnait en exemple
+n'existe pas, et ``auth.reserves-naturelles.org`` ne porte aucun vhost — le nom
+résout bien, mais retombe sur le vhost par défaut, dont le certificat couvre
+``ancrage.reserves-naturelles.org``. Les deux valeurs étaient écrites dans
+``environment.prod.ts`` et sont corrigées.
+
+Dans ce realm :
 
 - Client SPA ``inscription-spa`` : public, Standard flow, PKCE, redirect URI
   ``https://<front>/auth/callback``, web origins = origine du front.
@@ -450,6 +457,20 @@ Deux populations, deux sens opposés. Détail dans CLAUDE.md.
 Vérifier ``src/environments/environment.prod.ts`` (``apiUrl`` et repli Keycloak)
 avant le build. Déployer le contenu de ``dist/inscription/``, avec le fallback
 SPA : toute route non-API renvoie ``index.html``.
+
+⚠️ ``src/conf/app.config.ts`` **n'est pas substitué au build** : ``angular.json``
+ne remplace qu'``environment.ts``. Toute URL écrite en dur dans ce fichier part
+telle quelle en production. C'est ce qui est arrivé à ``contact.apiUrl``, resté
+sur ``http://localhost:8000`` : le formulaire « Contacter le support » aurait
+échoué en silence, bloqué en contenu mixte sur une page https — et le repli
+``mailto:`` de ``ContactService`` ne se déclenche que si l'URL est *vide*, pas
+si elle est injoignable. L'URL est désormais dérivée d'``environment.apiUrl``,
+qui porte déjà la distinction dev/prod.
+
+Contrôler le bundle plutôt que le source, le build étant ce qui part ::
+
+    grep -rhoE 'https://[a-z.]*reserves-naturelles[a-z./-]*' dist/inscription/ | sort -u
+    grep -rhoE 'https?://localhost[0-9:]*' dist/inscription/   # doit être vide
 
 Si l'URL de Keycloak a changé, la configuration est mise en cache navigateur dans
 ``sessionStorage`` sous ``keycloak_public_config`` : les sessions ouvertes gardent
