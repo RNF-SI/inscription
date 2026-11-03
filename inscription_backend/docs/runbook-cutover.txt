@@ -25,7 +25,7 @@ Aucun de ces points ne se règle pendant la bascule.
  0.3   Branche ``keycloak`` dans ``main``                     fait
  0.4   Écriture miroir exercée contre une vraie base          fait
  0.5   Écritures UsersHub arrêtées                            fait
- 0.6   Correspondance applications → base historique          décidé : vide
+ 0.6   Correspondance applications → groupes historiques      réglé
  0.7   Canal Zammad « trusted »                               à vérifier
  0.8   Tolérance d'horloge à la validation des jetons         réglé
  0.9   Node 22 sur le conteneur applicatif                   fait
@@ -34,26 +34,50 @@ Aucun de ces points ne se règle pendant la bascule.
  0.12  Fournisseur bcrypt sur Keycloak                       fait
 ===== ===================================================== ==============
 
-État au 2026-11-03, après une tentative de bascule arrêtée au § 0.12 :
+LA BASCULE A EU LIEU LE 2026-11-03. Ce document n'est plus une marche à
+suivre : il décrit ce qui a été fait et ce que chaque étape a coûté. Le relire
+avant toute reprise de ces mécanismes.
 
-- le § 2 **est fait** en production — clone neuf dans
-  ``/home/plateforme/inscription-django``, venv, ``.env``, ``migrate``,
-  ``seed_catalog``, ``migrate_legacy`` (289 organismes, 376 réserves), build du
-  frontend, et un service ``inscription-django`` qui écoute sur
-  ``127.0.0.1:8000`` **sans recevoir de trafic** ;
-- le vhost pointe toujours vers l'ancien Flask en ``:5000``, la maintenance a
-  été retirée, et l'ancienne plateforme sert normalement ;
-- le § 0.12 **a été levé le même jour** : le fournisseur bcrypt est déployé et
-  vérifié sur la production ;
-- **aucun compte n'a encore été importé**.
+- **945 comptes** dans le realm ``si-rnf``, identifiés par leur ``uuid_role``,
+  mots de passe historiques fonctionnels (bcrypt vérifié dans les deux sens) ;
+- le vhost du conteneur sert le nouveau front et proxyfie ``/api`` vers
+  ``127.0.0.1:8000`` ; l'ancien Flask tourne toujours en ``:5000``, inutilisé,
+  et reste la cible du § 7 ;
+- les points 1 à 7 du § 6 sont passés ;
+- la base PostgreSQL de l'ancienne plateforme et son front sont conservés.
 
-Une reprise commence donc au § 3, et non au § 2 — en revérifiant d'abord
-``temp_users`` (§ 0.5), que plus personne ne surveille, et en reposant le
-drapeau de maintenance (§ 6.1).
+**Quatre défauts n'ont été trouvés qu'en production, tous muets.** Le § 1 porte
+le premier, le § 0.6 et le § 3.3 les trois autres :
+
+1. ``partialImport`` — seul chemin qui respecte l'``id`` fourni, donc seul moyen
+   d'imposer l'``uuid_role`` — **n'attribue pas ``default-roles-<realm>``**. D'où
+   un garde d'accès qui refuse la connexion, puis des jetons sans ``aud`` refusés
+   par l'API. Les deux frappent aussi chaque inscription validée
+   (``workflows.py:138`` emprunte le même chemin), pas seulement l'import.
+2. aucune application n'avait de ``legacy_group_id_role`` : un accès validé
+   n'était écrit que dans Keycloak (§ 0.6).
+3. l'import lisait les droits dans ``cor_role_app_profil`` seule, 31 lignes pour
+   993 comptes : presque personne n'entrait dans les groupes ``/applications``
+   (§ 3.3).
+4. le ``--dry-run`` n'interrogeait pas Keycloak et annonçait l'inverse de la
+   réalité sur un import rejoué (§ 3).
+
+Aucun ne pouvait se voir sur le realm de test : il fallait une vraie connexion
+navigateur d'un compte créé par ce chemin, et une base neuve passée par
+``migrate`` puis ``seed_catalog``. **Un ``plateformes_stagging`` existe** (vhost
+sur ``Proxy``, autre conteneur) : les quatre s'y seraient trouvés sans toucher à
+la production.
+
+Reste à faire, après la bascule : retirer ``manage-account`` de
+``default-roles-si-rnf``, trancher le cas des deux lignes historiques rattachées
+au même compte (§ 3.3), nettoyer les IP d'exception du § 6.1 et les sauvegardes
+``.avant-bascule-2026-11-03``, puis le § 8.
 
 L'import des comptes suppose ``migrate``, ``seed_catalog`` et ``migrate_legacy``
 déjà passés — sans eux les comptes importés n'auraient ni organisme ni réserve à
-rejoindre, et aucune application à laquelle rattacher leurs droits.
+rejoindre, et aucune application à laquelle rattacher leurs droits. L'ordre
+compte : ``seed_catalog`` **avant** l'import, puisque c'est lui qui pose la
+correspondance vers les groupes historiques (§ 0.6).
 
 0.1 — NTP sur la VM Keycloak. RÉGLÉ le 2026-11-02.
     L'horloge avait dérivé et plus aucun jeton ne validait (``iat``/``exp`` hors
