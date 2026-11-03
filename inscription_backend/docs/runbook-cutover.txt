@@ -1009,10 +1009,26 @@ Bascule du DNS / reverse-proxy, puis, avec un compte migré réel :
        nouvelle valeur
     5. changement de mot de passe → connexion sur une application qui lit la base
        historique, avec le nouveau mot de passe. C'est le test qui valide le
-       bcrypt de bout en bout.
+       bcrypt de bout en bout. **Passé le 2026-11-03** : la connexion marche sur
+       Keycloak et sur Tourbières. Un refus pour *absence de droit* sur
+       l'application visée vaut succès — le mot de passe a été vérifié avant ;
+       seul un refus d'identifiants est un échec.
     6. inscription de test → validation super-admin → décision d'un admin
-       applicatif, et SELECT * FROM complement_rnf.cor_role_rn WHERE id_role = …
-       pour vérifier que le trigger a peuplé les réserves sans doublon
+       applicatif, et ::
+
+           SELECT role_id, rn_id, referent, referent_valid, count(*)
+             FROM complement_rnf.cor_role_rn WHERE role_id = …
+            GROUP BY 1, 2, 3, 4 HAVING count(*) > 1;   -- doit être vide
+
+       pour vérifier que le trigger a peuplé les réserves sans doublon. ⚠️ La
+       colonne s'appelle **``role_id``**, pas ``id_role`` : ce document donnait
+       la mauvaise, et la requête échouait.
+
+       ⚠️ Cette inscription-là **envoie des courriels**, contrairement à
+       l'import : ``super_admin_approve`` pose ``require_verify_email=True`` puis
+       appelle ``send_verify_email``. Le compte créé porte donc l'action requise
+       ``VERIFY_EMAIL`` et ne pourra pas se connecter avant que le lien soit
+       suivi. Utiliser une adresse dont on relève la boîte.
     7. e-mails reçus (usager et super-admins), formulaire de contact → ticket
        Zammad rattaché au bon client
     8. reconcile_legacy_keycloak --dry-run : vide
