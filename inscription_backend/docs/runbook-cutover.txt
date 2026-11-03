@@ -120,11 +120,14 @@ bloquants.
     Elle porte tout le miroir historique et le rattrapage des identifiants. On ne
     déploie pas depuis une branche de travail.
 
-0.4 — Exercer l'écriture miroir contre une vraie base.
+0.4 — Exercer l'écriture miroir contre une vraie base. ✅ fait
     Les tests unitaires la couvrent avec des bouchons. Les tests d'intégration
     (``test_legacy_integration``) rejouent le schéma historique **avec ses
     triggers de production** : c'est le seul endroit qui prouve que ``cor_role_rn``
     est peuplé sans doublon et que les bases satellites reçoivent le compte.
+
+    Les huit passent (PostgreSQL 18.6). À rejouer après toute modification de
+    ``legacy_writer`` ou de ``mirror``.
 
         createdb -T template0 inscription_legacy_test
         export LEGACY_TEST_INTEGRATION=1
@@ -132,9 +135,29 @@ bloquants.
           DJANGO_SETTINGS_MODULE=config.settings \
           python manage.py test inscriptions.tests.test_legacy_integration
 
-    Ils refusent toute base dont le nom ne contient pas « test ». Le ``.env``
-    pointant sur la production, la variable doit être **exportée dans
-    l'environnement** : django-environ lit le fichier en ``overwrite=False``.
+    Deux garde-fous, et non un seul : le nom de la base doit contenir « test »,
+    **et** ``utilisateurs.t_roles`` doit être vide. Une copie de production
+    s'appelant volontiers « …_test », c'est le second qui protège vraiment.
+
+    La variable doit être **exportée dans l'environnement** dès que le ``.env``
+    local pointe ailleurs : django-environ lit le fichier en ``overwrite=False``,
+    la variable exportée gagne donc. Vérifier vers quoi il pointe avant de
+    lancer — selon les postes, c'est la production ou une copie locale peuplée,
+    et dans les deux cas ce n'est pas la base jetable attendue.
+
+    Deux pièges de poste de travail rencontrés :
+
+    - ``createdb`` **avec** ``-T template0`` n'est pas un détail. Après une montée
+      de glibc, ``template1`` traîne une version de collation périmée et toute
+      création de base qui en dérive échoue (« collation version mismatch »).
+      Django créant ses bases de test depuis ``template1``, il faut alors
+      ``ALTER DATABASE template1 REFRESH COLLATION VERSION``. Les bases
+      applicatives concernées méritent en plus un ``REINDEX``, le tri des index
+      texte ayant changé sous elles.
+    - Si les migrations de l'app sont appliquées à la base historique, ``0003``
+      échoue. C'est ce que ``TEST: {"MIGRATE": False}`` sur l'alias ``legacy``
+      évite (voir ``config/settings.py``) ; la base historique n'a aucune table
+      Django à recevoir.
 
     ⚠️ Si l'essai se fait sur une **copie** de la production plutôt que sur le
     schéma de test : un ``pg_dump`` emporte ``CREATE SERVER``, ``CREATE USER

@@ -165,6 +165,19 @@ LEGACY_DATABASE_URL = env("LEGACY_DATABASE_URL", default="").strip()
 
 if LEGACY_DATABASE_URL:
     DATABASES["legacy"] = env.db_url_config(LEGACY_DATABASE_URL)
+    # La base historique n'a aucune table Django : son schéma appartient à
+    # geonature_global, et toutes les écritures passent par du SQL brut.
+    #
+    # Sans ce réglage, le lanceur de tests de Django y applique quand même les
+    # migrations de l'app — il crée une base de test par alias, et faute de
+    # DATABASE_ROUTERS rien ne l'en dissuade. La migration de données 0003 échoue
+    # alors : elle interroge « default », déjà migrée jusqu'au bout, avec un modèle
+    # historique de l'état 0003 qui attend encore la colonne decided_by_id.
+    # C'est ce qui empêchait test_legacy_integration de démarrer.
+    #
+    # En production la question ne se pose pas : « manage.py migrate » sans
+    # --database ne migre que « default ».
+    DATABASES["legacy"].setdefault("TEST", {})["MIGRATE"] = False
 
 # Écriture miroir vers la base historique (schémas utilisateurs / complement_rnf).
 # Tant que les applications RNF lisent leurs comptes dans cette base, toute mutation
