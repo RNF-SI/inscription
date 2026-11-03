@@ -867,6 +867,42 @@ Contrôle :
 
     python manage.py reconcile_legacy_keycloak      # rapport seul, doit être vide
 
+3.3 — Vérifier les effectifs des groupes ``/applications``, et rejouer l'import
+      si besoin. AJOUTÉ le 2026-11-03, après un import incomplet en production.
+
+    L'import lisait les droits applicatifs dans ``cor_role_app_profil`` seule —
+    31 lignes pour 993 comptes. Résultat : **une** personne dans
+    ``/applications/geonature-psdrf`` au lieu des membres de
+    ``Grp_global_et_psdrf``, **aucune** dans ``/applications/ancrage`` au lieu de
+    ceux de ``Grp_ancrage``. Le défaut est muet : l'import annonce « 0 erreur »,
+    et tant que l'authentification passe encore par UsersHub rien ne s'en
+    ressent — il ne se verrait qu'au basculement de ces applications sur
+    Keycloak.
+
+    Les droits sont désormais déduits de l'appartenance aux groupes, par
+    ``Application.legacy_group_id_role`` (§ 0.6). Comparer, par application ::
+
+        SELECT count(*) FROM utilisateurs.cor_roles g
+          JOIN utilisateurs.t_roles u ON u.id_role = g.id_role_utilisateur
+         WHERE g.id_role_groupe = 1          -- Grp_global_et_psdrf
+           AND COALESCE(u.groupe, false) = false AND COALESCE(u.active, true);
+
+    à l'effectif du groupe Keycloak correspondant. S'ils divergent, **rejouer
+    l'import** suffit, sans rien supprimer ::
+
+        python manage.py migrate_legacy_users_to_keycloak --limit 0 --force --dry-run
+        python manage.py migrate_legacy_users_to_keycloak --limit 0 --force
+
+    Chaque compte est retrouvé par son attribut ``legacy_id_role`` et
+    **rattaché**, non recréé : ``link_existing_keycloak_user`` ne pose que les
+    attributs et appelle ``assign_legacy_groups``, dont tous les appels sont
+    idempotents et additifs (``ensure_*``, ``user_join_group``). Ni identifiant,
+    ni mot de passe, ni profil ne sont touchés, et rien n'est retiré : un compte
+    sorti d'un groupe historique garde son groupe Keycloak, à retirer à la main.
+
+    ⚠️ Ne pas passer ``--clear``, jamais, et surtout pas ici : il détruirait les
+    comptes qu'on vient de vérifier.
+
 
 4. Rattrapage des identifiants
 -------------------------------
