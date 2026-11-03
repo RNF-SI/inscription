@@ -358,8 +358,8 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     Le conteneur ne joint pas Keycloak par le VLAN ``IAM`` : il sort vers
     l'adresse publique et rentre par le reverse proxy. Ses appels à l'API Admin
     traversent donc Apache sur ``Proxy``, dont CrowdSec lit les journaux — et
-    comme pfSense ne NATe pas la source, le journal porte ``10.0.20.23`` en
-    clair. Les chemins de cette API commencent tous par ``/admin/`` :
+    comme pfSense ne NATe pas la source, le journal porte l'adresse du
+    conteneur en clair. Les chemins de cette API commencent tous par ``/admin/`` :
 
         GET /admin/realms/<realm>/users/count
         GET /admin/realms/<realm>/users/profile
@@ -383,21 +383,24 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
     Debian), pas sur pfSense, qui n'en porte que la remédiation pare-feu.
     ``cscli`` y demande ``sudo``.
 
-        sudo cscli decisions list --ip 10.0.20.23
-        sudo cscli decisions delete --ip 10.0.20.23
+        sudo cscli decisions list   --ip <adresse du conteneur>
+        sudo cscli decisions delete --ip <adresse du conteneur>
 
     Exemption, dans ``/etc/crowdsec/parsers/s02-enrich/rnf-hotes-internes.yaml`` ::
 
         name: rnf/hotes-internes-confiance
         description: "Hôtes internes RNF dont le trafic légitime ne doit pas produire de décision"
         whitelist:
-          reason: "conteneur applicatif 10.0.20.23 : appels normaux à l'API Admin de Keycloak"
+          reason: "conteneur applicatif : appels normaux à l'API Admin de Keycloak"
           ip:
-            - "10.0.20.23"
+            - "<adresse du conteneur>"
 
     puis ``sudo systemctl restart crowdsec`` — et **vérifier le ``status``** :
     un YAML mal formé empêche le moteur de démarrer, et les 43 vhosts se
     retrouveraient sans protection sans qu'aucune alerte ne le signale.
+
+    L'adresse se lit dans le ``ProxyPass`` du vhost sur ``Proxy`` ; elle n'est
+    pas reportée ici, ce dépôt étant public.
 
     Contrôle : seize appels Admin d'affilée depuis le conteneur, sans décision.
 
