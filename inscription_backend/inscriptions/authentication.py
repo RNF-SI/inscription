@@ -148,6 +148,20 @@ class KeycloakJWTAuthentication(BaseAuthentication):
                 )
             except jwt.InvalidAudienceError:
                 pass
+            except jwt.MissingRequiredClaimError as exc:
+                # Jeton sans `aud` du tout. Keycloak n'en émet pas quand le compte n'a
+                # aucun rôle sur un autre client — c'est le cas des comptes créés par
+                # `partialImport`, qui ne reçoivent pas `default-roles-<realm>` et donc
+                # pas les rôles du client `account`. Constaté à la bascule du
+                # 2026-11-03 : les 943 comptes repris étaient refusés en 403 sur
+                # /api/me/ avec « Token is missing the "aud" claim », tandis que les
+                # comptes d'annuaire passaient.
+                #
+                # `MissingRequiredClaimError` n'est pas une sous-classe
+                # d'`InvalidAudienceError` : sans ce second `except`, le repli sur
+                # `azp` écrit juste en dessous n'était jamais atteint.
+                if exc.claim != "aud":
+                    raise
         claims = jwt.decode(
             token,
             signing_key.key,

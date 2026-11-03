@@ -34,10 +34,13 @@ class DecodeAudienceTests(SimpleTestCase):
         self.addCleanup(patcher.stop)
         self.jwks.return_value.get_signing_key_from_jwt.return_value = _signing_key()
 
-    def _decode_with(self, claims_by_call):
-        """jwt.decode lève InvalidAudienceError au 1er appel (aud=account), puis renvoie claims."""
+    def _decode_with(self, claims_by_call, premiere_erreur=None):
+        """jwt.decode échoue au 1er appel (audience refusée), puis renvoie claims."""
         with patch("inscriptions.authentication.jwt.decode") as decode:
-            decode.side_effect = [jwt.InvalidAudienceError("aud"), claims_by_call]
+            decode.side_effect = [
+                premiere_erreur or jwt.InvalidAudienceError("aud"),
+                claims_by_call,
+            ]
             return KeycloakJWTAuthentication()._decode("jeton")
 
     def test_accepts_token_whose_azp_matches_the_spa_client(self):
@@ -51,6 +54,39 @@ class DecodeAudienceTests(SimpleTestCase):
     def test_rejects_token_without_azp(self):
         with self.assertRaises(jwt.InvalidAudienceError):
             self._decode_with({"sub": "u1", "aud": "account"})
+
+    def test_accepte_un_jeton_sans_aucune_audience(self):
+        """Keycloak n'émet pas d'``aud`` quand le compte n'a aucun rôle sur un autre
+        client — le cas des comptes créés par ``partialImport``, qui ne reçoivent pas
+        ``default-roles-<realm>``.
+
+        Constaté à la bascule du 2026-11-03 : les 943 comptes repris étaient refusés
+        en 403 sur /api/me/ avec « Token is missing the "aud" claim », tandis que les
+        comptes d'annuaire passaient. PyJWT lève alors ``MissingRequiredClaimError``,
+        qui n'est pas une sous-classe d'``InvalidAudienceError`` : le repli sur ``azp``
+        n'était jamais atteint.
+        """
+        claims = self._decode_with(
+            {"sub": "u1", "azp": "inscription-spa"},
+            premiere_erreur=jwt.MissingRequiredClaimError("aud"),
+        )
+        self.assertEqual(claims["sub"], "u1")
+
+    def test_un_jeton_sans_aud_reste_refuse_si_azp_ne_correspond_pas(self):
+        """Le repli ne doit pas ouvrir l'API aux jetons des autres clients du realm."""
+        with self.assertRaises(jwt.InvalidAudienceError):
+            self._decode_with(
+                {"sub": "u1", "azp": "un-autre-client"},
+                premiere_erreur=jwt.MissingRequiredClaimError("aud"),
+            )
+
+    def test_une_autre_revendication_manquante_reste_une_erreur(self):
+        """Seule l'absence d'``aud`` autorise le repli : tout autre manque remonte."""
+        with self.assertRaises(jwt.MissingRequiredClaimError):
+            self._decode_with(
+                {"sub": "u1", "azp": "inscription-spa"},
+                premiere_erreur=jwt.MissingRequiredClaimError("iss"),
+            )
 
     def test_authenticate_returns_none_when_client_mismatches(self):
         """Le refus doit se traduire par un 401, pas par une 500."""

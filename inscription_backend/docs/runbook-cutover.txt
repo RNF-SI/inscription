@@ -842,6 +842,25 @@ Deux populations, deux sens opposés. Détail dans CLAUDE.md.
     npm ci
     npm run build    # → dist/inscription/
 
+⚠️ **Le build d'Angular 22 écrit dans ``dist/inscription/browser/``**, pas dans
+``dist/inscription/``. Le ``DocumentRoot`` doit viser ``browser``. Avec l'ancien
+chemin, ``index.html`` est introuvable, le ``FallbackResource`` se rappelle
+lui-même et Apache rend un 500 accompagné de ``AH00125: Request exceeded the
+limit of 10 subrequest nesting levels``. Le message ne nomme ni le fichier ni le
+répertoire. Les builds antérieurs au constructeur « application » d'Angular
+déposaient à la racine : un déploiement existant peut donc avoir un chemin qui
+marchait et ne marche plus.
+
+⚠️ **Les vignettes d'applications ne sont plus dans le dépôt.** Elles y étaient
+jusqu'au commit ``507cf4c`` (« gestion des applications »), qui les a retirées
+au profit d'``APPLICATION_IMAGES_DIR`` et du téléversement depuis
+l'administration. ``import_application_images`` pointe pourtant toujours par
+défaut sur ``frontend/src/assets/images``, qui ne les contient plus : un
+déploiement neuf n'y trouve rien. Les reprendre du déploiement précédent ::
+
+    python manage.py import_application_images \
+      --source <ancien clone>/frontend/src/assets/images
+
 Vérifier ``src/environments/environment.prod.ts`` (``apiUrl`` et repli Keycloak)
 avant le build. Déployer le contenu de ``dist/inscription/``, avec le fallback
 SPA : toute route non-API renvoie ``index.html``.
