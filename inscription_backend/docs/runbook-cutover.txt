@@ -13,8 +13,28 @@ qu'UsersHub acceptait et que Keycloak refuse ».
 0. Ce qui doit être réglé AVANT d'ouvrir la fenêtre de bascule
 --------------------------------------------------------------
 
-Aucun de ces points ne se règle pendant la bascule. Les quatre premiers sont
-bloquants.
+Aucun de ces points ne se règle pendant la bascule.
+
+État au 2026-11-03 :
+
+===== ===================================================== ==============
+ §     Prérequis                                             État
+===== ===================================================== ==============
+ 0.1   NTP sur la VM Keycloak                                réglé
+ 0.2   ``legacy_id_role`` et ``uuid_role`` déclarés           fait
+ 0.3   Branche ``keycloak`` dans ``main``                     fait
+ 0.4   Écriture miroir exercée contre une vraie base          fait
+ 0.5   Écritures UsersHub arrêtées                            fait
+ 0.6   Correspondance applications → base historique          décidé : vide
+ 0.7   Canal Zammad « trusted »                               à vérifier
+ 0.8   Tolérance d'horloge à la validation des jetons         réglé
+===== ===================================================== ==============
+
+Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
+§ 3. L'import des comptes suppose ``migrate``, ``seed_catalog`` et
+``migrate_legacy`` déjà passés — sans eux les comptes importés n'auraient ni
+organisme ni réserve à rejoindre, et aucune application à laquelle rattacher
+leurs droits.
 
 0.1 — NTP sur la VM Keycloak. RÉGLÉ le 2026-11-02.
     L'horloge avait dérivé et plus aucun jeton ne validait (``iat``/``exp`` hors
@@ -98,7 +118,7 @@ bloquants.
       même traitement.
 
 0.2 — Déclarer ``legacy_id_role`` ET ``uuid_role`` dans le profil utilisateur du
-      realm de prod.
+      realm de prod. ✅ fait — les deux sont déclarés.
     *Realm settings → User profile → Create attribute*, comme ``function`` l'est
     déjà. Keycloak accepte tout attribut non déclaré puis **le jette
     silencieusement** : sans cette déclaration, l'import pose l'attribut, il
@@ -116,9 +136,9 @@ bloquants.
 
         GET /admin/realms/<realm>/users?q=legacy_id_role:42&exact=true
 
-0.3 — Fusionner la branche ``keycloak`` dans ``main``.
-    Elle porte tout le miroir historique et le rattrapage des identifiants. On ne
-    déploie pas depuis une branche de travail.
+0.3 — Fusionner la branche ``keycloak`` dans ``main``. ✅ fait (PR #21).
+    Elle portait tout le miroir historique et le rattrapage des identifiants. On ne
+    déploie pas depuis une branche de travail. Déployer depuis ``main``.
 
 0.4 — Exercer l'écriture miroir contre une vraie base. ✅ fait
     Les tests unitaires la couvrent avec des bouchons. Les tests d'intégration
@@ -167,11 +187,24 @@ bloquants.
     jamais simplement couper le lien : l'INSERT du trigger échouerait et
     annulerait la création de compte.
 
-0.5 — Arrêter les écritures par UsersHub.
-    Les deux mondes ne se réconcilient pas tout seuls :
+0.5 — Arrêter les écritures par UsersHub. ✅ fait le 2026-11-03.
+    Une seule personne validait les demandes dans UsersHub, et elle a cessé. Le
+    risque était réel : les deux mondes ne se réconcilient pas tout seuls,
     ``reconcile_legacy_keycloak`` rapporte les écarts mais, en ``--apply``, ne
     repose que l'attribut ``legacy_id_role``. Toute validation faite à la main
-    dans UsersHub après l'import devra être rejouée à la main ici.
+    dans UsersHub après l'import devrait être rejouée à la main ici.
+
+    ⚠️ **Conséquence immédiate : les demandes en attente dans
+    ``utilisateurs.temp_users`` ne seront plus traitées par personne.** La copie
+    du 2026-11-02 en portait quatre, datées des 28 et 29 octobre — des demandes
+    vivantes, pas du résidu. ``temp_users`` n'est pas reprise par l'import, qui
+    ne lit que ``t_roles`` : ces personnes doivent soit être validées dans
+    UsersHub avant la bascule, soit refaire leur demande sur la nouvelle
+    plateforme, et dans ce cas être prévenues. Recenser l'état réel avant de
+    commencer ::
+
+        SELECT date_insert::date, identifiant, prenom_role, nom_role
+        FROM utilisateurs.temp_users ORDER BY date_insert;
 
 0.6 — Décider de la correspondance applications → base historique.
     ``seed_catalog`` ne renseigne pas ``legacy_id_application``,
