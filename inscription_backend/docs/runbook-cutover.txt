@@ -16,15 +16,86 @@ qu'UsersHub acceptait et que Keycloak refuse ».
 Aucun de ces points ne se règle pendant la bascule. Les quatre premiers sont
 bloquants.
 
-0.1 — NTP sur la VM Keycloak.
+0.1 — NTP sur la VM Keycloak. RÉGLÉ le 2026-11-02.
     L'horloge avait dérivé et plus aucun jeton ne validait (``iat``/``exp`` hors
-    tolérance) : les connexions tombaient sans message exploitable. Vérifier :
+    tolérance) : les connexions tombaient sans message exploitable.
 
-        timedatectl show -p NTPSynchronized -p SystemNTPServers
+    **Cause.** L'interface ``IAM`` de pfSense est en refus par défaut et sa
+    liste blanche ne comportait aucune règle NTP : l'UDP 123 tombait dans le
+    deny implicite de dernière ligne. Ni OVH, ni l'hyperviseur, ni la VM — un
+    seul filtre, à un seul endroit. Le DNS, lui, était déjà servi par pfSense :
+    c'est ce voisinage qui a donné la forme du correctif.
 
-    ``NTPSynchronized=yes`` et au moins un serveur. Si UDP 123 est fermé en
-    sortie, l'ouvrir ou passer par un relais interne. Sans cela la panne
-    reviendra, à un moment qu'on ne choisira pas.
+    La VM interrogeait pourtant ``3.debian.pool.ntp.org`` depuis 22 semaines.
+    ``/etc/systemd/timesyncd.conf`` était réduit à ``[Time]``, donc
+    ``systemd-timesyncd`` retombait sur son ``FallbackNTP`` compilé — le pool
+    public, c'est-à-dire la seule destination injoignable. Le service tournait,
+    activé au démarrage, et échouait en silence : ``Packet count: 0``. Les deux
+    causes se renforçaient, le seul chemin configuré étant le seul fermé.
+
+    **Dérive avant correction : 6,449 s de retard**, par sondage NTP direct,
+    recoupée à −6 s par le RTC et à −5 s par l'en-tête ``Date`` d'un serveur
+    HTTPS. Soit ~37 ms/jour sur 160 jours d'uptime : pente douce, parce que
+    ``kvm-clock`` est asservie au TSC de l'hôte et non à un quartz libre.
+
+    **Correctif.**
+
+    1. pfSense, Firewall → Rules → IAM, après ``Autoriser DNS`` : PASS / IPv4 /
+       **UDP** / source ``IAM subnets`` / destination ``This Firewall (self)`` /
+       port 123. La source de pfSense est un stratum 1 adossé au GPS, à ~1 ms.
+    2. Sur la VM, ``/etc/systemd/timesyncd.conf.d/10-pfsense.conf`` ::
+
+           [Time]
+           NTP=10.0.70.1
+           FallbackNTP=
+
+       Le ``FallbackNTP=`` vidé est délibéré : laissé en place, le repli vers le
+       pool public injoignable rejouerait l'échec silencieux décrit plus haut,
+       en affichant un serveur plausible et ``Packet count: 0``.
+
+    Résultat : offset retombé à **+1,6 ms**, tenu après ``systemctl restart``
+    du démon, service ``enabled``. **Un redémarrage complet de la VM n'a pas
+    été testé** — c'est le serveur d'authentification de production.
+
+    ⚠️ **Le contrôle donné ici auparavant était faux.** ``SystemNTPServers``
+    n'est pas une propriété de ``org.freedesktop.timedate1`` : ``timedatectl
+    show`` omet en silence une propriété inconnue, sans erreur ni code retour
+    non nul. La commande affichait donc une liste vide sur une machine bien
+    configurée comme sur une machine muette — et c'est elle qui a produit le
+    « aucun serveur » du constat initial. Vérifier ainsi ::
+
+        timedatectl show -p NTPSynchronized
+        timedatectl show-timesync -p SystemNTPServers -p ServerName
+        timedatectl timesync-status
+
+    Le champ décisif est ``Packet count`` : non nul, le serveur répond.
+
+    **Le VLAN ``APPS`` avait le même trou, réglé le même jour.** Son jeu de
+    règles se termine par un ``Bloque le reste`` explicite et n'autorisait pas
+    l'UDP 123 ; la règle y est désormais posée elle aussi.
+
+    Ce VLAN porte l'application RADIS (dépôt ``equipe-app``), sur une VM. Son
+    horloge retardait de **4 min 06 s** — quarante fois la dérive de Keycloak.
+    PyJWT y voyait l'``iat`` de chaque jeton dans le futur et refusait *tous*
+    les jetons, pour tous les comptes, avec « Token invalide » et sans que le
+    message désigne jamais l'horloge. Mesure refaite avant correction :
+    **+246,185 s** ; après le même drop-in, **+0,001 s**, et la connexion
+    repasse. Le même incident, donc, sur un second serveur de production, le
+    même jour, par la même cause.
+
+    Deux leçons pour qui déploie une VM de plus derrière ce pare-feu :
+
+    - **La règle seule ne synchronise rien.** Son compteur d'états restait à
+      zéro après sa pose : ``systemd-timesyncd`` n'a aucun serveur déclaré par
+      défaut et continue d'interroger le pool public, qui reste bloqué. Il faut
+      la règle **et** le drop-in — autoriser un chemin que personne n'emprunte
+      ne change rien.
+    - **Un conteneur LXC n'est pas concerné** : il n'a ni ``/dev/rtc`` ni
+      ``CAP_SYS_TIME``, il hérite de l'horloge de l'hôte, que chrony tient.
+      Seules les VM dérivent. C'est pourquoi le backend Django, en conteneur,
+      restait juste pendant que RADIS décrochait de quatre minutes sur la même
+      infrastructure — et pourquoi l'y déployer un jour en VM demanderait le
+      même traitement.
 
 0.2 — Déclarer ``legacy_id_role`` ET ``uuid_role`` dans le profil utilisateur du
       realm de prod.
@@ -94,6 +165,31 @@ bloquants.
     et tous les tickets se rattachent au ``DEFAULT_FROM_EMAIL``. Un canal
     « trusted » accepte ces en-têtes de *tout* expéditeur : préférer une adresse
     d'arrivée dédiée à la plateforme plutôt que la boîte support publique.
+
+0.8 — Tolérance d'horloge nulle à la validation des jetons.
+    Non bloquant, mais c'est ce qui a transformé une dérive d'horloge en panne
+    totale. ``inscriptions/authentication.py`` appelle ``jwt.decode()`` sans
+    ``leeway`` : PyJWT applique alors zéro tolérance, et ``_validate_iat`` lève
+    ``ImmatureSignatureError`` dès que ``iat > now``. Si l'horloge de Keycloak
+    passe devant celle du serveur Django **d'une seule seconde**, *tous* les
+    jetons sont refusés, avec un message qui ne désigne pas la cause.
+
+    Synchroniser les horloges (§ 0.1) est nécessaire mais ne supprime pas cette
+    falaise : elle la rend seulement moins probable. Un ``leeway`` explicite la
+    remplacerait par une pente — la RFC 7519 § 4.1.4 prévoit justement une
+    petite marge, « usually no more than a few minutes », pour l'asynchronisme
+    d'horloge entre émetteur et validateur. À traiter dans une PR à part.
+
+    Conséquence pratique tant que ce n'est pas fait : **ne jamais synchroniser
+    Keycloak seul**. Si le serveur Django retarde lui aussi, les deux horloges
+    s'accordent et tout fonctionne ; remettre Keycloak à l'heure le ferait
+    passer devant, et déclencherait la panne que la correction visait à
+    prévenir. Synchroniser d'abord le validateur, ensuite Keycloak : avancer
+    l'horloge de Django va dans la direction clémente, les jetons lui
+    paraissant seulement plus vieux.
+
+    Au 2026-11-02 la question ne se pose pas : le backend tourne en conteneur
+    LXC, donc à l'heure de l'hôte, et Keycloak le rejoint par le haut.
 
 
 1. Keycloak — realm de production
