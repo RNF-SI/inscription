@@ -28,6 +28,8 @@ Aucun de ces points ne se règle pendant la bascule.
  0.6   Correspondance applications → base historique          décidé : vide
  0.7   Canal Zammad « trusted »                               à vérifier
  0.8   Tolérance d'horloge à la validation des jetons         réglé
+ 0.9   Node 22 sur le conteneur applicatif                   fait
+ 0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
 ===== ===================================================== ==============
 
 Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
@@ -201,8 +203,9 @@ leurs droits.
     être prévenu.
 
     Au 2026-11-03 la file de production est vide — les quatre demandes des 28 et
-    29 octobre ont été validées. À revérifier juste avant d'ouvrir la fenêtre,
-    puisque plus personne ne surveille cette file ::
+    29 octobre ont été validées. **Revérifiée vide le 2026-11-03 juste avant la
+    bascule** (0 ligne, interrogée par le venv du Flask faute de ``psql`` sur le
+    conteneur). À revérifier si la fenêtre est repoussée ::
 
         SELECT date_insert::date, identifiant, prenom_role, nom_role
         FROM utilisateurs.temp_users ORDER BY date_insert;
@@ -259,10 +262,92 @@ leurs droits.
     jetons lui paraissant seulement plus vieux.
 
 
+0.9 — Node 22 sur le conteneur applicatif. ✅ fait le 2026-11-03.
+    Relevé le 2026-11-03 sur le conteneur : **Node v20.19.2**, npm 9.2.0. Or
+    ``frontend/.nvmrc`` demande 22 et ``package.json`` déclare
+    ``engines.node ^22.22.3 || ^24.15.0 || >=26.0.0`` : le CLI Angular refuse
+    de démarrer et le ``npm run build`` du § 5 échoue avant de compiler.
+
+    Réglé **avant** la fenêtre, et sans toucher au Node du système : l'archive
+    officielle, vérifiée par empreinte, dépliée dans le home de ``plateforme``.
+    ``nvm`` n'était pas installé, et le script d'installation de nvm comme le
+    dépôt NodeSource en demandaient plus que nécessaire ::
+
+        case "$(uname -m)" in x86_64) A=x64 ;; aarch64) A=arm64 ;; esac
+        V=v22.23.4
+        cd "$(mktemp -d)"
+        curl -fsSLO "https://nodejs.org/dist/$V/node-$V-linux-$A.tar.xz"
+        curl -fsSLO "https://nodejs.org/dist/$V/SHASUMS256.txt"
+        grep " node-$V-linux-$A.tar.xz$" SHASUMS256.txt | sha256sum -c -
+        tar -xJf "node-$V-linux-$A.tar.xz" -C "$HOME/.local"
+        ln -sfn "$HOME/.local/node-$V-linux-$A" "$HOME/.local/node22"
+
+    Résultat : ``node v22.23.4``, ``npm 10.9.9``, le Node du système (v20.19.2)
+    laissé en place. Le ``sha256sum -c`` fait échouer la suite si l'archive ne
+    correspond pas. Ce contrôle garantit l'intégrité du téléchargement, pas une
+    signature indépendante — ``SHASUMS256.txt`` vient du même serveur, c'est la
+    confiance TLS en ``nodejs.org`` qui porte le reste.
+
+    Le binaire s'appelle par son chemin (``~/.local/node22/bin``) ou s'ajoute au
+    ``PATH`` du seul utilisateur ``plateforme``.
+
+    Place disque : 4,0 Go libres sur 7,8 Go. ``node_modules`` pèse 411 Mo
+    mesurés, plus ~17 Mo de cache Angular — c'est large.
+
+0.10 — ``redirect_uri`` de production sur ``inscription-spa``. ✅ fait le 2026-11-03.
+    **Constat initial**, mesuré sur le realm ``si-rnf`` sans aucun identifiant,
+    par l'``authorization endpoint`` :
+
+    - ``redirect_uri=http://localhost:4200/auth/callback`` → **200**, le
+      formulaire de connexion s'affiche ;
+    - ``redirect_uri=https://plateformes.reserves-naturelles.org/auth/callback``
+      → **400, « Paramètre invalide : redirect_uri »**.
+
+    Le client existait donc bien dans le realm de production, mais **n'y était
+    déclaré que pour le développement local**. En l'état, la connexion aurait
+    échoué au tout premier saut après la bascule, avec un message que rien côté
+    application ne relie à la cause.
+
+    **Corrigé**, et revérifié par le même sondage :
+
+    - l'URI de production renvoie désormais **200** et le formulaire de connexion ;
+    - l'URI ``localhost`` a été **retirée** et renvoie 400 — c'est voulu : sur un
+      client public, elle permet à qui fait suivre une URL d'autorisation forgée
+      de récupérer un code d'autorisation sur la machine de la victime ;
+    - ``https://<front>/nimporte-quoi`` renvoie 400, donc **aucun joker** du type
+      ``https://<front>/*`` n'a été posé. Ce troisième contrôle vaut la peine :
+      un joker aurait rendu le premier test vert tout en ouvrant la même brèche
+      que l'URI ``localhost``.
+
+    Contrôle, reproductible sans aucun identifiant ::
+
+        curl -s -o /dev/null -w '%{http_code}\n' \
+          "<keycloak>/realms/<realm>/protocol/openid-connect/auth?client_id=inscription-spa\
+    &response_type=code&scope=openid&redirect_uri=<uri encodée>"
+
+    200 = URI acceptée (le formulaire s'affiche), 400 = refusée. Un client
+    inexistant répond 400 aussi, mais sans le message « Paramètre invalide :
+    redirect_uri » : les deux cas se distinguent.
+
+    Le client de service ``inscription-admin`` existe lui aussi : une demande
+    ``client_credentials`` avec un secret volontairement faux renvoie
+    ``unauthorized_client``, là où un client inexistant renvoie
+    ``invalid_client``. Reste à vérifier dans la console que son *service
+    account* est activé et porte les rôles ``realm-management`` du § 1 — cela
+    ne se lit pas de l'extérieur.
+
+
 1. Keycloak — realm de production
 ----------------------------------
 
-Realm dédié (ex. ``rnf``), et dedans :
+Le realm de production est ``si-rnf``, sur ``https://keycloak.reserves-naturelles.org``.
+Vérifié le 2026-11-03 : le realm ``rnf`` que ce document donnait en exemple
+n'existe pas, et ``auth.reserves-naturelles.org`` ne porte aucun vhost — le nom
+résout bien, mais retombe sur le vhost par défaut, dont le certificat couvre
+``ancrage.reserves-naturelles.org``. Les deux valeurs étaient écrites dans
+``environment.prod.ts`` et sont corrigées.
+
+Dans ce realm :
 
 - Client SPA ``inscription-spa`` : public, Standard flow, PKCE, redirect URI
   ``https://<front>/auth/callback``, web origins = origine du front.
@@ -450,6 +535,20 @@ Deux populations, deux sens opposés. Détail dans CLAUDE.md.
 Vérifier ``src/environments/environment.prod.ts`` (``apiUrl`` et repli Keycloak)
 avant le build. Déployer le contenu de ``dist/inscription/``, avec le fallback
 SPA : toute route non-API renvoie ``index.html``.
+
+⚠️ ``src/conf/app.config.ts`` **n'est pas substitué au build** : ``angular.json``
+ne remplace qu'``environment.ts``. Toute URL écrite en dur dans ce fichier part
+telle quelle en production. C'est ce qui est arrivé à ``contact.apiUrl``, resté
+sur ``http://localhost:8000`` : le formulaire « Contacter le support » aurait
+échoué en silence, bloqué en contenu mixte sur une page https — et le repli
+``mailto:`` de ``ContactService`` ne se déclenche que si l'URL est *vide*, pas
+si elle est injoignable. L'URL est désormais dérivée d'``environment.apiUrl``,
+qui porte déjà la distinction dev/prod.
+
+Contrôler le bundle plutôt que le source, le build étant ce qui part ::
+
+    grep -rhoE 'https://[a-z.]*reserves-naturelles[a-z./-]*' dist/inscription/ | sort -u
+    grep -rhoE 'https?://localhost[0-9:]*' dist/inscription/   # doit être vide
 
 Si l'URL de Keycloak a changé, la configuration est mise en cache navigateur dans
 ``sessionStorage`` sous ``keycloak_public_config`` : les sessions ouvertes gardent
