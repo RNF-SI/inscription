@@ -31,13 +31,27 @@ Aucun de ces points ne se règle pendant la bascule.
  0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
  0.11  CrowdSec : conteneur en liste blanche                 fait
+ 0.12  Fournisseur bcrypt sur Keycloak                       BLOQUANT
 ===== ===================================================== ==============
 
-Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
-§ 3. L'import des comptes suppose ``migrate``, ``seed_catalog`` et
-``migrate_legacy`` déjà passés — sans eux les comptes importés n'auraient ni
-organisme ni réserve à rejoindre, et aucune application à laquelle rattacher
-leurs droits.
+État au 2026-11-03, après une tentative de bascule arrêtée au § 0.12 :
+
+- le § 2 **est fait** en production — clone neuf dans
+  ``/home/plateforme/inscription-django``, venv, ``.env``, ``migrate``,
+  ``seed_catalog``, ``migrate_legacy`` (289 organismes, 376 réserves), build du
+  frontend, et un service ``inscription-django`` qui écoute sur
+  ``127.0.0.1:8000`` **sans recevoir de trafic** ;
+- le vhost pointe toujours vers l'ancien Flask en ``:5000``, la maintenance a
+  été retirée, et l'ancienne plateforme sert normalement ;
+- **aucun compte n'a été importé** : le § 0.12 l'interdit tant qu'il n'est pas
+  levé.
+
+Reprendre une fenêtre, une fois le § 0.12 réglé, commence donc au § 3 — en
+revérifiant d'abord ``temp_users`` (§ 0.5), que plus personne ne surveille.
+
+L'import des comptes suppose ``migrate``, ``seed_catalog`` et ``migrate_legacy``
+déjà passés — sans eux les comptes importés n'auraient ni organisme ni réserve à
+rejoindre, et aucune application à laquelle rattacher leurs droits.
 
 0.1 — NTP sur la VM Keycloak. RÉGLÉ le 2026-11-02.
     L'horloge avait dérivé et plus aucun jeton ne validait (``iat``/``exp`` hors
@@ -407,6 +421,65 @@ leurs droits.
     l'adresse interne, et un certificat présenté par Keycloak lui-même.
 
 
+0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ⛔ BLOQUANT.
+    **La bascule du 2026-11-03 a été arrêtée ici**, après la pose du drapeau de
+    maintenance et avant l'import. Aucun compte n'avait été créé.
+
+    ``build_keycloak_password_credential()`` fabrique un identifiant de
+    connexion portant ``algorithm: "bcrypt"`` (ou ``"md5"`` en repli). Or
+    **Keycloak ne fournit nativement ni l'un ni l'autre**. Sur ce serveur
+    (26.3.3) ::
+
+        GET /admin/serverinfo
+        providers["password-hashing"] → argon2, pbkdf2, pbkdf2-sha256, pbkdf2-sha512
+
+    Sans fournisseur ``bcrypt``, les 942 comptes recevraient un mot de passe que
+    personne ne peut vérifier : l'import réussirait, la console afficherait un
+    identifiant de connexion, et **chaque connexion échouerait**.
+
+    ⚠️ **L'écriture ne lève aucune erreur.** C'est ce qui rend le défaut si
+    coûteux : l'API accepte un algorithme inconnu, le stocke, et l'échec
+    n'apparaît qu'à la première tentative de connexion. Un import « 0 erreur »
+    ne prouve donc rien sur les mots de passe. C'est pourquoi l'import rejoué
+    sur le realm de test n'avait rien révélé — les fournisseurs de hachage sont
+    au niveau du **serveur**, pas du realm, et personne ne s'était connecté
+    avec le mot de passe historique d'un compte migré.
+
+    Mesure, reproductible, à faire **avant** tout import. Deux comptes jetables,
+    l'un avec un mot de passe en clair que Keycloak hache lui-même, l'autre avec
+    un bcrypt importé, puis ``grant_type=password`` sur ``admin-cli`` ::
+
+        témoin (clair)   → HTTP 400 « Account is not fully set up »
+        bcrypt importé   → HTTP 401 « Invalid user credentials »
+
+    Le témoin est indispensable : son 400 signifie que le mot de passe **a été
+    vérifié** et qu'un contrôle postérieur bloque, tandis que le 401 du bcrypt
+    est un rejet d'identifiants. Sans lui, on ne saurait pas distinguer un
+    bcrypt invérifiable d'un « direct grant » désactivé sur le client.
+
+    Vérifié sur les deux chemins de création — ``POST /users`` **et**
+    ``partialImport`` avec identifiant imposé, celui qu'emprunte l'import réel,
+    avec ``function`` renseigné pour écarter le profil incomplet. Même 401.
+    ``partialImport`` respecte bien l'identifiant demandé : ce mécanisme-là
+    fonctionne.
+
+    Pistes, par ordre de préférence :
+
+    1. **Déployer un fournisseur ``bcrypt``** (JAR dans ``providers/``,
+       ``kc.sh build``, redémarrage). ⚠️ C'est le serveur d'authentification de
+       production, et le § 0.1 note qu'un **redémarrage complet de cette VM n'a
+       jamais été testé** depuis le correctif NTP. À faire sur une fenêtre à
+       part, avec le § 0.1 relu, et non pendant une bascule.
+    2. **Renoncer à reprendre les mots de passe** et faire passer tout le monde
+       par ``POST /api/password-reset/``. 942 courriels, et quatre comptes sans
+       adresse — contraire à l'objectif tenu jusqu'ici, mais sans dépendance.
+    3. **Un SPI qui vérifie contre la base historique** à la première connexion,
+       puis réencode. Le plus propre à terme, le plus long à écrire.
+
+    Le repli md5 de la même fonction souffre du même défaut, et ne sauverait
+    rien : au 2026-11-03, **aucun** des 942 comptes n'a un md5 sans bcrypt.
+
+
 1. Keycloak — realm de production
 ----------------------------------
 
@@ -548,6 +621,20 @@ Deux garde-fous à connaître :
 
     # 2. Un seul compte, pour voir le résultat de près
     python manage.py migrate_legacy_users_to_keycloak --legacy-id <id> --force
+
+⚠️ **« Inspecter le compte dans la console » ne vérifie pas le mot de passe.**
+La console montre qu'un identifiant de connexion existe, jamais qu'il se
+vérifie — c'est exactement le piège du § 0.12. Cette étape n'est concluante que
+si l'on **se connecte réellement** avec le mot de passe historique de ce
+compte : soit dans un navigateur sur le front, soit par
+``grant_type=password`` sur ``admin-cli`` ::
+
+    curl -s -X POST "<keycloak>/realms/<realm>/protocol/openid-connect/token" \
+      -d grant_type=password -d client_id=admin-cli \
+      -d "username=<identifiant>" -d "password=<mot de passe historique>"
+
+Un jeton rendu clôt l'étape. Un ``401 Invalid user credentials`` arrête tout,
+et renvoie au § 0.12.
 
     # 3. L'import complet
     python manage.py migrate_legacy_users_to_keycloak --limit 0 --force \
