@@ -561,6 +561,21 @@ l'import réel la donne, et c'est à ce moment-là que le total des deux doit
 retomber sur ``traites``, avec **0 erreur**. Un chiffre d'erreurs non nul se
 diagnostique avant d'aller plus loin.
 
+Quatre comptes sans adresse, et pourquoi ils ne sont pas un problème. Au
+2026-11-03 : ``POPNL`` (37), ``COPNL`` (38), ``test_admin_cicada`` (1582),
+``opnl_service`` (1595) — tous ``id_organisme = -1``, des comptes techniques.
+Le profil utilisateur du realm déclare ``email`` avec
+``required: {roles: [user]}`` : l'adresse n'est exigée que lorsque la personne
+édite son propre profil, le rôle ``admin`` n'y figurant pas. L'API Admin peut
+donc les créer. Si malgré tout l'import rapporte des erreurs, **comparer
+d'abord cette liste** : quatre échecs portant ces noms sont un cas connu, pas
+un symptôme. Au-delà, ou sur d'autres comptes, on s'arrête.
+
+Leur absence d'adresse a une seconde conséquence : ``find_existing_keycloak_user``
+cherche par attribut, puis par identifiant, puis par e-mail — ces quatre-là ont
+donc une chance de moins d'être rapprochés d'un compte existant. Sans portée
+ici, aucun n'étant un compte d'annuaire.
+
 L'import dure. Il temporise 0,05 s par compte rattaché, renouvelle son jeton
 tous les dix comptes et fait plusieurs appels Admin par compte : compter de
 l'ordre du quart d'heure pour un millier. **Le lancer sous ``tmux`` ou
