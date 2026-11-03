@@ -22,13 +22,26 @@ pas que la demande soit acceptée. ``syrphes`` est la seule valeur faiblement é
 application n'accorderait rien.
 
 Rien n'est posé pour ``socle``, ``tourbieres`` et ``site-internet`` : aucun groupe ne
-leur correspond, et les deux premières ne passent de toute façon pas par une demande
-d'accès.
+leur correspond. Les deux premières ne passent de toute façon pas par une demande
+d'accès. ``site-internet`` si, mais son accès ne tient pas à un groupe : c'est le
+trigger ``complement_rnf.user_change()`` qui insère le compte dans
+``site_internet_utilisateurs`` dès qu'il existe, et son rattachement aux réserves qui
+détermine ce qu'il y voit. Vérifié en production le 2026-11-03, par une connexion au
+site avec un compte créé par la plateforme.
 
 Ce module est la **source vivante** de la correspondance, appliquée par
 ``seed_catalog``. La migration 0011 en garde une copie figée, comme toute migration ;
 elle ne s'applique qu'aux bases où le catalogue existait déjà avant elle.
 """
+
+# Applications à demande d'accès dont l'absence de groupe est **normale** : les
+# signaler à chaque déploiement apprendrait à ignorer l'avertissement.
+SANS_GROUPE_HISTORIQUE: dict[str, str] = {
+    "site-internet": (
+        "le trigger complement_rnf.user_change() insère le compte dans "
+        "site_internet_utilisateurs dès qu'il existe ; ses réserves font le reste"
+    ),
+}
 
 # slug du catalogue → utilisateurs.t_roles.id_role du groupe (groupe = true)
 GROUPES_HISTORIQUES: dict[str, int] = {

@@ -56,17 +56,42 @@ class SeedCatalogTests(TestCase):
             Application.objects.get(slug="geonature-psdrf").legacy_group_id_role, 4242
         )
 
-    def test_signale_les_applications_restees_sans_groupe(self):
+    def test_ne_signale_rien_quand_le_catalogue_est_complet(self):
+        """Un état correct doit être silencieux.
+
+        ``site-internet`` n'a pas de groupe et n'en a pas besoin : le trigger
+        ``user_change`` insère le compte dans ``site_internet_utilisateurs`` dès
+        qu'il existe. Le nommer à chaque déploiement apprendrait à ignorer
+        l'avertissement, qui n'aurait plus servi à rien le jour d'un vrai trou.
+        """
+        sortie = StringIO()
+        call_command("seed_catalog", stdout=sortie)
+
+        self.assertNotIn("Sans groupe historique", sortie.getvalue())
+
+    def test_signale_une_application_reellement_sans_groupe(self):
         """L'absence de correspondance ne doit plus être silencieuse.
 
         C'est ce silence qui a fait passer le défaut : l'accès était accordé dans
         Keycloak, l'interface affichait un succès, et rien ne disait que la base
         historique n'avait pas suivi.
         """
+        call_command("seed_catalog", stdout=StringIO())
+        Application.objects.filter(slug="geonature-psdrf").update(legacy_group_id_role=None)
+
         sortie = StringIO()
         call_command("seed_catalog", stdout=sortie)
         texte = sortie.getvalue()
 
-        self.assertIn("Sans groupe historique", texte)
-        self.assertIn("site-internet", texte, "aucun groupe ne lui correspond")
-        self.assertNotIn("geonature-psdrf", texte.split("Sans groupe historique")[1])
+        # Reposée par la commande elle-même : c'est bien le trou qu'elle comble,
+        # donc rien à signaler. Une application hors correspondance, elle, ressort.
+        self.assertNotIn("Sans groupe historique", texte)
+
+        Application.objects.create(
+            slug="nouvelle-app", nom="Nouvelle application", requires_access_request=True
+        )
+        sortie = StringIO()
+        call_command("seed_catalog", stdout=sortie)
+
+        self.assertIn("Sans groupe historique", sortie.getvalue())
+        self.assertIn("nouvelle-app", sortie.getvalue())
