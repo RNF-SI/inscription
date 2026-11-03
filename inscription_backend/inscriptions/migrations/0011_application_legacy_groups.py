@@ -21,6 +21,14 @@ Rien n'est posé pour `socle`, `tourbieres` et `site-internet` : aucun groupe ne
 correspond, et ces applications ne passent de toute façon pas par une demande d'accès.
 `legacy_id_application` reste vide partout, la production n'alimentant plus
 `cor_role_app_profil`.
+
+⚠️ Cette migration ne peut rien poser sur une base neuve : à l'heure de `migrate`, le
+catalogue n'existe pas encore — c'est `seed_catalog`, lancé juste après, qui le crée.
+Ses `UPDATE` ne trouvent alors aucune ligne, sans rien dire. C'est ce qui s'est passé
+au déploiement de production du 2026-11-03, où plus aucune application n'a écrit ses
+accès côté historique. La correspondance vivante est donc dans
+`inscriptions/legacy_groups.py`, appliquée par `seed_catalog`, et le dictionnaire
+ci-dessous n'en est que la copie figée qu'une migration doit garder.
 """
 
 from django.db import migrations
