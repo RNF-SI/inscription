@@ -52,8 +52,6 @@ export class HomeComponent implements OnInit {
   private accessRequestModalRef: NgbModalRef | null = null;
 
   ngOnInit(): void {
-    this.logDecodedTokensForDebug();
-
     const stopLoading = () => {
       this.applicationsLoading = false;
       this.cdr.detectChanges();
@@ -266,39 +264,5 @@ export class HomeComponent implements OnInit {
 
   public get user(): null | User {
     return this._authService.getCurrentUser();
-  }
-
-  private decodeJwtPayload(token: string | null): Record<string, unknown> | null {
-    if (!token) {
-      return null;
-    }
-    const parts = token.split('.');
-    if (parts.length < 2 || !parts[1]) {
-      return null;
-    }
-    try {
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-      const json = atob(padded);
-      return JSON.parse(json) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  }
-
-  private logDecodedTokensForDebug(): void {
-    const idToken = localStorage.getItem('tk_id_token');
-    const accessToken = localStorage.getItem('access_token');
-    const idPayload = this.decodeJwtPayload(idToken);
-    const accessPayload = this.decodeJwtPayload(accessToken);
-
-    console.groupCollapsed('[Auth debug] Tokens décodés');
-    console.log('id_token payload:', idPayload);
-    console.log('id_token groups:', idPayload?.['groups']);
-    console.log('id_token resource_access:', idPayload?.['resource_access']);
-    console.log('access_token payload:', accessPayload);
-    console.log('access_token groups:', accessPayload?.['groups']);
-    console.log('access_token resource_access:', accessPayload?.['resource_access']);
-    console.groupEnd();
   }
 }
