@@ -47,8 +47,59 @@ class RattachementCompteExistantTests(SimpleTestCase):
         kc = mock.MagicMock()
         kc.find_user_by_attribute.return_value = None
         kc.find_user_by_username.return_value = "sub-1"
+        kc.get_user.return_value = {"email": "jean@example.org"}
         self.assertEqual(find_existing_keycloak_user(kc, _compte()), ("sub-1", "identifiant"))
         kc.find_user_by_email.assert_not_called()
+
+    def test_identifiant_identique_mais_autre_adresse_ne_rapproche_pas(self):
+        """Le défaut constaté à la bascule du 2026-11-03.
+
+        ``normalize_username()`` replie plusieurs identifiants historiques sur la
+        même valeur — un identifiant en forme d'adresse est réduit à sa partie
+        locale, et Keycloak replie tout en minuscules. Deux personnes distinctes
+        peuvent donc revendiquer le même identifiant Keycloak.
+
+        Ce jour-là, ``contact@reserve-iledugirard.org`` et ``Contact`` — deux
+        personnes, deux organismes — ont fusionné sur un seul compte : l'une avait
+        les droits des deux, l'autre n'avait plus de compte. L'adresse les sépare.
+        """
+        kc = mock.MagicMock()
+        kc.find_user_by_attribute.return_value = None
+        kc.find_user_by_username.return_value = "sub-de-quelqu-un-dautre"
+        kc.get_user.return_value = {"email": "contact@reserve-iledugirard.org"}
+        kc.find_user_by_email.return_value = None
+        compte = _compte(username="Contact", email="contact@adena-bagnas.fr")
+        self.assertIsNone(find_existing_keycloak_user(kc, compte))
+
+    def test_identifiant_suffit_si_le_compte_keycloak_na_pas_dadresse(self):
+        """Un compte d'annuaire n'a pas toujours d'adresse renseignée : l'identifiant
+        reste alors le seul indice, et le refuser créerait un doublon."""
+        kc = mock.MagicMock()
+        kc.find_user_by_attribute.return_value = None
+        kc.find_user_by_username.return_value = "sub-ldap"
+        kc.get_user.return_value = {"email": ""}
+        self.assertEqual(
+            find_existing_keycloak_user(kc, _compte()), ("sub-ldap", "identifiant")
+        )
+
+    def test_identifiant_suffit_si_la_ligne_historique_na_pas_dadresse(self):
+        kc = mock.MagicMock()
+        kc.find_user_by_attribute.return_value = None
+        kc.find_user_by_username.return_value = "sub-1"
+        kc.get_user.return_value = {"email": "autre@example.org"}
+        self.assertEqual(
+            find_existing_keycloak_user(kc, _compte(email="")), ("sub-1", "identifiant")
+        )
+
+    def test_adresses_comparees_sans_tenir_compte_de_la_casse(self):
+        kc = mock.MagicMock()
+        kc.find_user_by_attribute.return_value = None
+        kc.find_user_by_username.return_value = "sub-1"
+        kc.get_user.return_value = {"email": "Jean@Example.ORG"}
+        self.assertEqual(
+            find_existing_keycloak_user(kc, _compte(email="jean@example.org")),
+            ("sub-1", "identifiant"),
+        )
 
     def test_rapprochement_par_email_si_identifiant_different(self):
         kc = mock.MagicMock()

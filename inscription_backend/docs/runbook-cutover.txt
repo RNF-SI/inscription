@@ -30,13 +30,30 @@ Aucun de ces points ne se règle pendant la bascule.
  0.8   Tolérance d'horloge à la validation des jetons         réglé
  0.9   Node 22 sur le conteneur applicatif                   fait
  0.10  ``redirect_uri`` de prod sur ``inscription-spa``      fait
+ 0.11  CrowdSec : conteneur en liste blanche                 fait
+ 0.12  Fournisseur bcrypt sur Keycloak                       fait
 ===== ===================================================== ==============
 
-Rien n'est encore déployé en production : l'étape suivante est le § 2, pas le
-§ 3. L'import des comptes suppose ``migrate``, ``seed_catalog`` et
-``migrate_legacy`` déjà passés — sans eux les comptes importés n'auraient ni
-organisme ni réserve à rejoindre, et aucune application à laquelle rattacher
-leurs droits.
+État au 2026-11-03, après une tentative de bascule arrêtée au § 0.12 :
+
+- le § 2 **est fait** en production — clone neuf dans
+  ``/home/plateforme/inscription-django``, venv, ``.env``, ``migrate``,
+  ``seed_catalog``, ``migrate_legacy`` (289 organismes, 376 réserves), build du
+  frontend, et un service ``inscription-django`` qui écoute sur
+  ``127.0.0.1:8000`` **sans recevoir de trafic** ;
+- le vhost pointe toujours vers l'ancien Flask en ``:5000``, la maintenance a
+  été retirée, et l'ancienne plateforme sert normalement ;
+- le § 0.12 **a été levé le même jour** : le fournisseur bcrypt est déployé et
+  vérifié sur la production ;
+- **aucun compte n'a encore été importé**.
+
+Une reprise commence donc au § 3, et non au § 2 — en revérifiant d'abord
+``temp_users`` (§ 0.5), que plus personne ne surveille, et en reposant le
+drapeau de maintenance (§ 6.1).
+
+L'import des comptes suppose ``migrate``, ``seed_catalog`` et ``migrate_legacy``
+déjà passés — sans eux les comptes importés n'auraient ni organisme ni réserve à
+rejoindre, et aucune application à laquelle rattacher leurs droits.
 
 0.1 — NTP sur la VM Keycloak. RÉGLÉ le 2026-11-02.
     L'horloge avait dérivé et plus aucun jeton ne validait (``iat``/``exp`` hors
@@ -337,6 +354,201 @@ leurs droits.
     ne se lit pas de l'extérieur.
 
 
+0.11 — CrowdSec : exempter le conteneur applicatif. ✅ fait le 2026-11-03.
+    **Découvert en préparant la bascule, par un bannissement d'un mois.**
+
+    Le conteneur ne joint pas Keycloak par le VLAN ``IAM`` : il sort vers
+    l'adresse publique et rentre par le reverse proxy. Ses appels à l'API Admin
+    traversent donc Apache sur ``Proxy``, dont CrowdSec lit les journaux — et
+    comme pfSense ne NATe pas la source, le journal porte l'adresse du
+    conteneur en clair. Les chemins de cette API commencent tous par ``/admin/`` :
+
+        GET /admin/realms/<realm>/users/count
+        GET /admin/realms/<realm>/users/profile
+        GET /admin/realms/<realm>/groups
+
+    Trois requêtes ont suffi à déclencher
+    ``crowdsecurity/http-admin-interface-probing``, et la décision a été
+    appliquée **au pare-feu** par le bouncer pfSense : blocage réseau dans les
+    deux sens, pour un mois. Le conteneur ne sortait plus, et ``Proxy`` ne
+    l'atteignait plus — la plateforme en service est tombée.
+
+    Symptômes, parce qu'aucun ne nomme la cause :
+
+    - depuis le conteneur, ``ConnectTimeout`` vers Keycloak (paquets jetés, pas
+      de refus), enveloppé en ``KeycloakAdminError("keycloak_unreachable")`` ;
+    - de l'extérieur, ``plateformes`` négocie le TLS avec le bon certificat puis
+      **expire sans un octet** : Apache attend son backend ;
+    - Keycloak, lui, répond normalement — ce qui égare vers la mauvaise piste.
+
+    Le moteur CrowdSec est sur ``Proxy`` (``/etc/crowdsec``, disposition
+    Debian), pas sur pfSense, qui n'en porte que la remédiation pare-feu.
+    ``cscli`` y demande ``sudo``.
+
+        sudo cscli decisions list   --ip <adresse du conteneur>
+        sudo cscli decisions delete --ip <adresse du conteneur>
+
+    Exemption, dans ``/etc/crowdsec/parsers/s02-enrich/rnf-hotes-internes.yaml`` ::
+
+        name: rnf/hotes-internes-confiance
+        description: "Hôtes internes RNF dont le trafic légitime ne doit pas produire de décision"
+        whitelist:
+          reason: "conteneur applicatif : appels normaux à l'API Admin de Keycloak"
+          ip:
+            - "<adresse du conteneur>"
+
+    puis ``sudo systemctl restart crowdsec`` — et **vérifier le ``status``** :
+    un YAML mal formé empêche le moteur de démarrer, et les 43 vhosts se
+    retrouveraient sans protection sans qu'aucune alerte ne le signale.
+
+    L'adresse se lit dans le ``ProxyPass`` du vhost sur ``Proxy`` ; elle n'est
+    pas reportée ici, ce dépôt étant public.
+
+    Contrôle : seize appels Admin d'affilée depuis le conteneur, sans décision.
+
+    ⚠️ **Ce n'est pas seulement un prérequis d'import.** L'application appelle
+    l'API Admin en fonctionnement normal — repli sur les groupes quand le mapper
+    n'est pas configuré, résolution ``sub`` ↔ e-mail, gestion des groupes à
+    chaque validation. Sans l'exemption, la plateforme serait rebannie en
+    continu après la bascule. L'import, lui, aurait été coupé en quelques
+    secondes, à mi-chemin.
+
+    Ce que l'exemption coûte : plus aucune décision CrowdSec sur le trafic
+    venant de cet hôte. Exempter le seul scénario, ou sortir le vhost Keycloak
+    de l'acquisition, serait plus fin — et plus fragile.
+
+    **La cause de fond reste** : deux machines de la même infrastructure, à deux
+    VLAN d'écart, se parlent par l'internet public et par un proxy qui inspecte
+    leur trafic. Un chemin interne la supprimerait. Ce n'est pas une étape de
+    bascule : changer ``KEYCLOAK_BASE_URL`` pour une adresse interne casserait
+    l'``iss`` des jetons, que la SPA et les autres applications connaissent sous
+    le nom public. Il faut un DNS interne qui résolve le nom public vers
+    l'adresse interne, et un certificat présenté par Keycloak lui-même.
+
+
+0.12 — Un fournisseur de hachage ``bcrypt`` sur Keycloak. ✅ fait le 2026-11-03.
+    **La bascule du 2026-11-03 a été arrêtée ici**, après la pose du drapeau de
+    maintenance et avant l'import. Aucun compte n'avait été créé.
+
+    ``build_keycloak_password_credential()`` fabrique un identifiant de
+    connexion portant ``algorithm: "bcrypt"`` (ou ``"md5"`` en repli). Or
+    **Keycloak ne fournit nativement ni l'un ni l'autre**. Sur ce serveur
+    (26.3.3) ::
+
+        GET /admin/serverinfo
+        providers["password-hashing"] → argon2, pbkdf2, pbkdf2-sha256, pbkdf2-sha512
+
+    Sans fournisseur ``bcrypt``, les 942 comptes recevraient un mot de passe que
+    personne ne peut vérifier : l'import réussirait, la console afficherait un
+    identifiant de connexion, et **chaque connexion échouerait**.
+
+    ⚠️ **L'écriture ne lève aucune erreur.** C'est ce qui rend le défaut si
+    coûteux : l'API accepte un algorithme inconnu, le stocke, et l'échec
+    n'apparaît qu'à la première tentative de connexion. Un import « 0 erreur »
+    ne prouve donc rien sur les mots de passe. C'est pourquoi l'import rejoué
+    sur le realm de test n'avait rien révélé — les fournisseurs de hachage sont
+    au niveau du **serveur**, pas du realm, et personne ne s'était connecté
+    avec le mot de passe historique d'un compte migré.
+
+    Mesure, reproductible, à faire **avant** tout import. Deux comptes jetables,
+    l'un avec un mot de passe en clair que Keycloak hache lui-même, l'autre avec
+    un bcrypt importé, puis ``grant_type=password`` sur ``admin-cli`` ::
+
+        témoin (clair)   → HTTP 400 « Account is not fully set up »
+        bcrypt importé   → HTTP 401 « Invalid user credentials »
+
+    Le témoin est indispensable : son 400 signifie que le mot de passe **a été
+    vérifié** et qu'un contrôle postérieur bloque, tandis que le 401 du bcrypt
+    est un rejet d'identifiants. Sans lui, on ne saurait pas distinguer un
+    bcrypt invérifiable d'un « direct grant » désactivé sur le client.
+
+    Vérifié sur les deux chemins de création — ``POST /users`` **et**
+    ``partialImport`` avec identifiant imposé, celui qu'emprunte l'import réel,
+    avec ``function`` renseigné pour écarter le profil incomplet. Même 401.
+    ``partialImport`` respecte bien l'identifiant demandé : ce mécanisme-là
+    fonctionne.
+
+    Le repli md5 de la même fonction souffre du même défaut, et ne sauverait
+    rien : au 2026-11-03, **aucun** des 942 comptes n'a un md5 sans bcrypt.
+
+    **Solution validée sur maquette le 2026-11-03.**
+    ``leroyguillaume/keycloak-bcrypt`` v1.7.0 (JAR publié le 2025-11-19,
+    SHA-256 ``b32a7557…4c9f28``). Répétition sur un Keycloak **26.3.3** local,
+    même archive que la production, JAR déposé dans ``providers/`` :
+
+    - le fournisseur est **chargé** : ``serverinfo`` liste désormais
+      ``argon2, bcrypt, pbkdf2, pbkdf2-sha256, pbkdf2-sha512``. Le JAR est
+      construit contre 26.4.5 et fonctionne sur 26.3.3 ;
+    - un credential bcrypt importé **se vérifie** : jeton obtenu, et un mauvais
+      mot de passe reste refusé en 401 — le témoin négatif compte autant que le
+      positif, un fournisseur qui accepterait tout passerait sinon pour un
+      succès ;
+    - après la connexion réussie, Keycloak a **ré-encodé le credential en
+      argon2** de lui-même. La dépendance s'éteint donc à l'usage : chaque
+      personne qui se connecte quitte bcrypt définitivement.
+
+    ⚠️ **Ne pas suivre le README du provider sur ce point** : il fait poser une
+    politique de mot de passe ``hashing algorithm = bcrypt``. Ce serait un
+    contresens ici. La vérification se fait d'après l'algorithme inscrit dans le
+    credential, pas d'après la politique ; celle-ci ne gouverne que les
+    **nouveaux** hachages. La laisser sur le défaut du realm est ce qui permet
+    le ré-encodage ci-dessus. Poser la politique figerait tout le monde en
+    bcrypt et rendrait le fournisseur indispensable pour toujours.
+
+    ⚠️ Keycloak journalise au démarrage que ``password-hashing`` est une **SPI
+    interne, susceptible de changer sans préavis**. Le JAR est donc à revalider
+    à chaque montée de version de Keycloak, par la même maquette : elle tient en
+    un ``tar -xzf``, un ``cp`` dans ``providers/`` et le script d'essai.
+
+    Et le filet, si le fournisseur venait à échouer : **personne n'est enfermé
+    dehors**. Le parcours « mot de passe oublié » de la plateforme ne dépend pas
+    de bcrypt — il pose un mot de passe en clair que Keycloak hache avec sa
+    propre politique.
+
+    Déploiement en production — l'installation est une distribution Quarkus
+    dans ``/opt/keycloak-26.3.3``, lancée par systemd sous l'utilisateur
+    ``keycloak`` ::
+
+        sudo install -o keycloak -g keycloak -m 644 keycloak-bcrypt-1.7.0.jar \
+             /opt/keycloak-26.3.3/providers/
+        sudo -u keycloak /opt/keycloak-26.3.3/bin/kc.sh build
+        sudo systemctl restart keycloak
+
+    C'est un redémarrage de **service**, pas de VM : la réserve du § 0.1 sur le
+    redémarrage jamais testé de cette machine ne s'applique pas.
+
+    ⚠️ **Vérifier d'abord la version de Java de la VM.** Keycloak 26.3.3 refuse
+    de démarrer sur Java 25 — « Java 25 (69) is not supported by the current
+    version of Byte Buddy » — un message qui ne nomme ni Keycloak ni la cause.
+    Le service tourne tant qu'on ne le redémarre pas : une montée du système en
+    Java 25 ne se manifesterait qu'au premier redémarrage, c'est-à-dire ce
+    jour-là. Java 21 est la version attendue.
+
+    **Déployé et vérifié sur la production le 2026-11-03.** ``kc.sh build`` a
+    journalisé l'avertissement de SPI interne — c'est lui qui atteste le
+    chargement —, Keycloak est reparti en 4,5 s, et les sessions ont été
+    conservées (Keycloak 26 les persiste en base par défaut : personne n'a été
+    déconnecté du parc).
+
+    Le même essai qui échouait le matin donne désormais, sur ``si-rnf`` ::
+
+        bon mot de passe            → HTTP 200, jeton obtenu
+        mauvais mot de passe        → HTTP 401, invalid_user_credentials
+        algorithme après connexion  → argon2
+
+    Les trois lignes comptent, et la deuxième autant que la première.
+
+    ⚠️ ``providers/`` contenait déjà ``client-access-guard.jar``. **Deux**
+    extensions sont donc à revalider à chaque montée de version de Keycloak, pas
+    une seule.
+
+    Contrôle à refaire après toute montée de version ::
+
+        GET /admin/serverinfo → providers["password-hashing"] contient "bcrypt"
+
+    puis l'import d'un seul compte (§ 3) **suivi d'une connexion réelle**.
+
+
 1. Keycloak — realm de production
 ----------------------------------
 
@@ -403,6 +615,34 @@ Base et catalogue :
     python manage.py seed_catalog
     python manage.py migrate_legacy      # organismes, réserves, liens
 
+``migrate_legacy`` annonce des « liens **lus** », pas des liens créés, et l'écart
+est normal. Sa boucle saute en silence (``continue``) tout lien dont l'organisme
+est introuvable par ``uuid_organisme`` ou la réserve par ``area_code``. Relevé du
+2026-11-03 : 465 lus, **451 créés**. Les 14 écarts se répartissent ainsi, et
+aucun n'appelle d'action :
+
+- neuf portent des codes de test (``12345``, ``77777``, ``99999``…) ou
+  l'organisme « testi » ;
+- deux visent de vraies réserves (``RNR278``, ``RNR352``) dont l'organisme est
+  absent de ``bib_organismes`` — les réserves, elles, sont bien au catalogue ;
+- trois visent ``RNR338`` et ``RNR339``, **absentes de ``ref_geo.l_areas``** :
+  ``cor_rn_og`` référence des réserves disparues.
+
+Ces liens n'alimentent que ``/api/me/reserve-options/``, la liste des réserves
+proposées d'après l'organisme. **Ce ne sont pas des droits** — ceux-là viennent
+des groupes Keycloak ``/reserves/<code>``. Un lien manquant ne retire donc
+aucun accès.
+
+Le contrôle qui compte vraiment est que le filtre ``id_type IN ('5','6','18')``
+ne laisse aucune réserve de côté ::
+
+    SELECT id_type::text, count(*) FROM ref_geo.l_areas
+    WHERE area_code::text LIKE 'RN%' GROUP BY 1;
+
+Au 2026-11-03 : 196 + 173 + 7 = **376**, soit exactement le nombre importé. Si
+ce total dépassait un jour le nombre de ``Reserve`` en base, des réserves
+manqueraient au catalogue et personne ne pourrait s'y rattacher.
+
 Puis le WSGI, derrière le proxy mais **sans trafic utilisateur** :
 
     gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 120
@@ -451,15 +691,85 @@ Deux garde-fous à connaître :
     # 2. Un seul compte, pour voir le résultat de près
     python manage.py migrate_legacy_users_to_keycloak --legacy-id <id> --force
 
+⚠️ **« Inspecter le compte dans la console » ne vérifie pas le mot de passe.**
+La console montre qu'un identifiant de connexion existe, jamais qu'il se
+vérifie — c'est exactement le piège du § 0.12. Cette étape n'est concluante que
+si l'on **se connecte réellement** avec le mot de passe historique de ce
+compte : soit dans un navigateur sur le front, soit par
+``grant_type=password`` sur ``admin-cli`` ::
+
+    curl -s -X POST "<keycloak>/realms/<realm>/protocol/openid-connect/token" \
+      -d grant_type=password -d client_id=admin-cli \
+      -d "username=<identifiant>" -d "password=<mot de passe historique>"
+
+Un jeton rendu clôt l'étape. Un ``401 Invalid user credentials`` arrête tout,
+et renvoie au § 0.12.
+
     # 3. L'import complet
     python manage.py migrate_legacy_users_to_keycloak --limit 0 --force \
       --username-report /var/lib/inscription/identifiants-renommes.csv \
       --password-report /var/lib/inscription/comptes-sans-hash.csv
 
-Attendu, à l'échelle de la base actuelle : de l'ordre de 937 comptes traités,
-une centaine créés avec un identifiant réécrit, le reste rattaché aux comptes
-déjà présents dans le realm, **0 erreur**. Un chiffre d'erreurs non nul se
-diagnostique avant la bascule, pas après.
+Combien de comptes, au juste. ``SELECT count(*) FROM utilisateurs.t_roles``
+donnait 998 au 2026-11-03, mais ce n'est **pas** le nombre que l'import traite :
+sa clause est ``COALESCE(groupe,false)=false AND COALESCE(active,true)=true``
+— ``t_roles`` porte aussi les groupes et les comptes désactivés — puis
+``load_legacy_users()`` saute en silence les lignes dont l'``identifiant`` est
+vide (``if not username: continue``). Le chiffre à comparer se mesure donc avec
+la même clause ::
+
+    SELECT count(*) FILTER (WHERE COALESCE(groupe,false)=false
+                              AND COALESCE(active,true)=true
+                              AND COALESCE(trim(identifiant),'') <> '') AS traites,
+           count(*) FILTER (WHERE COALESCE(groupe,false)=true)          AS groupes,
+           count(*) FILTER (WHERE COALESCE(active,true)=false)          AS inactifs,
+           count(*)                                                     AS total
+    FROM utilisateurs.t_roles;
+
+⚠️ **La simulation ne dit pas ce que l'import réel fera des comptes déjà
+présents.** ``--dry-run`` force ``existant = None`` sans interroger Keycloak
+(``migrate_legacy_users_to_keycloak.py``, dans la boucle) : elle annonce donc
+tout en « créé » et ``rattachés = 0``, même si le realm contient déjà ces
+personnes. Au 2026-11-03 le realm ``si-rnf`` comptait **105 comptes**, l'équipe
+fédérée depuis l'annuaire.
+
+Ce que la simulation établit vraiment :
+
+- le nombre de lignes retenues, à comparer au ``traites`` ci-dessus ;
+- les identifiants réécrits — la population du ``--username-report`` ;
+- la répartition des mots de passe (bcrypt reprisé, md5 reprisé, généré), donc
+  la taille du ``--password-report``.
+
+Ce qu'elle ne peut pas établir : la part créée et la part rattachée. Seul
+l'import réel la donne, et c'est à ce moment-là que le total des deux doit
+retomber sur ``traites``, avec **0 erreur**. Un chiffre d'erreurs non nul se
+diagnostique avant d'aller plus loin.
+
+Quatre comptes sans adresse, et pourquoi ils ne sont pas un problème. Au
+2026-11-03 : ``POPNL`` (37), ``COPNL`` (38), ``test_admin_cicada`` (1582),
+``opnl_service`` (1595) — tous ``id_organisme = -1``, des comptes techniques.
+Le profil utilisateur du realm déclare ``email`` avec
+``required: {roles: [user]}`` : l'adresse n'est exigée que lorsque la personne
+édite son propre profil, le rôle ``admin`` n'y figurant pas. L'API Admin peut
+donc les créer. Si malgré tout l'import rapporte des erreurs, **comparer
+d'abord cette liste** : quatre échecs portant ces noms sont un cas connu, pas
+un symptôme. Au-delà, ou sur d'autres comptes, on s'arrête.
+
+Leur absence d'adresse a une seconde conséquence : ``find_existing_keycloak_user``
+cherche par attribut, puis par identifiant, puis par e-mail — ces quatre-là ont
+donc une chance de moins d'être rapprochés d'un compte existant. Sans portée
+ici, aucun n'étant un compte d'annuaire.
+
+L'import dure. Il temporise 0,05 s par compte rattaché, renouvelle son jeton
+tous les dix comptes et fait plusieurs appels Admin par compte : compter de
+l'ordre du quart d'heure pour un millier. **Le lancer sous ``tmux`` ou
+``screen``** — une session SSH qui tombe au milieu laisserait l'import à
+mi-chemin.
+
+Un import interrompu se reprend en le relançant : ``find_existing_keycloak_user``
+retrouve les comptes déjà créés par l'attribut ``legacy_id_role`` et les
+rattache au lieu de les recréer, sans toucher ni à leur identifiant ni à leur
+mot de passe. C'est précisément ce que cet attribut sert à garantir (§ 0.2).
 
 Ce que produisent les deux CSV :
 

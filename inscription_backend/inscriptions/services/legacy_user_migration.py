@@ -535,6 +535,28 @@ def clear_keycloak_users(kc: KeycloakAdminClient, *, dry_run: bool = False) -> i
     return removed
 
 
+def _memes_adresses(kc: KeycloakAdminClient, keycloak_user_id: str, user: LegacyUserRow) -> bool:
+    """Le compte Keycloak trouvé par identifiant est-il bien celui de cette personne ?
+
+    Vrai si les deux adresses coïncident, ou si l'une des deux manque — auquel cas
+    l'identifiant reste le seul indice disponible et on s'en contente, c'est le cas
+    des comptes d'annuaire dont l'adresse n'est pas toujours renseignée.
+
+    Faux dès que les deux adresses existent et diffèrent : deux personnes, et la
+    collision d'identifiants ne doit pas les fusionner.
+    """
+    historique = (user.email or "").strip().lower()
+    if not historique or historique.endswith("@" + MIGRATION_EMAIL_DOMAIN):
+        return True
+    try:
+        keycloak = (kc.get_user(keycloak_user_id).get("email") or "").strip().lower()
+    except KeycloakAdminError:
+        return True
+    if not keycloak:
+        return True
+    return keycloak == historique
+
+
 def find_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow) -> tuple[str, str] | None:
     """Retrouve un compte déjà présent dans le realm. Renvoie (id, critère) ou None.
 
@@ -549,12 +571,26 @@ def find_existing_keycloak_user(kc: KeycloakAdminClient, user: LegacyUserRow) ->
     L'attribut ``legacy_id_role`` passe en premier : c'est le seul lien qui survit au
     renommage d'un identifiant, et sans lui un import rejoué créerait un doublon pour
     chaque compte renommé dépourvu d'adresse exploitable.
+
+    ⚠️ **Le rapprochement par identifiant exige que les adresses concordent.** Un
+    identifiant ne désigne pas une personne de façon fiable, parce que
+    ``normalize_username()`` en replie plusieurs sur la même valeur : un identifiant
+    en forme d'adresse est réduit à sa partie locale, et Keycloak replie tout en
+    minuscules. Deux comptes historiques distincts peuvent donc revendiquer le même
+    identifiant Keycloak.
+
+    C'est arrivé à la bascule du 2026-11-03 : ``contact@reserve-iledugirard.org``
+    (id 216) a été créé sous le nom ``contact``, puis ``Contact`` (id 385, une tout
+    autre personne, dans un autre organisme) a été rapproché de ce compte et y a
+    reçu ses droits. Une personne se retrouvait avec les accès de deux, l'autre sans
+    compte du tout. L'adresse, elle, identifie bien quelqu'un : la faire concorder
+    suffit à écarter ce cas sans rien perdre des rapprochements légitimes.
     """
     by_attribute = kc.find_user_by_attribute(LEGACY_ID_ROLE_ATTRIBUTE, str(user.id_role))
     if by_attribute:
         return by_attribute, "legacy_id_role"
     by_username = kc.find_user_by_username(user.username)
-    if by_username:
+    if by_username and _memes_adresses(kc, by_username, user):
         return by_username, "identifiant"
     email = (user.email or "").strip()
     if email and not email.lower().endswith("@" + MIGRATION_EMAIL_DOMAIN):
