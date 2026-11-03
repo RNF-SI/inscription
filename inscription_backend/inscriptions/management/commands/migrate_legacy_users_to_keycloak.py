@@ -163,21 +163,32 @@ class Command(BaseCommand):
         renamed_rows: list[dict[str, str]] = []
 
         for index, user in enumerate(users, start=1):
-            if index % 10 == 1 and index > 1 and not dry_run:
+            if index % 10 == 1 and index > 1:
                 kc.reset_token()
 
             try:
                 # Un compte déjà présent — typiquement un membre de l'équipe fédéré
                 # depuis l'annuaire — reçoit ses droits sans qu'on touche à son
                 # identifiant, à son mot de passe ni à son profil.
-                existant = None if dry_run else find_existing_keycloak_user(kc, user)
+                #
+                # La recherche a lieu même à blanc. Elle ne lit que l'API Admin, et
+                # s'en passer rendait le rapport du --dry-run non seulement imprécis
+                # mais faux : sur un import rejoué, il annonçait 945 créations et
+                # 0 rattachement là où la vraie exécution ne crée rien. Le --dry-run
+                # existe pour dire ce qui va se passer ; donner l'inverse de la
+                # réalité sur son chiffre principal est pire que ne rien dire.
+                existant = find_existing_keycloak_user(kc, user)
                 if existant:
                     user_id, critere = existant
-                    link_existing_keycloak_user(kc, user, user_id)
+                    # À blanc on s'arrête à la recherche : le rattachement pose des
+                    # attributs et fait rejoindre des groupes.
+                    if not dry_run:
+                        link_existing_keycloak_user(kc, user, user_id)
                     linked += 1
                     self.stdout.write(
                         f"[{index}/{len(users)}] {user.username} ({user.email}) → {user_id} | "
-                        f"RATTACHÉ par {critere}, identifiants inchangés | "
+                        f"{'RATTACHERAIT' if dry_run else 'RATTACHÉ'} par {critere}, "
+                        f"identifiants inchangés | "
                         f"réserves={len(user.reserve_codes)} | apps={len(user.app_member_slugs)} | "
                         f"admins={len(user.app_admin_slugs)} | super={user.is_super_admin}"
                     )

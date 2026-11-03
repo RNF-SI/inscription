@@ -800,19 +800,26 @@ la même clause ::
            count(*)                                                     AS total
     FROM utilisateurs.t_roles;
 
-⚠️ **La simulation ne dit pas ce que l'import réel fera des comptes déjà
-présents.** ``--dry-run`` force ``existant = None`` sans interroger Keycloak
-(``migrate_legacy_users_to_keycloak.py``, dans la boucle) : elle annonce donc
-tout en « créé » et ``rattachés = 0``, même si le realm contient déjà ces
-personnes. Au 2026-11-03 le realm ``si-rnf`` comptait **105 comptes**, l'équipe
-fédérée depuis l'annuaire.
+La simulation interroge Keycloak et distingue donc « créé » de « rattacherait »,
+sans rien écrire. **Ce n'était pas le cas avant le 2026-11-03** : elle forçait
+``existant = None`` et annonçait tout en « créé », ``rattachés = 0``, même quand
+le realm contenait déjà ces personnes. Rejouée après l'import, elle annonçait
+945 créations pour un import qui n'en ferait aucune — l'inverse de la réalité
+sur son chiffre principal, lu comme un signal d'alarme. Corrigé : la recherche a
+lieu aussi à blanc (elle ne lit que l'API Admin), seul le rattachement est
+sauté.
 
-Ce que la simulation établit vraiment :
+Ce que la simulation établit :
 
 - le nombre de lignes retenues, à comparer au ``traites`` ci-dessus ;
+- la part de comptes déjà présents, et par quel critère ils sont retrouvés ;
 - les identifiants réécrits — la population du ``--username-report`` ;
 - la répartition des mots de passe (bcrypt reprisé, md5 reprisé, généré), donc
   la taille du ``--password-report``.
+
+Elle ne dit pas combien de groupes seront ajoutés à un compte rattaché : c'est
+``assign_legacy_groups`` qui en décide, et il n'est pas appelé à blanc. Pour un
+rattrapage de droits (§ 3.3), mesurer les effectifs avant et après.
 
 Ce qu'elle ne peut pas établir : la part créée et la part rattachée. Seul
 l'import réel la donne, et c'est à ce moment-là que le total des deux doit
