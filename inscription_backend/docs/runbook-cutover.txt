@@ -227,15 +227,44 @@ rejoindre, et aucune application à laquelle rattacher leurs droits.
         SELECT date_insert::date, identifiant, prenom_role, nom_role
         FROM utilisateurs.temp_users ORDER BY date_insert;
 
-0.6 — Décider de la correspondance applications → base historique.
-    ``seed_catalog`` ne renseigne pas ``legacy_id_application``,
-    ``legacy_id_profil`` ni ``legacy_group_id_role``, et aucun écran
-    d'administration ne les édite : c'est l'API admin du catalogue ou le shell
-    Django. Laissés vides, les accès applicatifs ne sont **pas** répercutés dans
-    ``utilisateurs.cor_role_app_profil``. C'est l'état par défaut assumé : la
-    production n'alimente plus cette table depuis 2024 (31 lignes pour 993
-    comptes), ce sont les groupes de ``utilisateurs.cor_roles`` qui portent les
-    droits. Ne renseigner que si une application vérifie encore le profil.
+0.6 — Vérifier la correspondance applications → groupes historiques. RÉGLÉ
+    le 2026-11-03, après la bascule, et c'est ce paragraphe qui avait égaré.
+
+    Deux colonnes, deux rôles très inégaux, et ce document les confondait :
+
+    - ``legacy_id_application`` alimente ``utilisateurs.cor_role_app_profil``.
+      La laisser vide est sans conséquence : la production n'alimente plus cette
+      table depuis 2024 (31 lignes pour 993 comptes). Ne la renseigner que si une
+      application vérifie encore le profil.
+    - ``legacy_group_id_role`` alimente ``utilisateurs.cor_roles``, et **c'est
+      elle qui porte l'accès**. Vide, un accès validé n'ajoute l'usager qu'à
+      Keycloak : l'interface affiche un succès, et l'application ne le voit pas.
+
+    ``seed_catalog`` pose désormais la seconde (``inscriptions/legacy_groups.py``)
+    et nomme en fin de course les applications à demande d'accès qui restent sans
+    groupe. Attendu sur une base à jour ::
+
+        13 applications synchronisées.
+        6 correspondance(s) de groupe posée(s).
+
+    Six et non sept : ``geonature-global`` est dans la correspondance mais pas au
+    catalogue — le groupe Keycloak existe, l'application non.
+
+    Et **aucun avertissement** : ``site-internet`` est le seul cas d'absence
+    normale, écarté à ce titre. Son accès ne tient pas à un groupe, c'est le
+    trigger ``complement_rnf.user_change()`` qui insère le compte dans
+    ``site_internet_utilisateurs`` dès qu'il existe, ses réserves faisant le
+    reste. Vérifié par une connexion au site avec un compte créé par la
+    plateforme.
+
+    Ce que ce § disait avant : que les trois colonnes restaient vides et que
+    c'était « l'état par défaut assumé », ce qui n'était vrai que de la première.
+    La migration 0011 posait pourtant la bonne valeur pour chaque application —
+    mais elle tourne à ``migrate``, quand le catalogue n'existe pas encore, et
+    ses ``UPDATE`` ne trouvaient aucune ligne. Vérifier après déploiement ::
+
+        SELECT slug, legacy_group_id_role FROM inscription_application
+         WHERE requires_access_request ORDER BY legacy_group_id_role NULLS FIRST;
 
 0.7 — Canal Zammad « trusted », si la route de contact doit identifier l'usager.
     Sans ce réglage côté Zammad l'en-tête ``X-Zammad-Customer-Email`` est ignoré
@@ -838,6 +867,42 @@ Contrôle :
 
     python manage.py reconcile_legacy_keycloak      # rapport seul, doit être vide
 
+3.3 — Vérifier les effectifs des groupes ``/applications``, et rejouer l'import
+      si besoin. AJOUTÉ le 2026-11-03, après un import incomplet en production.
+
+    L'import lisait les droits applicatifs dans ``cor_role_app_profil`` seule —
+    31 lignes pour 993 comptes. Résultat : **une** personne dans
+    ``/applications/geonature-psdrf`` au lieu des membres de
+    ``Grp_global_et_psdrf``, **aucune** dans ``/applications/ancrage`` au lieu de
+    ceux de ``Grp_ancrage``. Le défaut est muet : l'import annonce « 0 erreur »,
+    et tant que l'authentification passe encore par UsersHub rien ne s'en
+    ressent — il ne se verrait qu'au basculement de ces applications sur
+    Keycloak.
+
+    Les droits sont désormais déduits de l'appartenance aux groupes, par
+    ``Application.legacy_group_id_role`` (§ 0.6). Comparer, par application ::
+
+        SELECT count(*) FROM utilisateurs.cor_roles g
+          JOIN utilisateurs.t_roles u ON u.id_role = g.id_role_utilisateur
+         WHERE g.id_role_groupe = 1          -- Grp_global_et_psdrf
+           AND COALESCE(u.groupe, false) = false AND COALESCE(u.active, true);
+
+    à l'effectif du groupe Keycloak correspondant. S'ils divergent, **rejouer
+    l'import** suffit, sans rien supprimer ::
+
+        python manage.py migrate_legacy_users_to_keycloak --limit 0 --force --dry-run
+        python manage.py migrate_legacy_users_to_keycloak --limit 0 --force
+
+    Chaque compte est retrouvé par son attribut ``legacy_id_role`` et
+    **rattaché**, non recréé : ``link_existing_keycloak_user`` ne pose que les
+    attributs et appelle ``assign_legacy_groups``, dont tous les appels sont
+    idempotents et additifs (``ensure_*``, ``user_join_group``). Ni identifiant,
+    ni mot de passe, ni profil ne sont touchés, et rien n'est retiré : un compte
+    sorti d'un groupe historique garde son groupe Keycloak, à retirer à la main.
+
+    ⚠️ Ne pas passer ``--clear``, jamais, et surtout pas ici : il détruirait les
+    comptes qu'on vient de vérifier.
+
 
 4. Rattrapage des identifiants
 -------------------------------
@@ -1014,7 +1079,8 @@ Bascule du DNS / reverse-proxy, puis, avec un compte migré réel :
        l'application visée vaut succès — le mot de passe a été vérifié avant ;
        seul un refus d'identifiants est un échec.
     6. inscription de test → validation super-admin → décision d'un admin
-       applicatif, et ::
+       applicatif. **Passé le 2026-11-03**, après correction du § 0.6 : c'est ce
+       point qui a révélé que plus aucun accès applicatif n'était répercuté. ::
 
            SELECT role_id, rn_id, referent, referent_valid, count(*)
              FROM complement_rnf.cor_role_rn WHERE role_id = …

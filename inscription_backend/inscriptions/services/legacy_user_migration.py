@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 LEGACY_INSCRIPTION_APP_ID = 6
 LEGACY_ADMIN_PROFIL_ID = 6
+LEGACY_MEMBER_PROFIL_ID = 1  # Lecteur, ce qu'accordait UsersHub
 LEGACY_SUPER_ADMIN_GROUP_NAMES = {"grp_admin"}
 MIGRATION_EMAIL_DOMAIN = "legacy-migration.local"
 
@@ -311,6 +312,51 @@ def _load_reserve_links() -> dict[int, dict[str, tuple[bool, bool]]]:
     return out
 
 
+def _load_app_rights_from_groups() -> dict[int, set[str]]:
+    """Droits applicatifs déduits de l'appartenance aux groupes historiques.
+
+    C'est là que les droits vivent réellement. ``cor_role_app_profil`` ne compte que
+    31 lignes pour 993 comptes, posées à la main entre 2022 et 2024 : s'y limiter,
+    comme le faisait l'import, laissait presque tout le monde sans application dans
+    Keycloak — une seule personne dans ``/applications/geonature-psdrf`` au lieu des
+    membres de ``Grp_global_et_psdrf``, aucune dans ``/applications/ancrage`` au lieu
+    de ceux de ``Grp_ancrage``. Constaté en production le 2026-11-03, après l'import.
+
+    La correspondance lue est celle de la base — ``Application.legacy_group_id_role``,
+    posée par ``seed_catalog`` depuis ``inscriptions/legacy_groups.py`` — et non le
+    dictionnaire figé : une valeur corrigée à la main doit faire foi ici aussi. Un
+    même groupe peut porter plusieurs applications, d'où la liste de slugs.
+    """
+    groupes: dict[int, list[str]] = {}
+    for slug, group_id in Application.objects.exclude(
+        legacy_group_id_role__isnull=True
+    ).values_list("slug", "legacy_group_id_role"):
+        if group_id:
+            groupes.setdefault(int(group_id), []).append(slug)
+    if not groupes:
+        return {}
+
+    with _legacy_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT g.id_role_utilisateur, g.id_role_groupe
+            FROM utilisateurs.cor_roles g
+            JOIN utilisateurs.t_roles u ON u.id_role = g.id_role_utilisateur
+            WHERE COALESCE(u.groupe, false) = false
+              AND COALESCE(u.active, true) = true
+              AND g.id_role_groupe = ANY(%s)
+            """,
+            [sorted(groupes)],
+        )
+        rows = cursor.fetchall()
+
+    out: dict[int, set[str]] = {}
+    for role_id, group_id in rows:
+        for slug in groupes.get(int(group_id), ()):
+            out.setdefault(int(role_id), set()).add(slug)
+    return out
+
+
 def _load_app_rights(app_slug_map: dict[int, str]) -> dict[int, dict[str, set[int]]]:
     with _legacy_cursor() as cursor:
         cursor.execute(
@@ -341,6 +387,14 @@ def _load_app_rights(app_slug_map: dict[int, str]) -> dict[int, dict[str, set[in
         if not slug:
             continue
         out.setdefault(rid, {}).setdefault(slug, set()).add(profil_id)
+
+    # Les groupes ne portent pas de profil : ils accordent l'accès de lecture, ce
+    # qu'accordait UsersHub. Un compte qui tient par ailleurs un profil
+    # d'administration de `cor_role_app_profil` le garde — c'est lui qui gagne à la
+    # lecture de ce dictionnaire.
+    for rid, slugs in _load_app_rights_from_groups().items():
+        for slug in slugs:
+            out.setdefault(rid, {}).setdefault(slug, set()).add(LEGACY_MEMBER_PROFIL_ID)
     return out
 
 

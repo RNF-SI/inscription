@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from inscriptions.legacy_groups import GROUPES_HISTORIQUES
+from inscriptions.legacy_groups import GROUPES_HISTORIQUES, SANS_GROUPE_HISTORIQUE
 from inscriptions.models import Application
 
 
@@ -153,6 +153,10 @@ class Command(BaseCommand):
         Sans ce rappel, l'absence de correspondance ne se voit nulle part : l'accès
         est accordé dans Keycloak, l'interface affiche un succès, et seul un
         ``logger.info`` côté Django mentionne que rien n'a été écrit.
+
+        Les applications dont l'absence de groupe est normale sont écartées : les
+        nommer à chaque déploiement apprendrait à ignorer l'avertissement, et il
+        n'aurait plus servi à rien le jour où il désigne un vrai trou.
         """
         orphelines = (
             Application.objects.filter(
@@ -160,6 +164,7 @@ class Command(BaseCommand):
                 managed_by_si=True,
                 legacy_group_id_role__isnull=True,
             )
+            .exclude(slug__in=SANS_GROUPE_HISTORIQUE)
             .order_by("slug")
             .values_list("slug", flat=True)
         )
