@@ -39,9 +39,13 @@ $$ LANGUAGE plpgsql;
 -- --- Schéma utilisateurs -----------------------------------------------------
 
 CREATE TABLE utilisateurs.bib_organismes (
-    id_organisme     serial PRIMARY KEY,
-    uuid_organisme   uuid NOT NULL DEFAULT gen_random_uuid(),
-    nom_organisme    varchar(500) NOT NULL
+    id_organisme      serial PRIMARY KEY,
+    uuid_organisme    uuid NOT NULL DEFAULT gen_random_uuid(),
+    nom_organisme     varchar(500) NOT NULL,
+    adresse_organisme varchar(500),
+    cp_organisme      varchar(10),
+    ville_organisme   varchar(100),
+    url_logo          varchar(500)
 );
 
 CREATE TABLE utilisateurs.t_roles (

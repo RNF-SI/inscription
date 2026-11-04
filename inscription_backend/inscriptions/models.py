@@ -9,6 +9,12 @@ class Organisme(models.Model):
     uuid_organisme = models.CharField(max_length=64, blank=True)
     nom_organisme = models.CharField(max_length=500)
     keycloak_slug = models.SlugField(max_length=500, blank=True)
+    # Identifiant de l'organisme dans RADIS, posé par « synchro_radis » le jour où
+    # l'uuid_organisme a permis de les rapprocher. Nul pour les organismes que RADIS
+    # ne connaît pas : ceux-là ne gèrent pas de réserve, et la synchronisation ne doit
+    # jamais les toucher. C'est donc ce champ, et non l'absence d'un organisme de la
+    # réponse de RADIS, qui dit si la comparaison a un sens.
+    radis_id = models.IntegerField(null=True, blank=True, unique=True)
 
     class Meta:
         db_table = "inscription_organisme"
@@ -21,7 +27,26 @@ class Organisme(models.Model):
 class Reserve(models.Model):
     area_code = models.CharField(max_length=64, primary_key=True)
     area_name = models.CharField(max_length=500)
+    # ref_geo.l_areas.id_type, hérité de l'import de la base historique. RADIS ne le
+    # connaît pas : il expose un type littéral, repris dans type_rn ci-dessous.
     id_type = models.CharField(max_length=32, blank=True)
+    type_rn = models.CharField(max_length=3, blank=True)
+
+    # RADIS ne supprime pas une réserve sortie du réseau, il la déclasse — et la
+    # plateforme fait de même : les groupes Keycloak /reserves/<code> et les lignes
+    # complement_rnf.cor_role_rn de ses membres existent toujours. Supprimer la ligne
+    # rendrait ces rattachements illisibles ; la réserve est seulement retirée des
+    # listes où l'on se rattache.
+    ancienne_reserve = models.BooleanField(default=False)
+    date_declassement = models.DateField(null=True, blank=True)
+
+    # Réserve que RADIS connaît mais qui manque à ref_geo.l_areas de la base
+    # historique. Elle ne doit pas être proposée : cor_role_rn.rn_id est une clé
+    # étrangère vers l_areas.area_code, et c'est un trigger qui l'alimente à l'INSERT
+    # de t_roles. Un inscrit qui cocherait cette réserve ferait échouer la création de
+    # son compte tout entière. Posé par « synchro_radis » quand la base historique est
+    # joignable, laissé tel quel sinon.
+    absente_ref_geo = models.BooleanField(default=False)
 
     class Meta:
         db_table = "inscription_reserve"
@@ -49,6 +74,11 @@ class Application(models.Model):
     description = models.TextField(blank=True)
     managed_by_si = models.BooleanField(default=True)
     requires_access_request = models.BooleanField(default=True)
+    # N'a de sens que si requires_access_request est faux : l'accès n'est alors
+    # pas demandé mais déduit de l'appartenance à une réserve. Côté Keycloak c'est
+    # le rôle « access » du client mappé sur le groupe parent /reserves, hérité par
+    # tous les sous-groupes (voir docs/runbook-cutover.txt § 1.1).
+    reserve_members_only = models.BooleanField(default=False)
     keycloak_client_id = models.CharField(max_length=200, blank=True)
     keycloak_member_count = models.IntegerField(null=True, blank=True)
     keycloak_admin_count = models.IntegerField(null=True, blank=True)

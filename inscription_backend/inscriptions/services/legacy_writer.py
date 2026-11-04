@@ -179,6 +179,98 @@ def create_role(
     return NouveauRole(int(row[0]), str(row[1]))
 
 
+class NouvelOrganisme(NamedTuple):
+    """Ce que ``bib_organismes`` attribue à l'organisme créé.
+
+    ``id_organisme`` est généré par la séquence : c'est lui que porte
+    ``Organisme.id_organisme`` ici, et que ``t_roles.id_organisme`` référencera pour
+    chaque membre. Il faut donc que la ligne historique existe avant la ligne locale,
+    jamais l'inverse. ``uuid_organisme`` est renvoyé parce qu'il peut venir du défaut
+    PostgreSQL quand l'appelant n'en fournit pas.
+    """
+
+    id_organisme: int
+    uuid_organisme: str
+
+
+def create_organisme(
+    *,
+    nom_organisme: str,
+    uuid_organisme: str | None = None,
+    adresse_organisme: str = "",
+    cp_organisme: str = "",
+    ville_organisme: str = "",
+    url_logo: str = "",
+) -> NouvelOrganisme:
+    """Crée la ligne ``utilisateurs.bib_organismes`` et renvoie ses identifiants.
+
+    ``uuid_organisme`` est l'UUID du référentiel des organismes du SINP quand RADIS en
+    connaît un ; sinon la colonne a un défaut (``gen_random_uuid()``) et c'est lui qui
+    s'applique. Ni ``meta_create_date`` ni ``meta_update_date`` ne sont écrites : la
+    base s'en charge.
+    """
+    row = _execute(
+        """
+        INSERT INTO utilisateurs.bib_organismes
+            (nom_organisme, uuid_organisme, adresse_organisme, cp_organisme,
+             ville_organisme, url_logo)
+        VALUES (%s, COALESCE(%s::uuid, gen_random_uuid()), %s, %s, %s, %s)
+        RETURNING id_organisme, uuid_organisme
+        """,
+        [
+            nom_organisme,
+            uuid_organisme or None,
+            adresse_organisme or None,
+            cp_organisme or None,
+            ville_organisme or None,
+            url_logo or None,
+        ],
+        fetch="one",
+    )
+    return NouvelOrganisme(int(row[0]), str(row[1]))
+
+
+def find_organisme(*, uuid_organisme: str = "", nom_organisme: str = "") -> NouvelOrganisme | None:
+    """Cherche un organisme historique par UUID puis par nom exact.
+
+    Évite de créer un doublon d'une ligne posée à la main ou par RADIS : l'UUID du SINP
+    d'abord, le nom ensuite — comparé sans tenir compte de la casse, comme le fait déjà
+    la résolution d'organisme des vues.
+    """
+    if uuid_organisme:
+        row = _execute(
+            """
+            SELECT id_organisme, uuid_organisme
+              FROM utilisateurs.bib_organismes
+             WHERE uuid_organisme = %s::uuid
+            """,
+            [uuid_organisme],
+            fetch="one",
+        )
+        if row:
+            return NouvelOrganisme(int(row[0]), str(row[1]))
+    if nom_organisme:
+        # Les noms de bib_organismes ne sont pas propres : « Conservatoire d'espaces
+        # naturels de Normandie » y porte une espace finale, et une comparaison exacte
+        # créerait un doublon de l'organisme qu'on cherche. D'où le repli sur une forme
+        # normalisée — bords rognés, espaces internes réduites, casse ignorée.
+        row = _execute(
+            r"""
+            SELECT id_organisme, uuid_organisme
+              FROM utilisateurs.bib_organismes
+             WHERE regexp_replace(btrim(lower(nom_organisme)), '\s+', ' ', 'g')
+                 = regexp_replace(btrim(lower(%s)), '\s+', ' ', 'g')
+             ORDER BY id_organisme
+             LIMIT 1
+            """,
+            [nom_organisme],
+            fetch="one",
+        )
+        if row:
+            return NouvelOrganisme(int(row[0]), str(row[1]))
+    return None
+
+
 # Colonnes que l'ancien PUT /role acceptait de modifier. Tout le reste (organisme,
 # active, groupe, uuid_role…) était en liste noire et le reste ici.
 UPDATABLE_PROFILE_COLUMNS = ("identifiant", "nom_role", "prenom_role", "email", "remarques")

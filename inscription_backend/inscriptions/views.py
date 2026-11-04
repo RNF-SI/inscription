@@ -327,7 +327,16 @@ class ReserveListView(APIView):
     permission_classes = []
 
     def get(self, request):
-        qs = Reserve.objects.filter(id_type__in=["5", "6", "18"]).order_by("area_name")
+        # Les deux sources du référentiel ne versent que des réserves (« synchro_radis »
+        # écarte les autres types, « migrate_legacy » filtre id_type), le filtre sur
+        # id_type n'a donc plus d'objet — et il écarterait les réserves créées par
+        # RADIS, qui n'ont pas d'id_type.
+        #
+        # Une réserve déclassée garde sa ligne, ses groupes Keycloak et ses membres,
+        # mais on ne s'y rattache plus. Une réserve absente de ref_geo.l_areas ne doit
+        # pas être proposée non plus : le trigger de t_roles ferait échouer la création
+        # du compte de celui qui la coche (cor_role_rn.rn_id référence l_areas).
+        qs = Reserve.objects.filter(ancienne_reserve=False, absente_ref_geo=False).order_by("area_name")
         return Response(ReserveSerializer(qs, many=True).data)
 
 
@@ -792,7 +801,12 @@ class MeReserveOptionsView(APIView):
         org = _organisme_for_request(request)
         if not org:
             return Response([])
-        links = org.reserve_links.select_related("reserve").all()
+        # Mêmes exclusions que la liste publique : cette liste-ci sert aussi à se
+        # rattacher, et une réserve déclassée ou absente de ref_geo.l_areas ne peut pas
+        # l'être.
+        links = org.reserve_links.select_related("reserve").filter(
+            reserve__ancienne_reserve=False, reserve__absente_ref_geo=False
+        )
         out = [
             {"area_code": l.reserve.area_code, "area_name": l.reserve.area_name, "principal": l.principal}
             for l in links
@@ -814,6 +828,14 @@ class MeReserveLinkDetailView(APIView):
         allowed = org.reserve_links.filter(reserve=reserve).exists()
         if not allowed:
             return Response({"detail": "Réserve non liée à votre organisme"}, status=403)
+        if reserve.absente_ref_geo:
+            # L'écriture historique échouerait sur la clé étrangère de cor_role_rn, et
+            # le refus serait un 502 incompréhensible. Le dire ici, en clair.
+            return Response(
+                {"detail": "Cette réserve est absente du référentiel géographique, "
+                           "rattachement impossible."},
+                status=409,
+            )
         try:
             kc = KeycloakAdminClient()
             with mirror.atomic_mirror():

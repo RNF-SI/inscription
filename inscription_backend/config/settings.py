@@ -161,6 +161,21 @@ CONTACT_ALLOWED_RECIPIENTS = [
     email.strip().lower() for email in env.list("CONTACT_ALLOWED_RECIPIENTS", default=[]) if email.strip()
 ]
 
+# Référentiel des réserves et des organismes gestionnaires : RADIS (equipe-app) en
+# est la source, et la synchronisation ne va que dans ce sens. Inscription porte plus
+# d'organismes que RADIS — tous ne gèrent pas une réserve — donc rien n'est jamais
+# supprimé ici au motif que RADIS l'ignore : « manage.py synchro_radis » ne fait que
+# créer, mettre à jour et signaler. Clé à demander au Pôle SI ; sans URL ni clé la
+# commande échoue tout de suite, le reste de l'application n'en dépend pas.
+RADIS_API_URL = env("RADIS_API_URL", default="").strip().rstrip("/")
+RADIS_API_KEY = env("RADIS_API_KEY", default="").strip()
+
+# L'inventaire complet des réserves est une seule réponse non paginée ; la liste
+# détaillée tient en quatre pages. Sans les périmètres, que cette plateforme n'affiche
+# pas, aucune réponse ne dépasse quelques centaines de kilo-octets.
+RADIS_PAGE_SIZE = env.int("RADIS_PAGE_SIZE", default=100)
+RADIS_HTTP_TIMEOUT = env.int("RADIS_HTTP_TIMEOUT", default=60)
+
 LEGACY_DATABASE_URL = env("LEGACY_DATABASE_URL", default="").strip()
 
 if LEGACY_DATABASE_URL:

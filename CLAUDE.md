@@ -86,7 +86,8 @@ Ils chargent `inscriptions/tests/sql/legacy_schema.sql`, qui reproduit le schém
 bien peuplé par le trigger, sans doublon, et que les bases satellites reçoivent le compte.
 
 Autres commandes de gestion : `promote_super --email=…`, `import_application_images`,
-`migrate_legacy`, `migrate_legacy_users_to_keycloak` (voir README.md §4 — destructif, `--dry-run` d'abord),
+`synchro_radis` (référentiel réserves/organismes depuis RADIS, `--a-blanc` d'abord),
+`migrate_legacy` (amorçage du référentiel depuis la base historique), `migrate_legacy_users_to_keycloak` (voir README.md §4 — destructif, `--dry-run` d'abord),
 `reconcile_legacy_keycloak` (compare base historique et Keycloak ; rapport seul, `--apply`
 se limite à reposer l'attribut `legacy_id_role`), `audit_identifiants` (lecture seule :
 comptes dont l'identifiant Keycloak diffère de l'identifiant historique, `--csv` pour la
@@ -325,6 +326,101 @@ distantes par des tables locales** : un `pg_dump` emporte `CREATE SERVER`, `CREA
 MAPPING` et `CREATE FOREIGN TABLE`, donc la copie écrit vers les cibles d'origine. Ne
 pas couper le lien sans remplacer la table : l'INSERT du trigger échouerait et annulerait
 la création de compte.
+
+### Le référentiel des réserves et des organismes vient de RADIS
+
+`Organisme`, `Reserve` et `OrganismeReserveLink` ne sont pas saisis ici : ils
+descendent de **RADIS** (equipe-app, `RNF-SI/equipe-app`), l'outil de gestion des
+données réserves. `manage.py synchro_radis` les **tire** de son API v1 publique,
+comme le fait SOCLE pour ses sites ; `--a-blanc` montre ce qui changerait. Deux
+réglages : `RADIS_API_URL` et `RADIS_API_KEY` (header `X-API-Key`, clé à demander au
+Pôle SI). Idempotente, destinée à un minuteur nocturne.
+
+`migrate_legacy` ne sert plus qu'à l'amorçage. Il lisait `ref_geo.l_areas`,
+`utilisateurs.bib_organismes` et `complement_rnf.cor_rn_og`, c'est-à-dire un *push* de
+RADIS vers la base historique : il pousse mais ne réconcilie jamais, et perd ce qu'il
+n'a pas vu passer — 465 liens lus pour 451 créés à la bascule, parce que `cor_rn_og`
+garde les liaisons terminées et saute les organismes dépourvus d'UUID SINP.
+
+**La synchronisation ne va que dans ce sens.** Cette plateforme porte plus
+d'organismes que RADIS — tous ne gèrent pas une réserve — et rien n'est renvoyé
+là-bas. Ce que `services/radis.py` ne fait jamais, chaque point répondant à un dégât
+possible :
+
+- **supprimer ou désactiver un organisme.** Un organisme absent de la réponse de RADIS
+  est indiscernable d'un organisme qui n'en vient pas. Seuls ceux qui portent un
+  `radis_id` sont comparés, et leur disparition est signalée, pas appliquée ;
+- **créer un organisme.** `Organisme.id_organisme` est la clé primaire de
+  `utilisateurs.bib_organismes`, que `legacy_writer` écrit dans `t_roles.id_organisme`
+  — colonne qui la référence. Un identifiant inventé ici ferait échouer la création de
+  compte de ses membres. Un organisme de RADIS sans correspondance est donc signalé,
+  à créer d'abord côté base historique ;
+- **recalculer un `keycloak_slug`.** Il est dans le chemin `/organismes/<slug>`, donc
+  dans les jetons déjà émis, et `_organisme_for_request` s'en sert en repli. Un
+  organisme renommé change de `nom_organisme`, pas de slug ;
+- **réécrire ce qui n'a pas changé**, pour qu'un rapport nocturne ne montre que ce qui
+  a bougé.
+
+**La liste des réserves de RADIS fait loi.** Une réserve que son inventaire ne
+contient pas est supprimée ici ; l'inventaire porte aussi les déclassées, donc une
+absence y signifie « cette réserve n'existe pas », pas « elle est sortie du réseau ».
+Une réserve **déclassée**, elle, garde sa ligne : elle prend `ancienne_reserve` et
+quitte les listes où l'on se rattache, parce que les groupes Keycloak
+`/reserves/<code>` et les lignes `cor_role_rn` de ses membres référencent ce code. La
+suppression emporte les liens de la réserve et les demandes en attente qui la visent —
+d'où `--a-blanc`, qui donne la liste avant qu'elle ne soit appliquée.
+
+**Un organisme créé dans RADIS est créé ici, mais d'abord dans `bib_organismes`.**
+`Organisme.id_organisme` **est** la clé primaire de `utilisateurs.bib_organismes`, que
+`legacy_writer` écrit dans `t_roles.id_organisme` — colonne qui la référence.
+L'identifiant ne peut donc pas être choisi ici : `legacy_writer.create_organisme()`
+insère la ligne historique, la séquence donne l'identifiant, et la ligne locale le
+reprend. L'ordre est le même que pour les comptes, et pour la même raison. Un
+organisme déjà présent dans `bib_organismes` — posé à la main, ou par le push de RADIS
+vers GeoNature — est **adopté** plutôt que dupliqué (`find_organisme()`, par UUID puis
+par nom insensible à la casse). `--sans-creation` coupe ce comportement, et sans
+`LEGACY_WRITE_ENABLED` les manquants sont seulement listés : les créer ici sans ligne
+historique ferait échouer la création de compte de chacun de leurs membres.
+
+⚠️ **Dix UUID du SINP sont portés par plusieurs organismes de RADIS**, et ils ne
+désignent pas des doublons : « Conservatoire d'espaces naturels de Normandie » et
+« Région Normandie » partagent le même, comme l'ONF et deux de ses agences. Rapprocher
+par cette valeur renommerait le conservatoire en région. Un UUID partagé n'est donc
+pas une clé : les organismes concernés ne sont pas rapprochés, l'UUID n'est pas
+recopié à la création, et le rapport les liste pour correction dans RADIS. Le
+`radis_id`, lui, passe avant : un organisme déjà rapproché n'est pas affecté.
+
+Les **liens** font exception et se suppriment : ils n'alimentent que
+`/api/me/reserve-options/`, la liste des réserves proposées d'après l'organisme. Ce ne
+sont pas des droits — ceux-là viennent des groupes Keycloak — et un lien périmé
+proposerait une réserve que l'organisme ne gère plus. Seuls les liens d'organismes
+connus de RADIS sont réconciliés.
+
+Deux clés rendent tout cela possible, et une seule a demandé un changement :
+
+- **les réserves se joignent telles quelles.** L'`id_local` de RADIS *est* l'`area_code`
+  d'ici (`RNN41`), qui est aussi `cor_role_rn.rn_id`, le `site.code` de SOCLE et le
+  chemin du groupe Keycloak. Changer de source ne change aucune clé ;
+- **les organismes ont demandé d'exposer l'`uuid_organisme`** dans l'API de RADIS
+  (`RNF-SI/equipe-app#107`). L'API ne publiait que l'`id` interne de RADIS et
+  l'`assoconnect_id`, qui n'existent pas ici ; l'UUID du référentiel des organismes du
+  SINP, lui, est la valeur que porte `bib_organismes.uuid_organisme`. Le rapprochement
+  se fait par `radis_id` d'abord, puis par cet UUID, **jamais par le nom** — qu'un
+  organisme renommé dans Assoconnect rendrait inopérant.
+
+⚠️ **`cor_role_rn.rn_id` est une clé étrangère vers `ref_geo.l_areas.area_code`**, et
+c'est un trigger qui l'alimente à l'INSERT de `t_roles`. Une réserve que RADIS connaît
+mais qui manque à `l_areas` ferait donc échouer la création de compte tout entière de
+celui qui la coche. La synchronisation compare les deux référentiels quand la base
+historique est joignable et pose `absente_ref_geo` ; `ReserveListView`,
+`/api/me/reserve-options/` et le rattachement l'excluent. Sans la connexion `legacy`,
+le marquage est laissé tel quel : « présente » n'est pas une conclusion qu'on peut
+tirer d'une base absente.
+
+Ce que la synchronisation ne fait pas encore : mettre à jour l'attribut
+`nom_organisme` du groupe Keycloak d'un organisme renommé. Le rapport le signale.
+Appeler `ensure_organisme_group` pour chacun créerait des groupes pour des centaines
+d'organismes sans membre.
 
 ### Workflow d'inscription (le cœur métier)
 
