@@ -106,7 +106,8 @@ npm test         # Karma/Jasmine
 
 - Backend : `inscription_backend/.env` (`django-environ`). **Ne jamais mettre de commentaire en fin
   de ligne** — django-environ ne les ignore pas.
-- Frontend : `src/environments/environment{,.prod}.ts` (apiUrl + repli Keycloak) et
+- Frontend : `src/environments/environment{,.prod}.ts` (apiUrl, repli Keycloak, instance Matomo —
+  `matomoUrl` à `null` en développement désactive la mesure d'audience) et
   `src/conf/app.config.ts` (libellés, menu, feature flags, intervalle de polling des notifications).
 
 ## Architecture
