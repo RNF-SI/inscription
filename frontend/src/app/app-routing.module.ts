@@ -34,50 +34,60 @@ const routes: Routes = [
     children: [ 
       {
         path: '',
-        component: HomeComponent
+        component: HomeComponent,
+        title: 'Accueil'
       },
       {
         path: 'mot-de-passe-oublie',
-        component: ForgotPasswordComponent
+        component: ForgotPasswordComponent,
+        title: 'Mot de passe oublié'
       },
       { 
         path: 'logout', // Ici seulement pour angular, mais toujour redirigé dans le canActivate 
         component: LogoutComponent, 
         canActivate: mapToCanActivate([LogoutLinkService]),
+        title: 'Déconnexion',
       }, 
       { 
         path: 'login', 
         component: LoginComponent, 
         canActivate: [LazyDialog],
+        title: 'Connexion',
       },
       { 
         path: 'mon-compte', 
         component: MoncompteComponent, 
         canActivate: [AuthGuard],
+        title: 'Mon compte',
       },
       {
         path: 'notifications',
         component: NotificationsComponent,
         canActivate: [AuthGuard],
+        title: 'Notifications',
       },
       {
         path: 'admin',
         component: AdminDashboardComponent,
         canActivate: [AdminGuard],
+        title: 'Administration',
       },
     ] 
   } ,
   {
     path: 'inscription',
-    component: SignUpComponent
+    component: SignUpComponent,
+    title: 'Inscription'
   } ,
   {
     path: 'nouveau-mot-de-passe',
-    component: ResetPasswordComponent
+    component: ResetPasswordComponent,
+    title: 'Nouveau mot de passe'
   },
   {
     path: 'auth/callback',
     component: AuthCallbackComponent,
+    title: 'Connexion en cours',
   },
 ];
 

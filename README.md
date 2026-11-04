@@ -171,13 +171,16 @@ nvm use          # Node 22 (fichier .nvmrc)
 npm ci
 ```
 
-Vérifier `src/environments/environment.prod.ts` (URL API et repli Keycloak) :
+Vérifier `src/environments/environment.prod.ts` (URL API, repli Keycloak et
+mesure d'audience) :
 
 ```typescript
 apiUrl: 'https://plateformes.reserves-naturelles.org/api',
 keycloakUrl: 'https://auth.reserves-naturelles.org',
 keycloakRealm: 'rnf',
 keycloakClientId: 'inscription-spa',
+matomoUrl: 'https://matomo.reserves-naturelles.org',
+matomoSiteId: '12',   // site « Plateformes RNF » dans l'instance Matomo
 ```
 
 Build production :
@@ -189,6 +192,32 @@ npm run build
 
 Déployer le contenu de `dist/inscription/` sur le serveur web.  
 Configurer le fallback SPA : toutes les routes non-API renvoient `index.html`.
+
+### Mesure d'audience
+
+La fréquentation est mesurée par le Matomo de Réserves naturelles de France
+(`https://matomo.reserves-naturelles.org`, la même instance que la vitrine
+Cicada), piloté par
+[`services/matomo.service.ts`](frontend/src/app/services/matomo.service.ts).
+
+Le site y porte le numéro **12**. Vérifier que l'anonymisation des adresses IP
+reste active côté instance (Administration → Confidentialité) : c'est le seul
+réglage que l'application ne peut pas imposer, et c'est lui qui justifie
+l'absence de bandeau de consentement. Vider `matomoSiteId` désactive
+entièrement la mesure.
+
+Le traqueur est configuré **sans cookie** (`disableCookies`) et respecte « Do
+Not Track » : l'application reste ainsi exemptée de bandeau de consentement.
+Aucune donnée de compte n'est transmise (pas de `setUserId`), et seul le chemin
+des pages part vers Matomo — jamais la chaîne de requête, qui porte le code
+d'autorisation OIDC sur `/auth/callback` et le jeton de réinitialisation sur
+`/nouveau-mot-de-passe`.
+
+L'application étant monopage, les pages vues sont signalées à chaque navigation
+du routeur, sous le `title` déclaré sur la route. Rien n'est compté en
+développement — `matomoUrl` y vaut `null`. Pour vérifier le câblage en local,
+lui donner temporairement une valeur dans `src/environments/environment.ts` et
+lire `window._paq` dans la console.
 
 ---
 

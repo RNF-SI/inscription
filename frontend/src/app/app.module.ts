@@ -20,7 +20,7 @@ import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
-import { RouterModule } from '@angular/router';
+import { RouterModule, TitleStrategy } from '@angular/router';
 import { HomeComponent } from './components/home/home.component';
 import { FontAwesomeModule, FaIconLibrary } from '@fortawesome/angular-fontawesome';
 import { RandomOrderPipe } from './pipes/random-order.pipe';
@@ -57,6 +57,7 @@ import { NotificationsComponent } from './components/notifications/notifications
 import { NotificationBadgeService } from './core/services/notification-badge.service';
 import { InscriptionNotificationBadgeService } from './services/inscription-notification-badge.service';
 import { ImageCropperComponent } from 'ngx-image-cropper';
+import { PageTitleStrategy } from './services/page-title.strategy';
 
 @NgModule({
   declarations: [
@@ -115,7 +116,9 @@ import { ImageCropperComponent } from 'ngx-image-cropper';
     { provide: NotificationBadgeService, useClass: InscriptionNotificationBadgeService },
     // LoginComponent est routé, pas ouvert en dialogue : bouchons repris de HomeRnfModule.
     { provide: MAT_DIALOG_DATA, useValue: {} },
-    { provide: MatDialogRef, useValue: {} }
+    { provide: MatDialogRef, useValue: {} },
+    // Titre de l'onglet et nom de page envoyé à Matomo, cf. services/page-title.strategy.ts
+    { provide: TitleStrategy, useClass: PageTitleStrategy }
   ],
   bootstrap: [AppComponent]
 })
