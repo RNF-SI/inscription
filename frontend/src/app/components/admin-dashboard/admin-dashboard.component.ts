@@ -220,7 +220,11 @@ export class AdminDashboardComponent implements OnInit {
     this.registrationActionLoadingKey = key;
     this.api.superApprove(id).subscribe({
       next: () => this.loadRequestsTab(true),
-      error: () => {
+      error: (err) => {
+        // L'échec était muet : le refus d'un doublon (409) ou une erreur Keycloak
+        // laissait la demande en place sans rien dire au validateur.
+        const msg = err?.error?.detail || 'Validation impossible.';
+        this.toast.error(msg, 'Validation de l’inscription');
         this.registrationActionLoadingKey = null;
       },
       complete: () => {

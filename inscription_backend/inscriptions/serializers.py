@@ -6,6 +6,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from inscriptions.crypto_util import encrypt_text
+from inscriptions.services import comptes_existants
 from inscriptions.models import (
     Application,
     Notification,
@@ -262,6 +263,17 @@ class SignupSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"applications": f"Justification requise pour: {', '.join(sorted(missing))}"}
                 )
+
+        # En dernier, parce que c'est le seul contrôle qui sort de la machine : inutile
+        # d'interroger Keycloak et la base historique pour un formulaire déjà invalide.
+        # Un doublon refusé ici, c'est un refus que la personne peut comprendre et
+        # corriger seule ; refusé à la validation super-admin, c'était un 409 opaque
+        # plusieurs jours plus tard.
+        conflit = comptes_existants.compte_existant(
+            email=attrs.get("email") or "", identifiant=identifiant
+        )
+        if conflit:
+            raise serializers.ValidationError({conflit.champ: conflit.message})
         return attrs
 
     @transaction.atomic
