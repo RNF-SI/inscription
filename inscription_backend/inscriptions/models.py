@@ -279,3 +279,42 @@ class AuditLog(models.Model):
     class Meta:
         db_table = "inscription_audit_log"
         ordering = ["-created_at"]
+
+
+class SynchroRadisRun(models.Model):
+    """Trace d'un passage de « synchro_radis ».
+
+    Deux raisons de la garder. L'administration affiche la date et le résultat du
+    dernier passage : sans elle, personne ne sait si le minuteur nocturne tourne
+    encore, et c'est précisément ce qu'on veut voir d'un coup d'œil. Et le rapport
+    d'un passage nocturne doit pouvoir être relu le lendemain, alors que la sortie de
+    la commande est partie dans le journal systemd.
+
+    ``report`` porte le résumé JSON du rapport (``radis.resume()``), pas le rapport
+    brut : celui-ci contient des dates et des ensembles que JSON ne sait pas écrire.
+    """
+
+    DECLENCHEUR_BOUTON = "bouton"
+    DECLENCHEUR_COMMANDE = "commande"
+    DECLENCHEUR_MINUTEUR = "minuteur"
+    DECLENCHEUR_CHOICES = [
+        (DECLENCHEUR_BOUTON, "Bouton de l'administration"),
+        (DECLENCHEUR_COMMANDE, "Ligne de commande"),
+        (DECLENCHEUR_MINUTEUR, "Minuteur nocturne"),
+    ]
+
+    declencheur = models.CharField(max_length=20, choices=DECLENCHEUR_CHOICES)
+    actor_sub = models.CharField(max_length=200, blank=True)
+    a_blanc = models.BooleanField(default=False)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    ok = models.BooleanField(null=True, blank=True)
+    report = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "inscription_synchro_radis_run"
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"{self.started_at:%Y-%m-%d %H:%M} ({self.declencheur})"

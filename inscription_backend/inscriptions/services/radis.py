@@ -49,10 +49,11 @@ from typing import Any, Iterator
 import requests
 from django.conf import settings
 from django.db import connections, transaction
+from django.utils import timezone
 
 from django.utils.text import slugify
 
-from inscriptions.models import Organisme, OrganismeReserveLink, Reserve
+from inscriptions.models import Organisme, OrganismeReserveLink, Reserve, SynchroRadisRun
 from inscriptions.services import legacy_writer, mirror
 from inscriptions.services.legacy_writer import LegacyWriteError
 
@@ -600,3 +601,77 @@ def synchroniser(*, a_blanc: bool = False, creer_organismes: bool = True) -> dic
     _marquer_absentes_de_ref_geo(set(inventaire) & codes_radis, rapport, a_blanc)
 
     return rapport
+
+
+def resume(rapport: dict) -> dict:
+    """Résumé JSON du rapport, pour ``SynchroRadisRun.report``.
+
+    Le rapport brut porte un ``datetime`` et des listes de tuples : JSON n'en veut
+    pas tel quel. Les comptes suffisent partout, **sauf** là où la liste est l'action
+    à mener — réserves créées ou supprimées, organismes à créer dans ``bib_organismes``,
+    UUID du SINP partagés, réserves absentes de ``ref_geo.l_areas``. Celles-là sont
+    conservées entières : c'est ce qu'un validateur doit pouvoir relire le lendemain.
+    """
+    return {
+        "a_blanc": bool(rapport["a_blanc"]),
+        "reserves": {
+            "radis": rapport["reserves_radis"],
+            "creees": list(rapport["reserves_creees"]),
+            "modifiees": len(rapport["reserves_modifiees"]),
+            "inchangees": rapport["reserves_inchangees"],
+            "supprimees": [list(x) for x in rapport["reserves_supprimees"]],
+            "declassees": len(rapport["reserves_declassees"]),
+            "ignorees": [list(x) for x in rapport["reserves_ignorees"]],
+            "absentes_ref_geo": list(rapport["reserves_absentes_ref_geo"]),
+            "ref_geo_consulte": bool(rapport["ref_geo_consulte"]),
+        },
+        "organismes": {
+            "radis": rapport["organismes_radis"],
+            "rattaches": len(rapport["organismes_rattaches"]),
+            "renommes": [list(x) for x in rapport["organismes_renommes"]],
+            "crees": [list(x) for x in rapport["organismes_crees"]],
+            "adoptes": len(rapport["organismes_adoptes"]),
+            "sans_correspondance": len(rapport["organismes_sans_correspondance"]),
+            "uuid_partage": [list(x) for x in rapport["organismes_uuid_partage"]],
+            "non_creables": [list(x) for x in rapport["organismes_non_creables"]],
+            "disparus_de_radis": [list(x) for x in rapport["organismes_disparus_de_radis"]],
+            "creation_active": bool(rapport["creation_organismes"]),
+        },
+        "liens": {
+            "crees": rapport["liens_crees"],
+            "modifies": rapport["liens_modifies"],
+            "supprimes": rapport["liens_supprimes"],
+        },
+    }
+
+
+def executer(
+    *,
+    a_blanc: bool = False,
+    creer_organismes: bool = True,
+    declencheur: str = SynchroRadisRun.DECLENCHEUR_COMMANDE,
+    actor_sub: str = "",
+) -> tuple[SynchroRadisRun, dict]:
+    """Synchronise et journalise le passage. Renvoie la trace et le rapport brut.
+
+    Point d'entrée unique de la commande comme de la route d'administration : le
+    bouton et le minuteur laissent donc la même trace, et l'un voit ce que l'autre a
+    fait. La ligne est créée avant l'appel pour qu'un passage interrompu — processus
+    tué, timeout — reste visible avec ``finished_at`` vide plutôt que de disparaître.
+    """
+    passage = SynchroRadisRun.objects.create(
+        declencheur=declencheur, actor_sub=actor_sub, a_blanc=a_blanc
+    )
+    try:
+        rapport = synchroniser(a_blanc=a_blanc, creer_organismes=creer_organismes)
+    except Exception as exc:
+        passage.ok = False
+        passage.error = str(exc)[:2000]
+        passage.finished_at = timezone.now()
+        passage.save(update_fields=["ok", "error", "finished_at"])
+        raise
+    passage.ok = True
+    passage.report = resume(rapport)
+    passage.finished_at = timezone.now()
+    passage.save(update_fields=["ok", "report", "finished_at"])
+    return passage, rapport

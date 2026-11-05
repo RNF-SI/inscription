@@ -787,8 +787,26 @@ manqueraient au catalogue et personne ne pourrait s'y rattacher.
       une réserve retirée emporte ses liens et les demandes en attente qui la
       visent.
 
-    À poser en minuteur systemd nocturne, comme SOCLE le fait pour ses sites ; la
-    commande est idempotente, un second passage ne modifie rien.
+    Le minuteur nocturne, à installer une fois (04:15, décalé de SOCLE qui
+    interroge RADIS à 03:30 — RADIS sert les deux) ::
+
+        sudo install -m 644 deploiement/inscription-synchro-radis.service \
+             deploiement/inscription-synchro-radis.timer /etc/systemd/system/
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now inscription-synchro-radis.timer
+        systemctl list-timers inscription-synchro-radis.timer
+
+    Les chemins des unités supposent ``/home/inscription/inscription`` et
+    l'utilisateur ``inscription`` : les adapter au déploiement. Un passage se
+    relit ensuite par ``journalctl -u inscription-synchro-radis.service``, ou
+    dans l'administration, qui garde le rapport des cinq derniers.
+
+    Le super-admin peut aussi déclencher un passage depuis l'onglet
+    « Réserves » : « Simuler » pour un passage à blanc, « Synchroniser
+    maintenant » pour l'appliquer. C'est la même commande, par
+    ``POST /api/admin/synchro-radis/``, et elle répond en une dizaine de
+    secondes. Le bandeau affiche le dernier passage, son déclencheur et les
+    deux listes qui demandent un arbitrage.
 
 Puis le WSGI, derrière le proxy mais **sans trafic utilisateur** :
 

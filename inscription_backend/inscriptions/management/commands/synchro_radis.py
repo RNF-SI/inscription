@@ -26,6 +26,12 @@ class Command(BaseCommand):
             help="Montre ce qui changerait sans rien écrire.",
         )
         parser.add_argument(
+            "--declencheur",
+            default="commande",
+            choices=["commande", "minuteur"],
+            help="Consigné dans la trace du passage ; le minuteur systemd passe « minuteur ».",
+        )
+        parser.add_argument(
             "--sans-creation",
             action="store_true",
             dest="sans_creation",
@@ -36,8 +42,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         a_blanc = options["a_blanc"]
         try:
-            rapport = radis.synchroniser(
-                a_blanc=a_blanc, creer_organismes=not options["sans_creation"]
+            _passage, rapport = radis.executer(
+                a_blanc=a_blanc,
+                declencheur=options["declencheur"],
+                creer_organismes=not options["sans_creation"],
             )
         except radis.ErreurRadis as exc:
             raise CommandError(str(exc))

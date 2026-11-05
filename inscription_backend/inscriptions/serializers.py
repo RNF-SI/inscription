@@ -13,6 +13,7 @@ from inscriptions.models import (
     Organisme,
     RegistrationRequest,
     Reserve,
+    SynchroRadisRun,
 )
 
 
@@ -38,6 +39,21 @@ class OrganismeDetailSerializer(serializers.ModelSerializer):
     def get_rns(self, obj):
         links = obj.reserve_links.select_related("reserve").all()
         return [{"rn": ReserveSerializer(l.reserve).data, "principal": l.principal} for l in links]
+
+
+class SynchroRadisRunSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SynchroRadisRun
+        fields = (
+            "id",
+            "declencheur",
+            "a_blanc",
+            "started_at",
+            "finished_at",
+            "ok",
+            "report",
+            "error",
+        )
 
 
 class ApplicationSerializer(serializers.ModelSerializer):

@@ -255,6 +255,78 @@
       <app-loading-spinner></app-loading-spinner>
     </div>
     <ng-container *ngIf="!isTabLoading('reserves')">
+
+    <!-- Référentiel : réserves et organismes viennent de RADIS, pas d'ici. -->
+    <div class="card mb-4" *ngIf="isSuperAdmin && synchroRadis">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+          <div>
+            <h5 class="card-title mb-1">Référentiel RADIS</h5>
+            <p class="text-muted small mb-2">
+              Réserves, organismes gestionnaires et leurs liens sont tirés de RADIS.
+              Une synchronisation tourne chaque nuit ; ce bouton en déclenche une tout de suite.
+            </p>
+          </div>
+          <div class="d-flex gap-2">
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm"
+              [disabled]="!synchroRadis.configure || synchroRadisEnCours"
+              (click)="lancerSynchroRadis(true)"
+            >
+              {{ synchroRadisEnCours === 'blanc' ? 'Simulation…' : 'Simuler' }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              [disabled]="!synchroRadis.configure || synchroRadisEnCours"
+              (click)="lancerSynchroRadis(false)"
+            >
+              {{ synchroRadisEnCours === 'reel' ? 'Synchronisation…' : 'Synchroniser maintenant' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="alert alert-warning py-2 mb-2" *ngIf="!synchroRadis.configure">
+          RADIS n'est pas configuré côté serveur (RADIS_API_URL, RADIS_API_KEY).
+        </div>
+
+        <div *ngIf="dernierPassageRadis as passage; else aucunPassageRadis">
+          <div class="small">
+            Dernier passage : {{ passage.started_at | date: 'dd/MM/yyyy à HH:mm' }}
+            <span class="text-muted">
+              ({{ passage.declencheur === 'minuteur' ? 'nocturne' : passage.declencheur === 'bouton' ? 'manuel' : 'ligne de commande' }}<span *ngIf="passage.a_blanc">, simulation</span>)
+            </span>
+            <span class="badge bg-danger ms-1" *ngIf="passage.ok === false">échec</span>
+            <span class="badge bg-secondary ms-1" *ngIf="passage.ok === null">interrompu</span>
+          </div>
+          <div class="small text-muted">{{ resumePassageRadis(passage) }}</div>
+
+          <!-- Ce que la synchronisation ne peut pas régler seule. -->
+          <div class="alert alert-warning py-2 mt-2 mb-0"
+               *ngIf="passage.report?.reserves?.absentes_ref_geo?.length">
+            <strong>{{ passage.report?.reserves?.absentes_ref_geo?.length }} réserve(s) absente(s) du
+            référentiel géographique</strong> — elles ne sont pas proposées à l'inscription, un
+            rattachement y échouerait :
+            {{ passage.report?.reserves?.absentes_ref_geo?.join(', ') }}
+          </div>
+          <div class="alert alert-warning py-2 mt-2 mb-0"
+               *ngIf="passage.report?.organismes?.uuid_partage?.length">
+            <strong>{{ passage.report?.organismes?.uuid_partage?.length }} organisme(s) à UUID du SINP
+            partagé</strong> — non rapprochés, à corriger dans RADIS.
+          </div>
+          <div class="alert alert-danger py-2 mt-2 mb-0"
+               *ngIf="passage.report?.organismes?.non_creables?.length">
+            <strong>{{ passage.report?.organismes?.non_creables?.length }} organisme(s) que la création
+            a refusés</strong> — voir le journal du serveur.
+          </div>
+        </div>
+        <ng-template #aucunPassageRadis>
+          <div class="small text-muted">Aucun passage enregistré.</div>
+        </ng-template>
+      </div>
+    </div>
+
     <div *ngIf="referentReserves.length; else noReserveMembers">
       <h4 class="mt-2">Membres de vos réserves référentes</h4>
       <div class="mb-3" *ngIf="useReferentReserveSelector">

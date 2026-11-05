@@ -112,6 +112,48 @@ export interface ReferentReserveMemberDto {
   pending_removal_request?: boolean;
 }
 
+export interface SynchroRadisPassageDto {
+  id: number;
+  declencheur: 'bouton' | 'commande' | 'minuteur';
+  a_blanc: boolean;
+  started_at: string;
+  finished_at: string | null;
+  ok: boolean | null;
+  error: string;
+  report: {
+    a_blanc?: boolean;
+    reserves?: {
+      radis: number;
+      creees: string[];
+      modifiees: number;
+      inchangees: number;
+      supprimees: [string, string][];
+      declassees: number;
+      ignorees: [string, string][];
+      absentes_ref_geo: string[];
+      ref_geo_consulte: boolean;
+    };
+    organismes?: {
+      radis: number;
+      rattaches: number;
+      renommes: [number, string, string][];
+      crees: [number | null, string][];
+      adoptes: number;
+      sans_correspondance: number;
+      uuid_partage: [number, string, string][];
+      non_creables: [number, string][];
+      disparus_de_radis: [number, string][];
+      creation_active: boolean;
+    };
+    liens?: { crees: number; modifies: number; supprimes: number };
+  };
+}
+
+export interface SynchroRadisEtatDto {
+  configure: boolean;
+  passages: SynchroRadisPassageDto[];
+}
+
 export interface ReferentReserveMembersRowDto {
   reserve: { area_code: string; area_name: string };
   can_request_removal?: boolean;
@@ -257,6 +299,16 @@ export class ApiService {
     payload: { target_sub: string; target_email?: string; target_first_name?: string; target_last_name?: string; reason: string }
   ): Observable<unknown> {
     return this.http.post(`${environment.apiUrl}/me/referent/reserves/${areaCode}/removal-requests/`, payload);
+  }
+
+  getSynchroRadis(): Observable<SynchroRadisEtatDto> {
+    return this.http.get<SynchroRadisEtatDto>(`${environment.apiUrl}/admin/synchro-radis/`);
+  }
+
+  lancerSynchroRadis(aBlanc: boolean): Observable<SynchroRadisPassageDto> {
+    return this.http.post<SynchroRadisPassageDto>(`${environment.apiUrl}/admin/synchro-radis/`, {
+      a_blanc: aBlanc,
+    });
   }
 
   directRemoveReserveMember(areaCode: string, userSub: string): Observable<unknown> {

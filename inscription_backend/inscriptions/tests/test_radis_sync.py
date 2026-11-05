@@ -7,14 +7,15 @@ déclassée, ne pas inventer un organisme, ne pas toucher à ce qui ne vient pas
 — puisque c'est là que porte le risque.
 """
 
+import json
 from contextlib import contextmanager
 from unittest import mock
 
 from django.test import TestCase, override_settings
 
-from inscriptions.models import Organisme, OrganismeReserveLink, Reserve
+from inscriptions.models import AuditLog, Organisme, OrganismeReserveLink, Reserve, SynchroRadisRun
 from inscriptions.services import radis
-from inscriptions.tests.helpers import BaseApiTestCase, make_reserve
+from inscriptions.tests.helpers import BaseApiTestCase, auth_client, make_profile, make_reserve
 
 UUID_PNR = "4d2b2f3a-6c1e-4a9f-8b55-0c3d7e1f9a42"
 UUID_SMGA = "9f1c7d20-3b8e-4c51-a0d6-7e2b4f8a1c33"
@@ -657,3 +658,108 @@ class ConfigurationTests(TestCase):
     def test_sans_configuration_erreur_claire(self):
         with self.assertRaises(radis.ErreurRadis):
             radis.lire_inventaire()
+
+
+class PassagesJournalisesTests(TestCase):
+    """``executer()`` laisse une trace, que le bouton comme le minuteur alimentent."""
+
+    def test_passage_reussi_journalise(self):
+        with faux_radis(reserves=[reserve("RNN41", "Grand Lieu")]):
+            passage, _rapport = radis.executer(declencheur="minuteur")
+
+        passage.refresh_from_db()
+        self.assertTrue(passage.ok)
+        self.assertEqual(passage.declencheur, "minuteur")
+        self.assertIsNotNone(passage.finished_at)
+        self.assertEqual(passage.report["reserves"]["creees"], ["RNN41"])
+        self.assertEqual(passage.error, "")
+
+    def test_passage_en_echec_journalise_et_releve(self):
+        """L'erreur doit remonter à l'appelant, et rester lisible le lendemain."""
+        with faux_radis(reserves=[], inventaire=[]):
+            with self.assertRaises(radis.ErreurRadis):
+                radis.executer(declencheur="bouton", actor_sub="sub-admin")
+
+        passage = SynchroRadisRun.objects.get()
+        self.assertFalse(passage.ok)
+        self.assertIn("inventaire", passage.error.lower())
+        self.assertEqual(passage.actor_sub, "sub-admin")
+        self.assertIsNotNone(passage.finished_at)
+
+    def test_resume_est_serialisable_en_json(self):
+        """``report`` est une colonne JSON : ni date ni ensemble ne doivent y entrer."""
+        with faux_radis(
+            reserves=[
+                reserve("RNN41", "Grand Lieu", organismes=[liaison(og(31, "PNR", UUID_PNR))]),
+                reserve("PP12", "Périmètre", type_rn="PP"),
+            ],
+            organismes=[og(31, "PNR", UUID_PNR)],
+        ):
+            _passage, rapport = radis.executer()
+
+        json.dumps(radis.resume(rapport))  # ne doit pas lever
+
+    def test_a_blanc_journalise_aussi(self):
+        with faux_radis(reserves=[reserve("RNN41", "Grand Lieu")]):
+            passage, _ = radis.executer(a_blanc=True)
+
+        self.assertTrue(passage.a_blanc)
+        self.assertTrue(passage.report["a_blanc"])
+        self.assertFalse(Reserve.objects.exists())
+
+
+class RouteSynchroRadisTests(BaseApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.super_admin = make_profile(is_super_admin=True)
+        self.simple = make_profile()
+
+    def test_refusee_hors_super_admin(self):
+        auth_client(self.client, self.simple)
+        self.assertEqual(self.client.get("/api/admin/synchro-radis/").status_code, 403)
+        self.assertEqual(self.client.post("/api/admin/synchro-radis/").status_code, 403)
+
+    def test_bouton_declenche_et_journalise(self):
+        auth_client(self.client, self.super_admin)
+        with faux_radis(reserves=[reserve("RNN41", "Grand Lieu")]):
+            reponse = self.client.post("/api/admin/synchro-radis/", {}, format="json")
+
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertTrue(corps["ok"])
+        self.assertEqual(corps["declencheur"], "bouton")
+        self.assertEqual(corps["report"]["reserves"]["creees"], ["RNN41"])
+        self.assertTrue(Reserve.objects.filter(pk="RNN41").exists())
+        self.assertTrue(AuditLog.objects.filter(action="synchro_radis").exists())
+
+    def test_simulation_n_ecrit_rien(self):
+        auth_client(self.client, self.super_admin)
+        with faux_radis(reserves=[reserve("RNN41", "Grand Lieu")]):
+            reponse = self.client.post(
+                "/api/admin/synchro-radis/", {"a_blanc": True}, format="json"
+            )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertTrue(reponse.json()["a_blanc"])
+        self.assertFalse(Reserve.objects.exists())
+
+    def test_echec_radis_repond_503(self):
+        """La demande est valide : c'est RADIS qui manque, et le passage est à retenter."""
+        auth_client(self.client, self.super_admin)
+        with faux_radis(reserves=[], inventaire=[]):
+            reponse = self.client.post("/api/admin/synchro-radis/", {}, format="json")
+
+        self.assertEqual(reponse.status_code, 503)
+        self.assertIn("inventaire", reponse.json()["detail"].lower())
+
+    def test_historique_des_passages(self):
+        auth_client(self.client, self.super_admin)
+        with faux_radis(reserves=[reserve("RNN41", "Grand Lieu")]):
+            radis.executer(declencheur="minuteur")
+        reponse = self.client.get("/api/admin/synchro-radis/")
+
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertEqual(len(corps["passages"]), 1)
+        self.assertEqual(corps["passages"][0]["declencheur"], "minuteur")
+        self.assertIn("configure", corps)
