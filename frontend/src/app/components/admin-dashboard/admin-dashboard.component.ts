@@ -26,6 +26,10 @@ import {
 import { applicationImageUrl } from 'src/app/utils/application-image.util';
 import { ToastService } from 'src/app/core/services/toast.service';
 
+/** Onglets de l'administration. « referentiel » porte la synchronisation RADIS :
+ *  les membres d'une réserve et le référentiel dont elle sort sont deux sujets. */
+export type AdminTab = 'requests' | 'reserves' | 'user-access' | 'applications' | 'referentiel';
+
 @Component({
   standalone: false,
   selector: 'app-admin-dashboard',
@@ -34,20 +38,22 @@ import { ToastService } from 'src/app/core/services/toast.service';
 })
 export class AdminDashboardComponent implements OnInit {
   @ViewChild('catalogImageInput') catalogImageInput?: ElementRef<HTMLInputElement>;
-  activeTab: 'requests' | 'reserves' | 'user-access' | 'applications' = 'requests';
+  activeTab: AdminTab = 'requests';
   synchroRadis: SynchroRadisEtatDto | null = null;
   synchroRadisEnCours: '' | 'blanc' | 'reel' = '';
-  tabLoading: Record<'requests' | 'reserves' | 'user-access' | 'applications', boolean> = {
+  tabLoading: Record<AdminTab, boolean> = {
     requests: false,
     reserves: false,
     'user-access': false,
     applications: false,
+    referentiel: false,
   };
-  tabLoaded: Record<'requests' | 'reserves' | 'user-access' | 'applications', boolean> = {
+  tabLoaded: Record<AdminTab, boolean> = {
     requests: false,
     reserves: false,
     'user-access': false,
     applications: false,
+    referentiel: false,
   };
   isSuperAdmin = false;
   registrations: {
@@ -184,8 +190,14 @@ export class AdminDashboardComponent implements OnInit {
     this.loadTab(this.activeTab);
   }
 
-  private isAdminTab(tab: string): tab is 'requests' | 'reserves' | 'user-access' | 'applications' {
-    return tab === 'requests' || tab === 'reserves' || tab === 'user-access' || tab === 'applications';
+  private isAdminTab(tab: string): tab is AdminTab {
+    return (
+      tab === 'requests' ||
+      tab === 'reserves' ||
+      tab === 'user-access' ||
+      tab === 'applications' ||
+      tab === 'referentiel'
+    );
   }
 
   get canValidateApplications(): boolean {
@@ -546,7 +558,7 @@ export class AdminDashboardComponent implements OnInit {
     return this.reserveReferentLoadingKey === `${reqId}:${approve ? 'approve' : 'reject'}`;
   }
 
-  setActiveTab(tab: 'requests' | 'reserves' | 'user-access' | 'applications'): void {
+  setActiveTab(tab: AdminTab): void {
     if (tab === 'requests' && !this.canShowRequestsTab) {
       return;
     }
@@ -557,6 +569,9 @@ export class AdminDashboardComponent implements OnInit {
       return;
     }
     if (tab === 'applications' && !this.canShowApplicationsTab) {
+      return;
+    }
+    if (tab === 'referentiel' && !this.canShowReferentielTab) {
       return;
     }
     this.activeTab = tab;
@@ -575,6 +590,10 @@ export class AdminDashboardComponent implements OnInit {
     return this.isSuperAdmin;
   }
 
+  get canShowReferentielTab(): boolean {
+    return this.isSuperAdmin;
+  }
+
   get canShowRequestsTab(): boolean {
     return this.isSuperAdmin || this.canValidateApplications;
   }
@@ -585,19 +604,20 @@ export class AdminDashboardComponent implements OnInit {
       this.canShowReservesTab,
       this.canShowUserAccessTab,
       this.canShowApplicationsTab,
+      this.canShowReferentielTab,
     ].filter(Boolean).length;
   }
 
-  isTabLoading(tab: 'requests' | 'reserves' | 'user-access' | 'applications'): boolean {
+  isTabLoading(tab: AdminTab): boolean {
     return this.tabLoading[tab];
   }
 
-  private setTabLoading(tab: 'requests' | 'reserves' | 'user-access' | 'applications', loading: boolean): void {
+  private setTabLoading(tab: AdminTab, loading: boolean): void {
     this.tabLoading[tab] = loading;
     this.cdr.detectChanges();
   }
 
-  private loadTab(tab: 'requests' | 'reserves' | 'user-access' | 'applications', force = false): void {
+  private loadTab(tab: AdminTab, force = false): void {
     if (!force && (this.tabLoading[tab] || this.tabLoaded[tab])) {
       return;
     }
@@ -615,6 +635,10 @@ export class AdminDashboardComponent implements OnInit {
     }
     if (tab === 'applications') {
       this.loadApplicationsTab(force);
+      return;
+    }
+    if (tab === 'referentiel') {
+      this.loadReferentielTab(force);
     }
   }
 
@@ -649,12 +673,20 @@ export class AdminDashboardComponent implements OnInit {
       });
   }
 
-  private chargerSynchroRadis(): void {
+  private loadReferentielTab(force = false): void {
+    if (!force && (this.tabLoading.referentiel || this.tabLoaded.referentiel)) {
+      return;
+    }
+    this.setTabLoading('referentiel', true);
     this.api
       .getSynchroRadis()
-      .pipe(catchError(() => of(null)))
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => this.setTabLoading('referentiel', false))
+      )
       .subscribe((etat) => {
         this.synchroRadis = etat;
+        this.tabLoaded.referentiel = true;
       });
   }
 
@@ -696,10 +728,11 @@ export class AdminDashboardComponent implements OnInit {
         next: (passage) => {
           const titre = aBlanc ? 'Simulation terminée' : 'Synchronisation terminée';
           this.toast.success(this.resumePassageRadis(passage), titre);
-          this.chargerSynchroRadis();
+          this.loadReferentielTab(true);
           if (!aBlanc) {
-            // Le référentiel a bougé : les listes de l'onglet s'appuient dessus.
-            this.loadReservesTab(true);
+            // Le référentiel a bougé : les listes des membres s'appuient dessus, mais
+            // leur onglet n'est pas affiché — il se rechargera à sa prochaine ouverture.
+            this.tabLoaded.reserves = false;
           }
         },
         error: (err) => {
