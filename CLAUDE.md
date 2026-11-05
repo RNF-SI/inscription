@@ -365,6 +365,13 @@ d'organismes que RADIS — tous ne gèrent pas une réserve — et rien n'est re
 là-bas. Ce que `services/radis.py` ne fait jamais, chaque point répondant à un dégât
 possible :
 
+- **créer un organisme qui ne gère aucune réserve.** RADIS tient aussi les organismes
+  avec qui RNF travaille — agences de l'eau, ministères, fondations, DREAL : 150 des
+  376. Les créer remplirait d'un coup la liste d'organismes de **toutes** les
+  applications RNF, qui lisent la même table `bib_organismes`. Seuls les gestionnaires
+  en cours entrent (`_gere_une_reserve`, une liaison sans `date_fin`) ;
+  `--tous-organismes` lève la règle. Au 2026-11-05 cela ne laisse **rien** à créer :
+  les 226 gestionnaires, actuels et passés, sont déjà au référentiel ;
 - **supprimer ou désactiver un organisme.** Un organisme absent de la réponse de RADIS
   est indiscernable d'un organisme qui n'en vient pas. Seuls ceux qui portent un
   `radis_id` sont comparés, et leur disparition est signalée, pas appliquée ;

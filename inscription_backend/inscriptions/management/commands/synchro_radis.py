@@ -32,6 +32,13 @@ class Command(BaseCommand):
             help="Consigné dans la trace du passage ; le minuteur systemd passe « minuteur ».",
         )
         parser.add_argument(
+            "--tous-organismes",
+            action="store_true",
+            dest="tous_organismes",
+            help="Crée aussi les organismes de RADIS qui ne gèrent aucune réserve "
+                 "(agences de l'eau, ministères, fondations…).",
+        )
+        parser.add_argument(
             "--sans-creation",
             action="store_true",
             dest="sans_creation",
@@ -46,6 +53,7 @@ class Command(BaseCommand):
                 a_blanc=a_blanc,
                 declencheur=options["declencheur"],
                 creer_organismes=not options["sans_creation"],
+                creer_tous_organismes=options["tous_organismes"],
             )
         except radis.ErreurRadis as exc:
             raise CommandError(str(exc))
@@ -113,6 +121,13 @@ class Command(BaseCommand):
             )
             for radis_id, nom in sans_corr:
                 ecrire(f"  ? {radis_id} — {nom}")
+
+        sans_reserve = rapport["organismes_sans_reserve"]
+        if sans_reserve:
+            ecrire(
+                f"\n{len(sans_reserve)} organisme(s) de RADIS sans réserve en gestion, "
+                "non créés (--tous-organismes pour les ajouter quand même)."
+            )
 
         refuses = rapport["organismes_non_creables"]
         if refuses:

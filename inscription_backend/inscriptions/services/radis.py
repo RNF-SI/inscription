@@ -22,6 +22,12 @@ Ce qu'elle ne fait jamais :
   tous les organismes ne gèrent pas une réserve — et un organisme absent de la réponse
   de RADIS est indiscernable d'un organisme qui n'en vient pas. Seuls ceux qui portent
   un ``radis_id`` sont comparés, et leur disparition est signalée, pas appliquée ;
+- **créer un organisme qui ne gère aucune réserve.** RADIS tient aussi les organismes
+  avec qui RNF travaille — agences de l'eau, ministères, fondations, DREAL — soit 150
+  des 376. Les créer remplirait d'un coup la liste d'organismes de **toutes** les
+  applications RNF, qui lisent la même table ``bib_organismes``. Seuls les
+  gestionnaires en cours entrent (``_gere_une_reserve``) ; ``creer_tous_organismes``
+  lève la règle.
 - **créer un organisme.** ``Organisme.id_organisme`` est la clé primaire de
   ``utilisateurs.bib_organismes``, et ``legacy_writer`` l'écrit dans
   ``t_roles.id_organisme``, colonne qui référence cette table. Un identifiant inventé
@@ -234,6 +240,21 @@ class _Correspondance:
         self.pks_radis.add(org.pk)
 
 
+def _gere_une_reserve(item: dict) -> bool:
+    """Cet organisme de RADIS gère-t-il au moins une réserve aujourd'hui ?
+
+    ``/organismes`` donne tout l'historique des liaisons, dates comprises : une
+    liaison sans ``date_fin`` est une gestion en cours. C'est ce qui distingue un
+    organisme gestionnaire des 150 autres que RADIS porte — agences de l'eau,
+    ministères, fondations, DREAL — qui n'ont rien à faire dans le référentiel des
+    comptes tant que personne ne s'y rattache.
+    """
+    for liaison in item.get("reserves") or []:
+        if isinstance(liaison, dict) and not liaison.get("date_fin"):
+            return True
+    return False
+
+
 def _rapport_vide(a_blanc: bool) -> dict:
     return {
         "debut": datetime.datetime.now(),
@@ -252,6 +273,7 @@ def _rapport_vide(a_blanc: bool) -> dict:
         "organismes_crees": [],
         "organismes_adoptes": [],
         "organismes_non_creables": [],
+        "organismes_sans_reserve": [],
         "organismes_uuid_partage": [],
         "creation_organismes": False,
         "organismes_renommes": [],
@@ -353,6 +375,7 @@ def _appliquer_organismes(
     rapport: dict,
     a_blanc: bool,
     creer: bool,
+    creer_tous: bool,
 ) -> None:
     """Rapproche les organismes de RADIS, met à jour leur nom, crée les manquants.
 
@@ -373,7 +396,13 @@ def _appliquer_organismes(
                 org = correspondance.resoudre(item)
                 if org is None:
                     rapport["organismes_sans_correspondance"].append((radis_id, nom))
-                    if creer:
+                    if creer and not (creer_tous or _gere_une_reserve(item)):
+                        # RADIS tient aussi les organismes avec qui RNF travaille sans
+                        # qu'ils gèrent de réserve. Les créer remplirait d'un coup la
+                        # liste d'organismes de toutes les applications RNF, qui lisent
+                        # la même table : on attend qu'un de leurs agents s'inscrive.
+                        rapport["organismes_sans_reserve"].append((radis_id, nom))
+                    elif creer:
                         _creer_organisme(item, correspondance, rapport, a_blanc)
                     continue
                 if isinstance(radis_id, int):
@@ -530,7 +559,9 @@ def _marquer_absentes_de_ref_geo(codes: set[str], rapport: dict, a_blanc: bool) 
     Reserve.objects.filter(pk__in=presentes, absente_ref_geo=True).update(absente_ref_geo=False)
 
 
-def synchroniser(*, a_blanc: bool = False, creer_organismes: bool = True) -> dict:
+def synchroniser(
+    *, a_blanc: bool = False, creer_organismes: bool = True, creer_tous_organismes: bool = False
+) -> dict:
     """Applique l'état de RADIS au référentiel local. Renvoie un rapport."""
     inventaire = lire_inventaire()
     if not inventaire:
@@ -551,7 +582,9 @@ def synchroniser(*, a_blanc: bool = False, creer_organismes: bool = True) -> dic
     correspondance = _Correspondance(items_organismes)
     creer = creer_organismes and legacy_writer.is_enabled()
     rapport["creation_organismes"] = creer
-    _appliquer_organismes(items_organismes, correspondance, rapport, a_blanc, creer)
+    _appliquer_organismes(
+        items_organismes, correspondance, rapport, a_blanc, creer, creer_tous_organismes
+    )
 
     # Une transaction par page, et non une pour toute la synchronisation : la lecture
     # de RADIS prend plusieurs secondes par page et garder une transaction ouverte
@@ -634,6 +667,7 @@ def resume(rapport: dict) -> dict:
             "sans_correspondance": len(rapport["organismes_sans_correspondance"]),
             "uuid_partage": [list(x) for x in rapport["organismes_uuid_partage"]],
             "non_creables": [list(x) for x in rapport["organismes_non_creables"]],
+            "sans_reserve": len(rapport["organismes_sans_reserve"]),
             "disparus_de_radis": [list(x) for x in rapport["organismes_disparus_de_radis"]],
             "creation_active": bool(rapport["creation_organismes"]),
         },
@@ -649,6 +683,7 @@ def executer(
     *,
     a_blanc: bool = False,
     creer_organismes: bool = True,
+    creer_tous_organismes: bool = False,
     declencheur: str = SynchroRadisRun.DECLENCHEUR_COMMANDE,
     actor_sub: str = "",
 ) -> tuple[SynchroRadisRun, dict]:
@@ -663,7 +698,11 @@ def executer(
         declencheur=declencheur, actor_sub=actor_sub, a_blanc=a_blanc
     )
     try:
-        rapport = synchroniser(a_blanc=a_blanc, creer_organismes=creer_organismes)
+        rapport = synchroniser(
+            a_blanc=a_blanc,
+            creer_organismes=creer_organismes,
+            creer_tous_organismes=creer_tous_organismes,
+        )
     except Exception as exc:
         passage.ok = False
         passage.error = str(exc)[:2000]

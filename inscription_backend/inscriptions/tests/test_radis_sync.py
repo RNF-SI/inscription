@@ -21,8 +21,29 @@ UUID_PNR = "4d2b2f3a-6c1e-4a9f-8b55-0c3d7e1f9a42"
 UUID_SMGA = "9f1c7d20-3b8e-4c51-a0d6-7e2b4f8a1c33"
 
 
-def og(radis_id: int, nom: str, uuid_org: str) -> dict:
-    return {"id": radis_id, "name": nom, "uuid_organisme": uuid_org, "active": True}
+def og(radis_id: int, nom: str, uuid_org: str, *, reserves=("RNN41",), date_fin=None) -> dict:
+    """Organisme tel que ``/organismes`` le rend.
+
+    ``reserves`` porte ses gestions ; par défaut une gestion en cours, parce que c'est
+    la condition pour être créé — RADIS tient aussi 150 organismes qui n'en gèrent
+    aucune. ``date_fin`` les fait toutes passer pour terminées.
+    """
+    return {
+        "id": radis_id,
+        "name": nom,
+        "uuid_organisme": uuid_org,
+        "active": True,
+        "reserves": [
+            {
+                "id_local": code,
+                "nom_site": f"Réserve {code}",
+                "gestionnaire_principal": False,
+                "date_debut": "2020-01-01",
+                "date_fin": date_fin,
+            }
+            for code in reserves
+        ],
+    }
 
 
 def liaison(organisme: dict, *, principal: bool = False, date_fin=None) -> dict:
@@ -440,6 +461,44 @@ class CreationOrganismesTests(TestCase):
                 radis.synchroniser()
 
         self.assertEqual([c["uuid_organisme"] for c in legacy.crees], [None, None])
+
+    def test_organisme_sans_reserve_non_cree(self):
+        """Les agences de l'eau, ministères et fondations que RADIS porte n'ont rien à
+        faire dans une table que toutes les applications RNF lisent."""
+        with faux_legacy() as legacy:
+            with faux_radis(
+                reserves=[reserve("RNN41", "Grand Lieu")],
+                organismes=[og(61, "Agence de l'eau Adour-Garonne", UUID_SMGA, reserves=())],
+            ):
+                rapport = radis.synchroniser()
+
+        self.assertEqual(legacy.crees, [])
+        self.assertFalse(Organisme.objects.exists())
+        self.assertEqual(rapport["organismes_sans_reserve"], [(61, "Agence de l'eau Adour-Garonne")])
+
+    def test_ancien_gestionnaire_non_cree(self):
+        """Une gestion terminée ne propose plus rien : elle ne justifie pas la création."""
+        with faux_legacy() as legacy:
+            with faux_radis(
+                reserves=[reserve("RNN41", "Grand Lieu")],
+                organismes=[og(62, "Ancien gestionnaire", UUID_SMGA, date_fin="2023-12-31")],
+            ):
+                rapport = radis.synchroniser()
+
+        self.assertEqual(legacy.crees, [])
+        self.assertEqual(rapport["organismes_sans_reserve"], [(62, "Ancien gestionnaire")])
+
+    def test_creer_tous_leve_la_regle(self):
+        with faux_legacy() as legacy:
+            with faux_radis(
+                reserves=[reserve("RNN41", "Grand Lieu")],
+                organismes=[og(61, "Agence de l'eau Adour-Garonne", UUID_SMGA, reserves=())],
+            ):
+                rapport = radis.synchroniser(creer_tous_organismes=True)
+
+        self.assertEqual(len(legacy.crees), 1)
+        self.assertEqual(rapport["organismes_sans_reserve"], [])
+        self.assertTrue(Organisme.objects.exists())
 
     def test_a_blanc_ne_cree_rien_mais_annonce(self):
         with faux_legacy() as legacy:
