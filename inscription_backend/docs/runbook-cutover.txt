@@ -809,8 +809,9 @@ manqueraient au catalogue et personne ne pourrait s'y rattacher.
         sudo systemctl enable --now inscription-synchro-radis.timer
         systemctl list-timers inscription-synchro-radis.timer
 
-    Les chemins des unités supposent ``/home/inscription/inscription`` et
-    l'utilisateur ``inscription`` : les adapter au déploiement. Un passage se
+    Les unités portent les chemins du déploiement de production,
+    ``/home/plateforme/inscription-django`` et l'utilisateur ``plateforme`` :
+    les adapter s'il bouge. Un passage se
     relit ensuite par ``journalctl -u inscription-synchro-radis.service``, ou
     dans l'administration, qui garde le rapport des cinq derniers.
 
