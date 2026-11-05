@@ -1,8 +1,9 @@
 # Synchronisation du référentiel réserves / organismes depuis l'API de RADIS.
 #
 # Installation : voir docs/runbook-cutover.txt, § 2.1.
-# Les chemins et l'utilisateur supposent le déploiement de production
-# (/home/inscription/inscription) ; les adapter sinon.
+# Chemins et utilisateur du déploiement de production :
+# /home/plateforme/inscription-django, utilisateur « plateforme ».
+# Les adapter si le déploiement bouge.
 
 [Unit]
 Description=Synchronise le référentiel réserves et organismes depuis RADIS
@@ -14,13 +15,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=inscription
-Group=inscription
-WorkingDirectory=/home/inscription/inscription/inscription_backend
+User=plateforme
+Group=plateforme
+WorkingDirectory=/home/plateforme/inscription-django/inscription_backend
 # --declencheur=minuteur n'a qu'un effet : la trace du passage le dit, et
 # l'administration peut afficher « dernier passage nocturne » plutôt que de
 # confondre avec un clic.
-ExecStart=/home/inscription/inscription/inscription_backend/venv/bin/python manage.py synchro_radis --declencheur=minuteur
+ExecStart=/home/plateforme/inscription-django/inscription_backend/venv/bin/python manage.py synchro_radis --declencheur=minuteur
 
 # Un passage idempotent tient en une dizaine de secondes. La marge couvre le cas
 # du premier passage après une longue interruption, qui crée des organismes dans
