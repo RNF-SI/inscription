@@ -118,6 +118,53 @@ class LegacyIntegrationTests(TestCase):
         payload.update(overrides)
         return legacy_writer.create_role(**payload)
 
+    def test_create_organisme_returns_the_generated_id(self):
+        """L'id_organisme vient de la séquence : c'est lui que porte Organisme ici, et
+        que t_roles.id_organisme référencera pour chaque membre."""
+        cree = legacy_writer.create_organisme(
+            nom_organisme="Agence de l'eau Loire-Bretagne",
+            uuid_organisme=None,
+            adresse_organisme="9 avenue Buffon",
+            cp_organisme="45100",
+            ville_organisme="Orléans",
+            url_logo="https://radis.example/logo.png",
+        )
+        rows = self._query(
+            "SELECT nom_organisme, uuid_organisme::text, adresse_organisme, cp_organisme, "
+            "ville_organisme, url_logo FROM utilisateurs.bib_organismes WHERE id_organisme = %s",
+            [cree.id_organisme],
+        )
+        self.assertEqual(
+            rows,
+            [
+                (
+                    "Agence de l'eau Loire-Bretagne",
+                    cree.uuid_organisme,
+                    "9 avenue Buffon",
+                    "45100",
+                    "Orléans",
+                    "https://radis.example/logo.png",
+                )
+            ],
+        )
+
+    def test_create_organisme_honours_the_sinp_uuid(self):
+        """Quand RADIS en connaît un, c'est lui qui devient la clé de jointure."""
+        uuid_sinp = str(uuid.uuid4())
+        cree = legacy_writer.create_organisme(
+            nom_organisme="Syndicat mixte de test", uuid_organisme=uuid_sinp
+        )
+        self.assertEqual(cree.uuid_organisme, uuid_sinp)
+        self.assertEqual(
+            legacy_writer.find_organisme(uuid_organisme=uuid_sinp).id_organisme,
+            cree.id_organisme,
+        )
+
+    def test_find_organisme_matches_name_without_case(self):
+        cree = legacy_writer.create_organisme(nom_organisme="Mairie de Sélestat")
+        trouve = legacy_writer.find_organisme(nom_organisme="mairie de sélestat")
+        self.assertEqual(trouve.id_organisme, cree.id_organisme)
+
     def test_create_role_returns_the_row_uuid(self):
         """L'uuid_role remonté devient l'identifiant du compte Keycloak : s'il ne
         correspondait pas à la ligne, le « sub » des jetons ne joindrait rien."""

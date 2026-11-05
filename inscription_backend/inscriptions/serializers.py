@@ -24,7 +24,7 @@ class OrganismeSerializer(serializers.ModelSerializer):
 class ReserveSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reserve
-        fields = ("area_code", "area_name", "id_type")
+        fields = ("area_code", "area_name", "id_type", "type_rn")
 
 
 class OrganismeDetailSerializer(serializers.ModelSerializer):

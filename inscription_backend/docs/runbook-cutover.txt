@@ -741,6 +741,55 @@ Au 2026-11-03 : 196 + 173 + 7 = **376**, soit exactement le nombre importé. Si
 ce total dépassait un jour le nombre de ``Reserve`` en base, des réserves
 manqueraient au catalogue et personne ne pourrait s'y rattacher.
 
+2.1 — La mise à jour courante du référentiel vient de RADIS, pas d'ici.
+
+    ``migrate_legacy`` est un amorçage : il lit la base historique, que RADIS
+    alimente par un push partiel. Les mises à jour suivantes se font par ::
+
+        python manage.py synchro_radis --a-blanc    # d'abord, toujours
+        python manage.py synchro_radis
+
+    Elle tire l'API v1 de RADIS (``RADIS_API_URL``, ``RADIS_API_KEY`` dans le
+    ``.env``). La liste des réserves de RADIS fait loi : ce qu'elle ne contient
+    pas est supprimé ici. Les organismes, eux, ne sont jamais supprimés — la
+    plateforme en porte plus que RADIS — mais les manquants sont créés, d'abord
+    dans ``utilisateurs.bib_organismes`` puis ici avec l'identifiant que la
+    séquence donne. ``--sans-creation`` coupe cette création.
+
+    Premier passage, 2026-11-04 (base de développement et copie de test de la
+    base historique) : 385 réserves dans RADIS pour 376 ici, **10 créées** et
+    **aucune supprimée** ; 378 organismes, 205 rapprochés, 21 renommés, **150
+    créés** et 23 adoptés — ces 23 ont une ligne ``bib_organismes`` que l'UUID ne
+    retrouvait pas, d'où le repli sur le nom normalisé : « Conservatoire d'espaces
+    naturels de Normandie » y porte une espace finale. Et 5 liens créés, 2
+    supprimés. État obtenu : 385 réserves dont 12 déclassées et 9 absentes de
+    ``l_areas``, soit **369 proposables** (180 RNN, 198 RNR, 7 RNC) ; 440
+    organismes dont 378 connus de RADIS et 62 propres à la plateforme ; 515 liens.
+
+    Le deuxième passage ne doit rien modifier. Il reste une chose à vérifier avant
+    de poser le minuteur en production : l'organisme ``id_organisme = 1`` (« OFB »)
+    n'a pas de ligne ``bib_organismes`` dans la copie de test. Si c'est aussi le
+    cas en production, la création de compte de ses membres échoue sur la clé
+    étrangère de ``t_roles.id_organisme`` — indépendamment de cette commande.
+
+    Trois listes du rapport méritent d'être lues à chaque passage :
+
+    - **réserves absentes de ref_geo.l_areas** — 9 des 10 nouvelles. Elles ne sont
+      pas proposées, et c'est voulu : ``cor_role_rn.rn_id`` référence
+      ``l_areas.area_code``, un inscrit qui cocherait une telle réserve ferait
+      échouer la création de son compte. Les faire entrer dans ``l_areas`` est du
+      ressort de GeoNature ;
+    - **organismes dont l'UUID du SINP est partagé** — dix UUID pour vingt-quatre
+      organismes dans RADIS, et ils ne désignent pas des doublons : le CEN de
+      Normandie et la Région Normandie portent le même. Ces organismes ne sont pas
+      rapprochés, à corriger dans RADIS ;
+    - **réserves supprimées**. Aucune au 2026-11-04, mais la liste est à lire :
+      une réserve retirée emporte ses liens et les demandes en attente qui la
+      visent.
+
+    À poser en minuteur systemd nocturne, comme SOCLE le fait pour ses sites ; la
+    commande est idempotente, un second passage ne modifie rien.
+
 Puis le WSGI, derrière le proxy mais **sans trafic utilisateur** :
 
     gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 120
