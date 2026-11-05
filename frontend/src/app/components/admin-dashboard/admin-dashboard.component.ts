@@ -760,9 +760,6 @@ export class AdminDashboardComponent implements OnInit {
       )
       .subscribe((referentReserves) => {
         this.referentReserves = referentReserves;
-        if (this.isSuperAdmin) {
-          this.chargerSynchroRadis();
-        }
         if (
           this.referentReserves.length &&
           !this.referentReserves.some((r) => r.reserve.area_code === this.selectedReferentReserveCode)
