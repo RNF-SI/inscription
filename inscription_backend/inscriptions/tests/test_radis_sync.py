@@ -284,6 +284,40 @@ class SynchroOrganismesTests(TestCase):
         self.assertEqual(local.nom_organisme, "Association locale")
         self.assertEqual(rapport["organismes_disparus_de_radis"], [])
 
+    def test_organisme_cree_n_est_pas_porte_disparu(self):
+        """Il reçoit son radis_id hors de la branche du rapprochement : sans garde, le
+        passage qui le crée le déclarait aussitôt disparu de RADIS."""
+        with mock.patch.object(radis, "legacy_writer", FauxLegacy()):
+            with faux_radis(
+                reserves=[reserve("RNN41", "Grand Lieu")],
+                organismes=[og(44, "Conservatoire d'espaces naturels d'Alsace", UUID_SMGA)],
+            ):
+                rapport = radis.synchroniser()
+
+        self.assertEqual(len(rapport["organismes_crees"]), 1)
+        self.assertEqual(rapport["organismes_disparus_de_radis"], [])
+
+    def test_organisme_adopte_n_est_pas_porte_disparu(self):
+        from inscriptions.services.legacy_writer import NouvelOrganisme
+
+        Organisme.objects.create(
+            id_organisme=312, uuid_organisme=UUID_SMGA, nom_organisme="LPO Vendée"
+        )
+        # Rapproché par son nom : le seul chemin quand RADIS n'a pas d'UUID du SINP.
+        with mock.patch.object(
+            radis,
+            "legacy_writer",
+            FauxLegacy(existants={"lpo vendée": NouvelOrganisme(312, UUID_SMGA)}),
+        ):
+            with faux_radis(
+                reserves=[reserve("RNN41", "Grand Lieu")],
+                organismes=[og(44, "LPO Vendée", "")],
+            ):
+                rapport = radis.synchroniser()
+
+        self.assertEqual(len(rapport["organismes_adoptes"]), 1)
+        self.assertEqual(rapport["organismes_disparus_de_radis"], [])
+
     def test_organisme_rapproche_puis_absent_est_signale(self):
         self.pnr.radis_id = 31
         self.pnr.save(update_fields=["radis_id"])
