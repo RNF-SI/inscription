@@ -756,6 +756,19 @@ manqueraient au catalogue et personne ne pourrait s'y rattacher.
     dans ``utilisateurs.bib_organismes`` puis ici avec l'identifiant que la
     séquence donne. ``--sans-creation`` coupe cette création.
 
+    **Seuls les gestionnaires en cours sont créés.** RADIS tient aussi les
+    organismes avec qui RNF travaille sans qu'ils gèrent de réserve — agences de
+    l'eau, ministères, fondations, DREAL : 150 de ses 376. Les créer remplirait
+    d'un coup la liste d'organismes de **toutes** les applications RNF, qui lisent
+    la même table. ``--tous-organismes`` lève la règle si le besoin vient.
+
+    Relevé du passage à blanc en production, 2026-11-05 : 385 réserves dans RADIS
+    pour 376 ici, **9 à créer** — exactement les 9 qui manquent à ``l_areas``, donc
+    aucune ne deviendra proposable avant que GeoNature les enregistre — et aucune à
+    supprimer ; 376 organismes, 205 rapprochés, 21 renommés, 23 adoptés et **150 à
+    créer, tous sans réserve en gestion**, donc plus rien à créer sous cette règle ;
+    4 liens à créer, aucun à supprimer.
+
     Premier passage, 2026-11-04 (base de développement et copie de test de la
     base historique) : 385 réserves dans RADIS pour 376 ici, **10 créées** et
     **aucune supprimée** ; 378 organismes, 205 rapprochés, 21 renommés, **150
