@@ -212,6 +212,10 @@ class ApprobationSuperAdminTests(BaseApiTestCase):
         actor = make_profile(is_super_admin=True)
         kc = mock.MagicMock()
         kc.create_user.return_value = role_cree.uuid_role if role_cree else "id-genere"
+        # Le realm ne connaît ni cette adresse ni cet identifiant : sans le dire, le
+        # MagicMock répondrait un objet vrai et la validation refuserait un doublon.
+        kc.find_user_by_email.return_value = None
+        kc.find_user_by_username.return_value = None
         with self.settings(KEYCLOAK_SYNC_ENABLED=True), \
              mock.patch("inscriptions.services.workflows.KeycloakAdminClient", return_value=kc), \
              mock.patch.object(workflows.mirror, "create_legacy_role", return_value=role_cree), \

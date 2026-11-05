@@ -19,6 +19,7 @@ from inscriptions.models import (
     Reserve,
 )
 from inscriptions.roles import list_application_admin_subs, list_application_admins, list_super_admin_subs
+from inscriptions.services import comptes_existants
 from inscriptions.services import mail as mail_svc
 from inscriptions.services import mirror
 from inscriptions.services.legacy_writer import LegacyWriteError
@@ -97,11 +98,31 @@ def on_registration_created(registration: RegistrationRequest) -> None:
     _log("", "registration_created", {"public_id": str(registration.public_id), "email": registration.email})
 
 
+class CompteDejaExistant(Exception):
+    """Un compte porte déjà l'adresse ou l'identifiant de la demande.
+
+    Vérifié avant toute écriture, parce que ``partialImport`` répond 409 pour trois
+    raisons — identifiant pris, adresse prise, ``id`` déjà employé — sans permettre de
+    les distinguer. Le super-admin lisait « Identifiant déjà utilisé » quand la cause
+    était l'adresse, et les demandes déposées avant ce contrôle sont toujours en
+    attente : il faut que leur refus soit lisible.
+    """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 @transaction.atomic
 def super_admin_approve(registration: RegistrationRequest, actor_sub: str) -> None:
     if registration.status != RegistrationRequest.STATUS_PENDING_SUPER:
         raise ValueError("invalid_status")
     kc = KeycloakAdminClient()
+    conflit = comptes_existants.compte_existant(
+        email=registration.email, identifiant=registration.username, kc=kc
+    )
+    if conflit:
+        raise CompteDejaExistant(conflit.message)
     plain_password = decrypt_text(registration.password_cipher)
 
     # Les trois écritures d'état — base historique, Keycloak, base locale — doivent

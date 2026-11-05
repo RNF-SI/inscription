@@ -341,6 +341,24 @@ la création de compte.
    `RegistrationRequest` (et ses items en cascade) : l'état final vit dans Keycloak. Ne pas
    compter sur ces tables pour un historique — seul `AuditLog` en garde la trace.
 
+**Le doublon se refuse à l'inscription.** `services/comptes_existants.py` demande, avant
+d'enregistrer la demande, si un compte porte déjà cette adresse ou cet identifiant —
+**des deux côtés** : le realm, et `t_roles`, où un compte peut exister pour toutes les
+applications RNF sans être encore dans Keycloak. L'adresse est testée avant
+l'identifiant, parce qu'une adresse connue ne veut pas dire « choisissez autre chose »
+mais « vous avez déjà un compte » : le message renvoie vers « Mot de passe oublié ».
+
+Sans ce contrôle, la collision n'éclatait qu'à la validation super-admin, où
+`partialImport` répond 409 — pour l'identifiant, pour l'adresse ou pour l'`id`, sans
+permettre de les distinguer, et son message ne nommait que l'identifiant. Le validateur
+lisait « Identifiant déjà utilisé » sur une demande vieille de plusieurs jours dont le
+vrai défaut était l'adresse. `super_admin_approve` fait donc la même vérification avant
+toute écriture et lève `CompteDejaExistant` → **409** avec le motif exact, pour les
+demandes déposées avant ce contrôle.
+
+Un contrôle qui échoue (Keycloak ou base historique injoignable) ne bloque pas
+l'inscription : il est journalisé, et le 409 de la validation reste le dernier filet.
+
 Les demandes d'accès ultérieures d'un utilisateur déjà inscrit réutilisent `AccessRequestItem`
 avec `origin=additional` (`create_additional_access_request`), sans `RegistrationRequest`.
 

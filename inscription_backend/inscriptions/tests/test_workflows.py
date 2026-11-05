@@ -98,6 +98,8 @@ class WorkflowTests(BaseApiTestCase):
     def test_super_admin_approve_stores_fonction_in_keycloak(self, kc_cls, _provision):
         kc = kc_cls.return_value
         kc.create_user.return_value = "kc-user-id"
+        kc.find_user_by_email.return_value = None
+        kc.find_user_by_username.return_value = None
         reg = make_registration(remarks="Conservateur")
         actor = make_profile(is_super_admin=True)
 

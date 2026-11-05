@@ -1392,6 +1392,10 @@ class AdminSuperApproveView(APIView):
             workflows.super_admin_approve(r, actor.sub)
         except ValueError:
             return Response({"detail": "Statut invalide"}, status=400)
+        except workflows.CompteDejaExistant as exc:
+            # 409 et non 400 : la demande est bien formée, c'est l'état du realm et de
+            # la base historique qui s'y oppose. Rien n'a été écrit.
+            return Response({"detail": exc.message}, status=409)
         except KeycloakAdminError as exc:
             return Response({"detail": exc.detail}, status=400)
         except Exception:

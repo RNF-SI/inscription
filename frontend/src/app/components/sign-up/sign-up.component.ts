@@ -265,9 +265,13 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
         },
           error => {
             const body = error.error;
+            // Le message de champ passe avant le « msg » générique du backend :
+            // « Données d'inscription invalides » ne dit pas à la personne qu'un
+            // compte existe déjà avec son adresse, ni quoi faire ensuite.
             const detail =
+              this.premierMessage(body?.errors) ||
+              body?.detail ||
               body?.msg ||
-              (body?.errors ? JSON.stringify(body.errors) : '') ||
               error.message ||
               'Erreur serveur';
             this._toastService.error(detail, 'Inscription');
@@ -276,6 +280,25 @@ export class SignUpComponent implements OnInit, AfterViewInit, OnDestroy {
           this.disableSubmit = false;
         });
     }
+  }
+
+  /** Premier message lisible d'un dictionnaire d'erreurs DRF : {"email": ["…"]}. */
+  private premierMessage(errors: any): string {
+    if (!errors) {
+      return '';
+    }
+    if (typeof errors === 'string') {
+      return errors;
+    }
+    for (const valeur of Object.values(errors)) {
+      if (typeof valeur === 'string' && valeur.trim()) {
+        return valeur;
+      }
+      if (Array.isArray(valeur) && typeof valeur[0] === 'string' && valeur[0].trim()) {
+        return valeur[0];
+      }
+    }
+    return '';
   }
 
   private noWhitespaceValidator(control: AbstractControl): ValidationErrors | null {
