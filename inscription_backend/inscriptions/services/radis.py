@@ -389,6 +389,12 @@ def _appliquer_organismes(
                 rapport["organismes_radis"] += 1
                 radis_id = item.get("id")
                 nom = (item.get("name") or "").strip()
+                # « Vu » veut dire « RADIS l'a renvoyé », pas « on l'a rapproché ».
+                # Rangé ici, avant tout traitement : un organisme créé dans ce passage
+                # même ressortait sinon dans la liste des disparus, puisqu'il reçoit
+                # son radis_id sans passer par la branche du rapprochement.
+                if isinstance(radis_id, int):
+                    vus.add(radis_id)
                 if correspondance.uuid_utilisable(item) == "" and (item.get(CLE_UUID) or "").strip():
                     rapport["organismes_uuid_partage"].append(
                         (radis_id, nom, (item.get(CLE_UUID) or "").strip())
@@ -405,8 +411,6 @@ def _appliquer_organismes(
                     elif creer:
                         _creer_organisme(item, correspondance, rapport, a_blanc)
                     continue
-                if isinstance(radis_id, int):
-                    vus.add(radis_id)
                 champs: list[str] = []
                 if org.radis_id != radis_id and isinstance(radis_id, int):
                     org.radis_id = radis_id
