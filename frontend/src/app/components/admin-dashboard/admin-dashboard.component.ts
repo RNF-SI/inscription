@@ -4,16 +4,18 @@ import { forkJoin, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 import { ImageCroppedEvent, base64ToFile } from 'ngx-image-cropper';
 import {
-  AdminReserveReferentRequestDto,
   AdminReserveMemberRemovalRequestDto,
+  AdminReserveReferentRequestDto,
   ApiService,
+  ApplicationAdminUserDto,
   ApplicationDto,
   ApplicationMemberDto,
-  ApplicationAdminUserDto,
   KeycloakUserSuggestionDto,
+  ReferentReserveMembersRowDto,
+  SynchroRadisEtatDto,
+  SynchroRadisPassageDto,
   UserApplicationAccessDto,
   UserApplicationAccessRowDto,
-  ReferentReserveMembersRowDto,
 } from 'src/app/services/api.service';
 import { AuthService } from 'src/app/core/auth/auth-service.service';
 import {
@@ -33,6 +35,8 @@ import { ToastService } from 'src/app/core/services/toast.service';
 export class AdminDashboardComponent implements OnInit {
   @ViewChild('catalogImageInput') catalogImageInput?: ElementRef<HTMLInputElement>;
   activeTab: 'requests' | 'reserves' | 'user-access' | 'applications' = 'requests';
+  synchroRadis: SynchroRadisEtatDto | null = null;
+  synchroRadisEnCours: '' | 'blanc' | 'reel' = '';
   tabLoading: Record<'requests' | 'reserves' | 'user-access' | 'applications', boolean> = {
     requests: false,
     reserves: false,
@@ -645,6 +649,66 @@ export class AdminDashboardComponent implements OnInit {
       });
   }
 
+  private chargerSynchroRadis(): void {
+    this.api
+      .getSynchroRadis()
+      .pipe(catchError(() => of(null)))
+      .subscribe((etat) => {
+        this.synchroRadis = etat;
+      });
+  }
+
+  get dernierPassageRadis(): SynchroRadisPassageDto | null {
+    return this.synchroRadis?.passages?.[0] || null;
+  }
+
+  /** Résumé d'un passage en une ligne, pour le bandeau de l'onglet. */
+  resumePassageRadis(passage: SynchroRadisPassageDto): string {
+    if (passage.ok === false) {
+      return passage.error || 'échec';
+    }
+    if (passage.ok === null) {
+      return 'passage interrompu';
+    }
+    const reserves = passage.report?.reserves;
+    const organismes = passage.report?.organismes;
+    const liens = passage.report?.liens;
+    const morceaux = [
+      `${reserves?.creees?.length || 0} réserve(s) créée(s)`,
+      `${reserves?.modifiees || 0} modifiée(s)`,
+      `${reserves?.supprimees?.length || 0} supprimée(s)`,
+      `${organismes?.crees?.length || 0} organisme(s) créé(s)`,
+      `${organismes?.renommes?.length || 0} renommé(s)`,
+      `${liens?.crees || 0}/${liens?.supprimes || 0} lien(s) créés/supprimés`,
+    ];
+    return morceaux.join(', ');
+  }
+
+  lancerSynchroRadis(aBlanc: boolean): void {
+    if (this.synchroRadisEnCours) {
+      return;
+    }
+    this.synchroRadisEnCours = aBlanc ? 'blanc' : 'reel';
+    this.api
+      .lancerSynchroRadis(aBlanc)
+      .pipe(finalize(() => (this.synchroRadisEnCours = '')))
+      .subscribe({
+        next: (passage) => {
+          const titre = aBlanc ? 'Simulation terminée' : 'Synchronisation terminée';
+          this.toast.success(this.resumePassageRadis(passage), titre);
+          this.chargerSynchroRadis();
+          if (!aBlanc) {
+            // Le référentiel a bougé : les listes de l'onglet s'appuient dessus.
+            this.loadReservesTab(true);
+          }
+        },
+        error: (err) => {
+          const msg = err?.error?.detail || 'Synchronisation impossible.';
+          this.toast.error(msg, 'Référentiel RADIS');
+        },
+      });
+  }
+
   private loadReservesTab(force = false): void {
     if (!force && (this.tabLoading.reserves || this.tabLoaded.reserves)) {
       return;
@@ -663,6 +727,9 @@ export class AdminDashboardComponent implements OnInit {
       )
       .subscribe((referentReserves) => {
         this.referentReserves = referentReserves;
+        if (this.isSuperAdmin) {
+          this.chargerSynchroRadis();
+        }
         if (
           this.referentReserves.length &&
           !this.referentReserves.some((r) => r.reserve.area_code === this.selectedReferentReserveCode)

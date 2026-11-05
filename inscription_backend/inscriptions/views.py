@@ -27,6 +27,7 @@ from inscriptions.models import (
     ReserveReferentRequest,
     RegistrationRequest,
     Reserve,
+    SynchroRadisRun,
 )
 from inscriptions.permissions import IsKeycloakAuthenticated, IsSuperAdmin
 from inscriptions.roles import (
@@ -53,6 +54,7 @@ from inscriptions.serializers import (
     PasswordResetRequestSerializer,
     ReserveSerializer,
     SignupSerializer,
+    SynchroRadisRunSerializer,
 )
 from inscriptions.services import application_access as app_access_svc
 from inscriptions.services import application_admins as app_admins_svc
@@ -60,6 +62,7 @@ from inscriptions.services import contact as contact_svc
 from inscriptions.services import legacy_writer
 from inscriptions.services import mirror
 from inscriptions.services import password_reset as password_reset_svc
+from inscriptions.services import radis as radis_svc
 from inscriptions.services.legacy_writer import LegacyWriteError
 from inscriptions.services.application_images import ApplicationImageError, remove_application_image, save_application_image
 from inscriptions.services import reserve_notifications as reserve_notify
@@ -1424,6 +1427,53 @@ class AdminSuperApproveView(APIView):
             logger.exception("super_admin_approve")
             return Response({"detail": "Erreur serveur"}, status=500)
         return Response({"status": r.status})
+
+
+class AdminSynchroRadisView(APIView):
+    """Déclenche la synchronisation du référentiel depuis RADIS, et donne son histoire.
+
+    Le passage est **synchrone** : il tient en une dizaine de secondes sur le réseau
+    RNF (385 réserves en quatre pages, 378 organismes, sans les périmètres), très en
+    dessous du délai de gunicorn. Un travail de fond demanderait une file et un suivi
+    d'état pour rien.
+    """
+
+    permission_classes = [IsKeycloakAuthenticated, IsSuperAdmin]
+
+    def get(self, request):
+        passages = SynchroRadisRun.objects.all()[:5]
+        return Response(
+            {
+                "configure": bool(settings.RADIS_API_URL and settings.RADIS_API_KEY),
+                "passages": SynchroRadisRunSerializer(passages, many=True).data,
+            }
+        )
+
+    def post(self, request):
+        user = require_keycloak_user(request)
+        if not user:
+            return Response(status=401)
+        a_blanc = bool(request.data.get("a_blanc"))
+        try:
+            passage, _rapport = radis_svc.executer(
+                a_blanc=a_blanc,
+                declencheur=SynchroRadisRun.DECLENCHEUR_BOUTON,
+                actor_sub=user.sub,
+            )
+        except radis_svc.ErreurRadis as exc:
+            logger.warning("Synchronisation RADIS impossible : %s", exc)
+            # 503 et non 500 : la demande est valide, c'est RADIS ou sa configuration
+            # qui manque, et le passage est à retenter tel quel.
+            return Response({"detail": str(exc)}, status=503)
+        except LegacyWriteError as exc:
+            logger.warning("Synchronisation RADIS : écriture historique impossible : %s", exc)
+            return Response({"detail": "Écriture dans la base historique impossible."}, status=502)
+        AuditLog.objects.create(
+            actor_sub=user.sub,
+            action="synchro_radis",
+            payload={"a_blanc": a_blanc, "passage": passage.pk},
+        )
+        return Response(SynchroRadisRunSerializer(passage).data)
 
 
 class AdminSuperRejectView(APIView):

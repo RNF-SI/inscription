@@ -1,0 +1,19 @@
+# Déclenche la synchronisation du référentiel chaque nuit.
+#
+# La commande est idempotente — un second passage immédiat ne modifie rien —
+# donc un rattrapage après une coupure est sans risque, d'où Persistent=true.
+
+[Unit]
+Description=Synchronisation nocturne du référentiel depuis RADIS
+
+[Timer]
+# 04:15 et non 03:30 : SOCLE interroge déjà RADIS à cette heure-là, et RADIS
+# sert les deux. Mieux vaut ne pas lui demander tout en même temps.
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=15m
+# Rejoue le passage manqué si la machine était éteinte à l'heure dite.
+Persistent=true
+Unit=inscription-synchro-radis.service
+
+[Install]
+WantedBy=timers.target

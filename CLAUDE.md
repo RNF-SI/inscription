@@ -336,6 +336,24 @@ comme le fait SOCLE pour ses sites ; `--a-blanc` montre ce qui changerait. Deux
 réglages : `RADIS_API_URL` et `RADIS_API_KEY` (header `X-API-Key`, clé à demander au
 Pôle SI). Idempotente, destinée à un minuteur nocturne.
 
+Trois façons de la déclencher, un seul chemin de code (`radis.executer()`, qui
+journalise le passage dans `SynchroRadisRun`) :
+
+| Déclencheur | Comment |
+|---|---|
+| `minuteur` | minuteur systemd nocturne, `deploiement/inscription-synchro-radis.{service,timer}` (04:15) |
+| `bouton` | `POST /api/admin/synchro-radis/` (super-admin), bouton de l'onglet « Réserves » |
+| `commande` | `manage.py synchro_radis` à la main |
+
+Le passage par la route est **synchrone** : une dizaine de secondes sur le réseau RNF,
+très en dessous du délai de gunicorn — une file de travaux de fond coûterait plus
+qu'elle ne rapporte. `SynchroRadisRun` existe pour deux raisons : l'administration
+affiche le dernier passage, son déclencheur et son résultat — sans quoi personne ne
+sait si le minuteur tourne encore — et le rapport d'un passage nocturne doit pouvoir
+être relu le lendemain, quand la sortie de la commande est partie dans le journal
+systemd. `report` porte le **résumé** JSON (`radis.resume()`), pas le rapport brut, qui
+contient des dates et des ensembles.
+
 `migrate_legacy` ne sert plus qu'à l'amorçage. Il lisait `ref_geo.l_areas`,
 `utilisateurs.bib_organismes` et `complement_rnf.cor_rn_og`, c'est-à-dire un *push* de
 RADIS vers la base historique : il pousse mais ne réconcilie jamais, et perd ce qu'il

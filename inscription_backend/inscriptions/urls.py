@@ -33,6 +33,7 @@ urlpatterns = [
     path("admin/registration-requests/", views.AdminRegistrationListView.as_view()),
     path("admin/registration-requests/<uuid:public_id>/", views.AdminRegistrationDetailView.as_view()),
     path("admin/registration-requests/<uuid:public_id>/super-approve/", views.AdminSuperApproveView.as_view()),
+    path("admin/synchro-radis/", views.AdminSynchroRadisView.as_view()),
     path("admin/registration-requests/<uuid:public_id>/super-reject/", views.AdminSuperRejectView.as_view()),
     path("admin/pending-items/", views.AdminPendingItemsView.as_view()),
     path("admin/my-validation-applications/", views.AdminMyValidationApplicationsView.as_view()),
